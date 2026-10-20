@@ -1,0 +1,30 @@
+-- Reviewed structural upgrade for an existing multi-tournament installation.
+-- It does not seed tournaments, replace content, or rewrite historical results.
+ALTER TABLE "Tournament" ALTER COLUMN "slug" DROP DEFAULT;
+ALTER TABLE "Tournament" ALTER COLUMN "timezone" SET DEFAULT 'UTC';
+ALTER TABLE "PlatformSettings"
+  ALTER COLUMN "defaultTournamentId" DROP NOT NULL,
+  ALTER COLUMN "defaultTournamentId" DROP DEFAULT,
+  ALTER COLUMN "rootMode" SET DEFAULT 'DIRECTORY',
+  ADD COLUMN IF NOT EXISTS "description" TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS "logo" TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS "favicon" TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS "socialImage" TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS "primaryDomain" TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS "footer" TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS "contact" TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS "socialLinks" JSONB NOT NULL DEFAULT '[]',
+  ADD COLUMN IF NOT EXISTS "primaryColor" TEXT NOT NULL DEFAULT '#e89caa',
+  ADD COLUMN IF NOT EXISTS "accentColor" TEXT NOT NULL DEFAULT '#b6a0e5',
+  ADD COLUMN IF NOT EXISTS "timezone" TEXT NOT NULL DEFAULT 'UTC',
+  ADD COLUMN IF NOT EXISTS "locale" TEXT NOT NULL DEFAULT 'en',
+  ADD COLUMN IF NOT EXISTS "initializedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS "bootstrapOwnerOsuId" INTEGER,
+  ADD COLUMN IF NOT EXISTS "ownerBootstrappedAt" TIMESTAMP(3);
+CREATE TABLE IF NOT EXISTS "PlatformAsset" (
+  "id" TEXT NOT NULL PRIMARY KEY, "key" TEXT NOT NULL, "name" TEXT NOT NULL,
+  "size" INTEGER NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "PlatformAsset_key_key" ON "PlatformAsset"("key");
+UPDATE "PlatformSettings" SET "ownerBootstrappedAt" = CURRENT_TIMESTAMP
+WHERE "ownerBootstrappedAt" IS NULL AND EXISTS (SELECT 1 FROM "User" WHERE "platformAdmin" = true);

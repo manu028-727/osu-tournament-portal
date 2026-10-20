@@ -1,0 +1,400 @@
+'use client';
+import { tournamentApiUrl } from '@/components/tournament-scope';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  useId,
+  isValidElement,
+  cloneElement,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
+import { AlertDialog, Dialog } from 'radix-ui';
+import { X, Check, AlertCircle, Loader2, ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { startPolling } from '@/lib/polling';
+export function usePolling(reload: () => Promise<unknown>, delay = 3000, enabled = true) {
+  useEffect(() => {
+    if (!enabled) return;
+    return startPolling(reload, delay, {
+      active: () => document.visibilityState === 'visible' && navigator.onLine,
+      listen: (resume) => {
+        document.addEventListener('visibilitychange', resume);
+        window.addEventListener('online', resume);
+        window.addEventListener('offline', resume);
+        return () => {
+          document.removeEventListener('visibilitychange', resume);
+          window.removeEventListener('online', resume);
+          window.removeEventListener('offline', resume);
+        };
+      },
+    });
+  }, [reload, delay, enabled]);
+}
+export async function api<T>(url: string, options?: RequestInit): Promise<T> {
+  url = tournamentApiUrl(url);
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      ...(options?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+      ...options?.headers,
+    },
+    cache: 'no-store',
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Request failed.');
+  return data;
+}
+export const action = <T,>(body: unknown) =>
+  api<T>('/api/admin/action', { method: 'POST', body: JSON.stringify(body) });
+export function useResource<T>(section: string, keepPreviousData = false) {
+  const [data, setData] = useState<T | null>(null),
+    [error, setError] = useState(''),
+    [loading, setLoading] = useState(true);
+  const generation = useRef(0);
+  const reload = useCallback(async () => {
+    const seq = ++generation.current;
+    try {
+      const value = await api<T>(`/api/admin/data?section=${section}`);
+      if (seq === generation.current) {
+        setData(value);
+        setError('');
+      }
+      return value;
+    } catch (e) {
+      if (seq === generation.current) setError((e as Error).message);
+      throw e;
+    } finally {
+      if (seq === generation.current) setLoading(false);
+    }
+  }, [section]);
+  useEffect(() => {
+    setLoading(true);
+    if (!keepPreviousData) setData(null);
+    void reload().catch(() => {});
+    return () => {
+      generation.current++;
+    };
+  }, [reload, keepPreviousData]);
+  return { data, error, loading, reload };
+}
+const NoticeContext = createContext<(message: string, error?: boolean) => void>(() => {});
+export function Notices({ children }: { children: ReactNode }) {
+  const [notice, setNotice] = useState<{ message: string; error: boolean } | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
+  const notify = useCallback((message: string, error = false) => {
+    setNotice({ message, error });
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setNotice(null), 6500);
+  }, []);
+  return (
+    <NoticeContext.Provider value={notify}>
+      {children}
+      <div aria-live={notice?.error ? 'assertive' : 'polite'} aria-atomic="true">
+        {notice && (
+          <div
+            role={notice.error ? 'alert' : 'status'}
+            className={`toast fixed bottom-6 right-6 z-[100] flex max-w-[calc(100vw-48px)] items-start gap-3 rounded-xl border bg-[#25232d] p-4 text-sm shadow-2xl ${notice.error ? 'border-red-300/30' : 'border-primary/30'}`}
+          >
+            {notice.error ? (
+              <AlertCircle size={18} className="shrink-0 text-red-300" />
+            ) : (
+              <Check size={18} className="shrink-0 text-primary" />
+            )}
+            <span>{notice.message}</span>
+            <button aria-label="Dismiss notification" onClick={() => setNotice(null)}>
+              <X size={14} />
+            </button>
+          </div>
+        )}
+      </div>
+    </NoticeContext.Provider>
+  );
+}
+export function useTask() {
+  const notify = useContext(NoticeContext);
+  const [busy, setBusy] = useState(false);
+  const run = async <T,>(fn: () => Promise<T>, message = 'Changes saved.') => {
+    setBusy(true);
+    try {
+      const value = await fn();
+      notify(message);
+      return value;
+    } catch (e) {
+      notify((e as Error).message, true);
+      return undefined;
+    } finally {
+      setBusy(false);
+    }
+  };
+  return { run, busy, notify };
+}
+export function useUnsaved(dirty: boolean) {
+  useEffect(() => {
+    if (!dirty) return;
+    const before = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    const click = (e: MouseEvent) => {
+      const a = (e.target as HTMLElement).closest('a');
+      if (
+        a &&
+        a.href !== location.href &&
+        !a.href.startsWith(location.href + '#') &&
+        !window.confirm('You have unsaved changes. Leave this editor?')
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    window.addEventListener('beforeunload', before);
+    document.addEventListener('click', click, true);
+    return () => {
+      window.removeEventListener('beforeunload', before);
+      document.removeEventListener('click', click, true);
+    };
+  }, [dirty]);
+}
+export function Modal({
+  open,
+  onOpenChange,
+  title,
+  description,
+  children,
+  wide = false,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  title: string;
+  description?: string;
+  children: ReactNode;
+  wide?: boolean;
+}) {
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm" />
+        <Dialog.Content
+          className={`fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[calc(100%-32px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border bg-[#1b1b22] p-6 shadow-2xl md:p-8 ${wide ? 'max-w-6xl' : 'max-w-xl'}`}
+        >
+          <Dialog.Title className="pr-8 text-xl font-semibold tracking-tight">{title}</Dialog.Title>
+          <Dialog.Description className={description ? 'mt-2 text-xs text-muted' : 'sr-only'}>
+            {description || title}
+          </Dialog.Description>
+          <Dialog.Close
+            className="absolute right-5 top-5 rounded p-1 text-muted hover:text-foreground"
+            aria-label="Close dialog"
+          >
+            <X size={18} />
+          </Dialog.Close>
+          <div className="mt-6">{children}</div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+export function ConfirmButton({
+  onConfirm,
+  children,
+  title = 'Confirm this action',
+  description = 'This action takes effect immediately. Please review before continuing.',
+  disabled = false,
+  variant = 'destructive',
+}: {
+  onConfirm: () => void;
+  children: ReactNode;
+  title?: string;
+  description?: string;
+  disabled?: boolean;
+  variant?: 'destructive' | 'outline' | 'default';
+}) {
+  return (
+    <AlertDialog.Root>
+      <AlertDialog.Trigger asChild>
+        <Button variant={variant} size="sm" disabled={disabled}>
+          {children}
+        </Button>
+      </AlertDialog.Trigger>
+      <AlertDialog.Portal>
+        <AlertDialog.Overlay className="fixed inset-0 z-[60] bg-black/75" />
+        <AlertDialog.Content className="fixed left-1/2 top-1/2 z-[60] w-[calc(100%-32px)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-card p-7">
+          <AlertDialog.Title className="text-lg font-semibold">{title}</AlertDialog.Title>
+          <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted">
+            {description}
+          </AlertDialog.Description>
+          <div className="mt-7 flex justify-end gap-3">
+            <AlertDialog.Cancel asChild>
+              <Button variant="outline" size="sm">
+                Cancel
+              </Button>
+            </AlertDialog.Cancel>
+            <AlertDialog.Action asChild>
+              <Button variant={variant} size="sm" onClick={onConfirm}>
+                Confirm
+              </Button>
+            </AlertDialog.Action>
+          </div>
+        </AlertDialog.Content>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
+  );
+}
+export function Field({
+  label,
+  children,
+  hint,
+}: {
+  label: string;
+  children: ReactNode;
+  hint?: string;
+}) {
+  const labelId = useId();
+  const control =
+    isValidElement(children) &&
+    typeof children.type === 'string' &&
+    ['input', 'select', 'textarea'].includes(children.type)
+      ? cloneElement(children as ReactElement<Record<string, unknown>>, {
+          'aria-labelledby': labelId,
+          ...(hint ? { 'aria-describedby': `${labelId}-hint` } : {}),
+        })
+      : children;
+  return (
+    <label className="field">
+      <span id={labelId}>{label}</span>
+      {control}
+      {hint && (
+        <span id={`${labelId}-hint`} className="text-[11px] font-normal leading-5 text-muted">
+          {hint}
+        </span>
+      )}
+    </label>
+  );
+}
+export function LoadingState({ error, retry }: { error?: string; retry?: () => void }) {
+  return error ? (
+    <div role="alert" className="card p-8">
+      <AlertCircle size={22} className="mb-4 text-primary" />
+      <p className="mb-4 text-sm">{error}</p>
+      <Button variant="outline" onClick={retry}>
+        Try again
+      </Button>
+    </div>
+  ) : (
+    <div role="status" aria-label="Loading" className="space-y-5">
+      <div className="skeleton h-28 rounded-xl" />
+      <div className="skeleton h-80 rounded-xl" />
+    </div>
+  );
+}
+export function SaveButton({
+  busy,
+  children = 'Save changes',
+  ...props
+}: { busy: boolean; children?: ReactNode } & React.ComponentProps<typeof Button>) {
+  return (
+    <Button type="submit" disabled={busy} {...props}>
+      {busy && <Loader2 size={14} className="animate-spin" />}
+      {children}
+    </Button>
+  );
+}
+export function ReorderList<T>({
+  items,
+  onChange,
+  renderItem,
+  keyOf,
+}: {
+  items: T[];
+  onChange: (items: T[]) => void;
+  renderItem: (item: T, index: number) => ReactNode;
+  keyOf: (item: T, index: number) => string;
+}) {
+  const drag = useRef<number | null>(null);
+  const move = (from: number, to: number) => {
+    if (to < 0 || to >= items.length) return;
+    const next = [...items];
+    next.splice(to, 0, next.splice(from, 1)[0]);
+    onChange(next);
+  };
+  return (
+    <div className="space-y-3">
+      {items.map((item, i) => (
+        <div
+          key={keyOf(item, i)}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            if (drag.current !== null) move(drag.current, i);
+            drag.current = null;
+          }}
+          className="card p-4"
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <span
+              draggable
+              onDragStart={() => {
+                drag.current = i;
+              }}
+              className="cursor-grab p-1 text-muted"
+              title="Drag to reorder"
+            >
+              <GripVertical size={16} />
+            </span>
+            <div className="flex gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => move(i, i - 1)}
+                disabled={i === 0}
+                aria-label="Move up"
+              >
+                <ArrowUp size={14} />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => move(i, i + 1)}
+                disabled={i === items.length - 1}
+                aria-label="Move down"
+              >
+                <ArrowDown size={14} />
+              </Button>
+            </div>
+          </div>
+          {renderItem(item, i)}
+        </div>
+      ))}
+    </div>
+  );
+}
+export function SectionTitle({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <h1 className="text-3xl font-semibold tracking-[-.04em]">{title}</h1>
+        {description && <p className="mt-3 max-w-xl text-xs leading-6 text-muted">{description}</p>}
+      </div>
+      {children}
+    </div>
+  );
+}

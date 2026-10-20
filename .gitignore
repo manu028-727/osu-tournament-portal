@@ -1,0 +1,59 @@
+# Dependencies and generated build output
+node_modules/
+.next/
+.next-profiles/
+out/
+dist/
+src/generated/
+next-env.d.ts
+*.tsbuildinfo
+.cache/
+.turbo/
+.vercel/
+
+# Private environment configuration (keep documented examples)
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Persistent runtime data, uploads, database dumps and backups
+.data/
+/backups/
+/uploads/
+/data/
+/imports/
+*.xlsx
+*.xlsm
+*.xls
+*.csv
+*.zip
+*.tar
+*.tgz
+*.tar.gz
+*.dump
+*.backup
+*.sql.gz
+*.bak
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Test output and local process artifacts
+playwright-report/
+test-results/
+blob-report/
+coverage/
+*.log
+*.pid
+*.pid.lock
+
+# Local editor and operating-system files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

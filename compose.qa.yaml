@@ -1,0 +1,16 @@
+# Explicit test-only override. Never use this against real Bancho or production.
+services:
+  irc-gateway:
+    environment:
+      IRC_SERVER_HOST: mock-bancho
+      IRC_SERVER_PORT: '6667'
+  mock-bancho:
+    profiles: [qa]
+    image: ${TOOLS_IMAGE:-tournament-tools:local}
+    environment:
+      ALLOW_MOCK_BANCHO: 'yes'
+    entrypoint: [node, --import, tsx, scripts/mock-bancho.ts]
+    volumes:
+      - ./scripts/mock-bancho.ts:/app/scripts/mock-bancho.ts:ro
+      - ./tests/helpers:/app/tests/helpers:ro
+    networks: [backend]

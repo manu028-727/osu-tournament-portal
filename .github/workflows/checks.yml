@@ -1,0 +1,81 @@
+name: Checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Scan complete repository history
+        run: |
+          cd "$RUNNER_TEMP"
+          curl --fail --location --retry 3 -o gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          printf '%s  %s\n' 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb gitleaks.tar.gz | sha256sum --check
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks git "$GITHUB_WORKSPACE" --redact --no-banner
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: ci_only
+          POSTGRES_DB: tournament_platform_test
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U test" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://test:ci_only@localhost:5432/tournament_platform_test
+      DIRECT_URL: postgresql://test:ci_only@localhost:5432/tournament_platform_test
+      TEST_DATABASE_URL: postgresql://test:ci_only@localhost:5432/tournament_platform_test
+      APP_DATABASE_NAME: tournament_platform_test
+      APP_URL: http://localhost:3001
+      STORAGE_DRIVER: filesystem
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npx prisma validate
+      - run: npm run test:db:setup
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:integration
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - run: npm run build
+      - run: npm audit --audit-level=high
+      - run: node scripts/source-audit.mjs --tracked
+  containers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node scripts/provision-docker.mjs
+      - run: docker compose --env-file .env.docker -f compose.docker.yaml config --quiet
+      - run: docker compose --env-file .env.docker -f compose.docker.yaml build web migrate irc-gateway
+      - name: Scan release images
+        run: |
+          cd "$RUNNER_TEMP"
+          curl --fail --location --retry 3 -o trivy.tar.gz https://github.com/aquasecurity/trivy/releases/download/v0.76.0/trivy_0.76.0_Linux-64bit.tar.gz
+          printf '%s  %s\n' e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7 trivy.tar.gz | sha256sum --check
+          tar -xzf trivy.tar.gz trivy
+          for image in tournament-web:local tournament-tools:local tournament-irc:local; do
+            ./trivy image --scanners vuln,secret --severity HIGH,CRITICAL --exit-code 1 "$image"
+          done
+      - run: docker compose --env-file .env.docker -f compose.docker.yaml up -d --wait postgres object-storage
+      - run: docker compose --env-file .env.docker -f compose.docker.yaml run --rm migrate
+      - run: docker compose --env-file .env.docker -f compose.docker.yaml run --rm bootstrap
+      - run: docker compose --env-file .env.docker -f compose.docker.yaml run --rm storage-init
+      - run: docker compose --env-file .env.docker -f compose.docker.yaml run --rm storage-init scripts/test-storage.ts
+      - run: docker compose --env-file .env.docker -f compose.docker.yaml up -d --wait web
+      - run: curl --fail http://localhost:3335/api/health
+      - run: curl --fail http://localhost:3335/
+      - if: always()
+        run: docker compose --env-file .env.docker -f compose.docker.yaml stop

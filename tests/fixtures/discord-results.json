@@ -1,0 +1,71 @@
+[
+  {
+    "name": "red win",
+    "changes": {},
+    "expected": "# __**Finals: Match**__ `28`\r:first_place: **:red_circle: Red Team | 7** - 4 | Blue Team :blue_circle:\r**MP Link:** <https://osu.ppy.sh/community/matches/123>"
+  },
+  {
+    "name": "blue win",
+    "changes": { "scoreA": 4, "scoreB": 7 },
+    "expected": "# __**Finals: Match**__ `28`\r:red_circle: Red Team | 4 - **7 | Blue Team :blue_circle:** :first_place:\r**MP Link:** <https://osu.ppy.sh/community/matches/123>"
+  },
+  {
+    "name": "red forfeit without MP",
+    "changes": { "scoreA": "FF", "mp": "" },
+    "expected": "# __**Finals: Match**__ `28`\r:red_circle: Red Team | FF - **0** | Blue Team :blue_circle: **:first_place:**"
+  },
+  {
+    "name": "blue forfeit",
+    "changes": { "scoreB": "FF" },
+    "expected": "# __**Finals: Match**__ `28`\r:first_place: **:red_circle: Red Team | **0** - FF | Blue Team :blue_circle:"
+  },
+  {
+    "name": "in progress",
+    "changes": { "scoreA": 3, "scoreB": 2 },
+    "expected": "Match in Progress"
+  },
+  { "name": "missing MP", "changes": { "mp": "" }, "expected": "No MP Link" },
+  {
+    "name": "missing match ID has precedence",
+    "changes": { "id": "", "scoreA": "FF" },
+    "expected": "No Match ID"
+  },
+  {
+    "name": "protect ban pick tiebreaker chronology",
+    "changes": {
+      "actions": [
+        { "team": "Red", "action": "Protect", "slot": "NM1", "winner": "" },
+        { "team": "Blue Team", "action": "Ban", "slot": "HD2", "winner": "" },
+        { "team": "Red Team", "action": "Pick", "slot": "FM1", "winner": "Blue" },
+        { "team": "", "action": "Tiebreaker", "slot": "TB", "winner": "Red" }
+      ]
+    },
+    "expected": "# __**Finals: Match**__ `28`\r:first_place: **:red_circle: Red Team | 7** - 4 | Blue Team :blue_circle:\r**MP Link:** <https://osu.ppy.sh/community/matches/123>\r__**Match Rundown**__\r:red_circle: protects ``NM1``\r:blue_circle: bans ``HD2``\r:red_circle: picks ``FM1`` ↳ :blue_circle: wins!\r:purple_circle: ``TB`` ↳ :red_circle: wins!"
+  },
+  {
+    "name": "custom emojis",
+    "changes": { "redEmoji": "<:red:123>", "blueEmoji": "<:blue:456>" },
+    "expected": "# __**Finals: Match**__ `28`\r:first_place: **<:red:123> Red Team | 7** - 4 | Blue Team <:blue:456>\r**MP Link:** <https://osu.ppy.sh/community/matches/123>"
+  },
+  {
+    "name": "World Cup flags",
+    "changes": {
+      "red": "Italy",
+      "blue": "France",
+      "redEmoji": ":flag_it:",
+      "blueEmoji": ":flag_fr:"
+    },
+    "expected": "# __**Finals: Match**__ `28`\r:first_place: **:flag_it: Italy | 7** - 4 | France :flag_fr:\r**MP Link:** <https://osu.ppy.sh/community/matches/123>"
+  },
+  {
+    "name": "incomplete cells preserve source row count",
+    "changes": {
+      "actions": [
+        { "team": "Unknown", "action": "Pick", "slot": "NM1", "winner": "Unknown" },
+        { "team": "", "action": "", "slot": "", "winner": "" },
+        { "team": "Blue", "action": "Pick", "slot": "HD1", "winner": "" }
+      ]
+    },
+    "expected": "# __**Finals: Match**__ `28`\r:first_place: **:red_circle: Red Team | 7** - 4 | Blue Team :blue_circle:\r**MP Link:** <https://osu.ppy.sh/community/matches/123>\r__**Match Rundown**__\r:grey_question: picks ``NM1`` ↳ :grey_question: wins!\r:purple_circle: ````"
+  }
+]

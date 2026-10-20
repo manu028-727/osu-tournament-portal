@@ -1,0 +1,12 @@
+# Optional: reuse an existing Docker database/storage network without moving data.
+services:
+  web:
+    networks: [backend, outbound, existing]
+  migrate:
+    networks: [backend, outbound, existing]
+  bootstrap:
+    networks: [backend, existing]
+networks:
+  existing:
+    external: true
+    name: ${EXTERNAL_SERVICE_NETWORK:?Set the existing private Docker network name}

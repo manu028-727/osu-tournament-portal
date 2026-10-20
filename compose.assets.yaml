@@ -1,0 +1,7 @@
+services:
+  web:
+    volumes:
+      - type: bind
+        source: ${INSTANCE_PUBLIC_DIRECTORY:?Set a private directory containing redistributable instance assets}
+        target: /app/public
+        read_only: true

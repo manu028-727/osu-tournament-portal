@@ -1,0 +1,149 @@
+# Separate from compose.yaml so existing host deployments are never retargeted.
+name: ${STACK_NAME:-tournament}
+x-web-environment: &web-environment
+  NODE_ENV: production
+  DATABASE_URL: ${DATABASE_URL:?Configure DATABASE_URL}
+  APP_DATABASE_NAME: ${APP_DATABASE_NAME:-tournament}
+  APP_URL: ${APP_URL:?Configure APP_URL}
+  OSU_CLIENT_ID: ${OSU_CLIENT_ID:-}
+  OSU_CLIENT_SECRET: ${OSU_CLIENT_SECRET:-}
+  OSU_REDIRECT_URI: ${OSU_REDIRECT_URI:-}
+  OWNER_OSU_ID: ${OWNER_OSU_ID:-}
+  STORAGE_DRIVER: ${STORAGE_DRIVER:-s3}
+  STORAGE_LOCAL_DIR: /var/lib/tournament/uploads
+  S3_ENDPOINT: ${S3_ENDPOINT:-}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_BUCKET: ${S3_BUCKET:-}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+  S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+  IRC_ENABLED: ${IRC_ENABLED:-false}
+  IRC_GATEWAY_SECRET: ${IRC_GATEWAY_SECRET:-}
+  IRC_GATEWAY_URL: http://irc-gateway:8080
+services:
+  web:
+    image: ${WEB_IMAGE:-tournament-web:local}
+    build:
+      context: .
+      target: web
+    environment: *web-environment
+    ports:
+      - '${WEB_BIND:-127.0.0.1}:${WEB_PORT:-3335}:3000'
+    volumes:
+      - media:/var/lib/tournament/uploads
+    restart: unless-stopped
+    init: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ulimits:
+      core: 0
+    stop_grace_period: 30s
+    networks: [backend, outbound]
+    logging:
+      options: { max-size: 10m, max-file: '3' }
+  postgres:
+    profiles: [database]
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tournament}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      APP_DATABASE_USER: ${APP_DATABASE_USER:-tournament_app}
+      APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD:-}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - ./deploy/init-postgres.sh:/docker-entrypoint-initdb.d/10-app.sh:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    stop_grace_period: 60s
+    networks: [backend]
+  migrate:
+    profiles: [maintenance]
+    image: ${TOOLS_IMAGE:-tournament-tools:local}
+    build:
+      context: .
+      target: tools
+    environment:
+      <<: *web-environment
+      DIRECT_URL: ${DIRECT_URL:-${DATABASE_URL}}
+    entrypoint: [node, node_modules/prisma/build/index.js]
+    command: [migrate, deploy]
+    networks: [backend, outbound]
+  bootstrap:
+    profiles: [maintenance]
+    image: ${TOOLS_IMAGE:-tournament-tools:local}
+    build:
+      context: .
+      target: tools
+    environment:
+      <<: *web-environment
+      INITIAL_SITE_NAME: ${INITIAL_SITE_NAME:-osu! Tournament Platform}
+    command: [scripts/bootstrap-platform.ts]
+    networks: [backend]
+  object-storage:
+    profiles: [storage]
+    image: rustfs/rustfs:1.0.3@sha256:9ca9559533b537d10482fe923288b676ad08f92a7069d9a17327fbae3cab688b
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-}
+      RUSTFS_CONSOLE_ENABLE: 'false'
+      RUSTFS_OBS_LOGGER_LEVEL: error
+    command: [/data]
+    volumes:
+      - objects:/data
+    restart: unless-stopped
+    stop_grace_period: 60s
+    networks: [backend]
+    healthcheck:
+      test: [CMD, curl, -f, http://127.0.0.1:9000/health]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    logging:
+      options: { max-size: 10m, max-file: '3' }
+  storage-init:
+    profiles: [storage]
+    image: ${TOOLS_IMAGE:-tournament-tools:local}
+    build:
+      context: .
+      target: tools
+    env_file: ${STACK_ENV_FILE:-.env.docker}
+    command: [scripts/init-storage.mjs]
+    depends_on:
+      object-storage:
+        condition: service_healthy
+    networks: [backend]
+  irc-gateway:
+    profiles: [irc]
+    image: ${IRC_IMAGE:-tournament-irc:local}
+    build:
+      context: .
+      target: irc-gateway
+    environment:
+      APP_URL: ${APP_URL}
+      IRC_GATEWAY_SECRET: ${IRC_GATEWAY_SECRET:-}
+      IRC_WEB_INTERNAL_URL: http://web:3000
+      IRC_SERVER_HOST: ${IRC_SERVER_HOST:-irc.ppy.sh}
+      IRC_SERVER_PORT: ${IRC_SERVER_PORT:-6667}
+    restart: unless-stopped
+    init: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ulimits:
+      core: 0
+    stop_grace_period: 15s
+    networks: [backend, outbound]
+    logging:
+      options: { max-size: 10m, max-file: '3' }
+networks:
+  backend:
+    internal: true
+  outbound: {}
+volumes:
+  postgres: {}
+  media: {}
+  objects: {}

@@ -1,0 +1,39 @@
+name: Approved Container Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Reviewed release version (vMAJOR.MINOR.PATCH)
+        required: true
+      publish:
+        description: Publish after repository and license approval
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  release:
+    if: inputs.publish && github.ref == 'refs/heads/main'
+    environment: release-approval
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate version
+        env: { VERSION: '${{ inputs.version }}' }
+        run: '[[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]'
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish consistent service versions
+        env: { VERSION: '${{ inputs.version }}' }
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          for target in web tools irc-gateway; do
+            docker buildx build --target "$target" --tag "$image-$target:$VERSION" --tag "$image-$target:sha-$GITHUB_SHA" --push .
+          done

@@ -1,0 +1,53 @@
+services:
+  web:
+    image: tournament-development:local
+    user: node
+    build:
+      target: development
+    environment:
+      NODE_ENV: development
+    entrypoint: [node, scripts/start-development.mjs]
+    command: []
+    volumes:
+      # Mount source explicitly; never import the host's .env/.data into dev.
+      - ./src:/app/src:ro
+      - ./public:/app/public:ro
+      - ./prisma:/app/prisma:ro
+      - ./services:/app/services:ro
+      - ./scripts:/app/scripts:ro
+      - ./next.config.ts:/app/next.config.ts:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+      - ./prisma.config.ts:/app/prisma.config.ts:ro
+      - ./postcss.config.mjs:/app/postcss.config.mjs:ro
+      - ./package.json:/app/package.json:ro
+      - ./package-lock.json:/app/package-lock.json:ro
+      - development-dependencies:/app/node_modules
+      - development-build:/app/.next
+      - development-generated:/app/src/generated
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      start_period: 90s
+    depends_on:
+      development-permissions:
+        condition: service_completed_successfully
+  development-permissions:
+    image: node:22.23.3-trixie-slim@sha256:154ba2f4d6fec323d28e4f4bb86bba4677f1223391a1979cf521304e03a98dfa
+    user: root
+    cap_drop: [ALL]
+    cap_add: [CHOWN]
+    volumes:
+      - development-build:/build
+      - development-generated:/generated
+    command: [chown, -R, '1000:1000', /build, /generated]
+volumes:
+  development-dependencies: {}
+  development-build: {}
+  development-generated: {}
