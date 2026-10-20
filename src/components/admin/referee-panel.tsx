@@ -14,6 +14,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { can, type Actor } from '@/lib/permissions';
+import { tournamentAdminBase, tournamentPath } from '@/lib/tournament-paths';
 import { DeleteMatchDialog, type DeleteMatchSelection } from './delete-match-dialog';
 import { matchAccess, type MatchAccess } from '@/lib/match-access';
 import { firstTo, type Side } from '@/lib/match-rules';
@@ -349,9 +350,11 @@ export function RefereePanel({
         match={deleting}
         onClose={() => setDeleting(null)}
         onDeleted={async () => {
-          const slug = /^\/admin\/t\/([a-z0-9-]+)/.exec(window.location.pathname)?.[1];
+          const slug = tournamentPath(window.location.pathname)?.slug;
           window.location.assign(
-            `${slug ? `/admin/t/${slug}` : '/admin'}/${manager ? 'matches' : 'referee'}`,
+            slug
+              ? `${tournamentAdminBase(slug)}/${manager ? 'matches' : 'referee'}`
+              : '/admin/tournaments',
           );
         }}
       />

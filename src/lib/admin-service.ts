@@ -152,7 +152,11 @@ export async function executeAction(
         }
         case 'page.save':
         case 'page.restore': {
-          const page = await tx.page.findFirstOrThrow({ where: { slug: a.slug } });
+          let page = await tx.page.findFirst({ where: { slug: a.slug } });
+          if (!page && a.type === 'page.save' && a.baseRevisionId === null)
+            page = await tx.page.create({ data: { slug: a.slug, title: a.title } });
+          if (!page)
+            throw new AppError('This page no longer exists. Reload before continuing.', 409);
           entityId = page.id;
           if (page.draftRevisionId !== a.baseRevisionId)
             throw new AppError('A newer draft exists. Reload before saving your changes.', 409);

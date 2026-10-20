@@ -22,7 +22,9 @@ It then builds and starts the website. The first build can take several minutes.
 
 Point your HTTPS proxy at `http://127.0.0.1:3335` (or your selected port). Open
 your public URL, sign in as the designated account, and create your first tournament
-in `/admin/tournaments`. Branding and content are edited there. There are no default
+in `/admin/tournaments`, then choose **Open tournament**. Its editors live at
+`/t/<slug>/admin/...` and work before publication. The platform chooser does not
+show tournament editing controls. There are no default
 tournaments or fake player accounts.
 
 See [self-hosting](docs/SELF-HOSTING.md) for proxy configuration and troubleshooting.

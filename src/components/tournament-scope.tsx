@@ -2,6 +2,7 @@
 import NextLink from 'next/link';
 import { createContext, useContext } from 'react';
 import type { ComponentProps } from 'react';
+import { tournamentPath } from '@/lib/tournament-paths';
 type Scope = {
   tournamentId: string;
   slug: string;
@@ -50,7 +51,7 @@ export function scopedHref(href: string, scope: Scope) {
 export default function Link(props: ComponentProps<typeof NextLink>) {
   const scope = useTournamentScope();
   const target = typeof props.href === 'string' ? props.href : '';
-  const tenant = /^\/(?:admin\/)?t\/([a-z0-9-]+)(?:\/|$)/.exec(target)?.[1];
+  const tenant = tournamentPath(target.split(/[?#]/, 1)[0])?.slug;
   // Crossing tenant boundaries must replace cached layouts as well as editor state.
   if (
     (tenant && tenant !== scope.slug) ||
@@ -75,7 +76,7 @@ export default function Link(props: ComponentProps<typeof NextLink>) {
 }
 export function tournamentApiUrl(url: string) {
   if (typeof window === 'undefined' || !url.startsWith('/api/')) return url;
-  const slug = /^\/(?:admin\/)?t\/([a-z0-9-]+)/.exec(window.location.pathname)?.[1];
+  const slug = tournamentPath(window.location.pathname)?.slug;
   if (!slug) return url;
   const target = new URL(url, window.location.origin);
   target.searchParams.set('tournament', slug);

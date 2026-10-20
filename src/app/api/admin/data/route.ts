@@ -1,4 +1,4 @@
-import { getActor } from '@/lib/auth';
+import { requireTournamentActor } from '@/lib/auth';
 import { db as rootDb } from '@/lib/db';
 import { scopedDb } from '@/lib/scoped-db';
 import { AppError, assertPermission, can, PERMISSIONS } from '@/lib/permissions';
@@ -6,14 +6,13 @@ import { getTournament, revisionInclude, poolRevisionInclude } from '@/lib/queri
 import { errorResponse } from '@/lib/security';
 import { canAccessSection } from '@/lib/workspace';
 import { teamInclude } from '@/lib/teams-service';
-import { matchData } from '@/lib/matches-service';
+import { matchData, matchOptions } from '@/lib/matches-service';
 import { qualifierData } from '@/lib/qualifiers-service';
 import { matchRulesSchema } from '@/lib/match-rules';
 export async function GET(request: Request) {
   try {
-    const actor = await getActor();
-    if (!actor) throw new AppError('Sign in to continue.', 401);
-    const tournamentId = actor.tournamentId || 'main';
+    const actor = await requireTournamentActor();
+    const tournamentId = actor.tournamentId!;
     const db = scopedDb(rootDb, tournamentId);
     const url = new URL(request.url),
       section = url.searchParams.get('section');
@@ -28,6 +27,9 @@ export async function GET(request: Request) {
         break;
       case 'qualifiers':
         data = await qualifierData(actor, url);
+        break;
+      case 'referees':
+        data = (await matchOptions(actor)).referees;
         break;
       case 'referee':
       case 'matches':
@@ -66,6 +68,18 @@ export async function GET(request: Request) {
             },
           },
         });
+        if (!data)
+          data = {
+            id: null,
+            slug,
+            title: slug === 'home' ? (await getTournament()).name : 'Rules',
+            state: 'DRAFT',
+            draftRevisionId: null,
+            publishedRevisionId: null,
+            draftRevision: null,
+            publishedRevision: null,
+            revisions: [],
+          };
         break;
       }
       case 'mappools': {

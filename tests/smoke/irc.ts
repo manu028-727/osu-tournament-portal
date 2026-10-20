@@ -110,7 +110,7 @@ try {
   const page = await context.newPage(),
     errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  const path = `/admin/t/${tournament.slug}/referee/${match.id}`;
+  const path = `/t/${tournament.slug}/admin/referee/${match.id}`;
   await page.goto(origin + path);
   await page.locator('summary').filter({ hasText: 'Bancho IRC' }).click();
   await expect(page.getByLabel('IRC security notice')).toContainText('unencrypted');

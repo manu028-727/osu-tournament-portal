@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { getActor } from '@/lib/auth';
+import { getWorkspaceActor } from '@/lib/workspace-server';
 import { getTournament } from '@/lib/queries';
 import { canAccessSection, WORKSPACE_SECTIONS } from '@/lib/workspace';
 import type { TournamentView } from '@/lib/types';
@@ -15,7 +15,7 @@ import { StagesEditor } from '@/components/admin/stages-editor';
 export default async function Section({ params }: { params: Promise<{ section: string }> }) {
   const section = (await params).section;
   if (!WORKSPACE_SECTIONS[section]) notFound();
-  const actor = await getActor();
+  const actor = await getWorkspaceActor();
   if (!actor) return null;
   if (!canAccessSection(actor, section))
     return (

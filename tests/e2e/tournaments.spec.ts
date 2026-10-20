@@ -59,6 +59,36 @@ test('directory OAuth links use document navigation instead of a client-router f
   await expect(page).toHaveTitle('OAuth navigation check');
   expect(requests).toEqual(['document']);
 });
+test('the platform chooser hides tournament navigation and unscoped editor URLs return safely', async ({
+  page,
+  context,
+}) => {
+  const errors: string[] = [];
+  const adminRequests: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('request', (r) => {
+    if (r.url().includes('/api/admin/')) adminRequests.push(r.url());
+  });
+  await context.addCookies([
+    {
+      name: 'tournament_session',
+      value: raw,
+      url: 'http://localhost:3001',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  await page.goto('/admin/tournaments');
+  await expect(
+    page.getByRole('navigation', { name: 'Administration' }).getByRole('link'),
+  ).toHaveCount(1);
+  await page.goto('/admin/homepage');
+  await expect(page).toHaveURL('http://localhost:3001/admin/tournaments');
+  await page.goto('/admin/settings');
+  await expect(page).toHaveURL('http://localhost:3001/admin/tournaments');
+  expect(errors).toEqual([]);
+  expect(adminRequests).toEqual([]);
+});
 test('creates private tournaments, switches scoped CMS contexts and publishes independent websites', async ({
   page,
   context,
@@ -93,12 +123,12 @@ test('creates private tournaments, switches scoped CMS contexts and publishes in
     expect((await visitor.request.get(`/t/${prefix}-b`)).status()).toBe(404);
     for (const suffix of ['a', 'b']) {
       await page.goto('/admin/tournaments');
-      await page.locator(`a[href="/admin/t/${prefix}-${suffix}"]`).click();
+      await page.locator(`a[href="/t/${prefix}-${suffix}/admin"]`).click();
       await page
         .getByRole('navigation', { name: 'Administration' })
         .getByRole('link', { name: 'Rules', exact: true })
         .click();
-      await expect(page).toHaveURL(`http://localhost:3001/admin/t/${prefix}-${suffix}/rules`);
+      await expect(page).toHaveURL(`http://localhost:3001/t/${prefix}-${suffix}/admin/rules`);
       await expect(page.getByRole('heading', { level: 1 })).toContainText('Rules editor');
       const url = `/api/admin/data?section=rules&tournament=${prefix}-${suffix}`;
       const before = await (await context.request.get(url)).json();
@@ -138,7 +168,7 @@ test('creates private tournaments, switches scoped CMS contexts and publishes in
           })
         ).ok(),
       ).toBe(true);
-      await page.goto(`/admin/t/${prefix}-${suffix}/stages`);
+      await page.goto(`/t/${prefix}-${suffix}/admin/stages`);
       await expect(
         page.getByRole('heading', { name: 'Tournament stages', exact: true }),
       ).toBeVisible();

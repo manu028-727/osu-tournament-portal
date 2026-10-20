@@ -238,7 +238,7 @@ try {
   }
   await matchAction('match.start');
   await matchAction('match.draft', { kind: 'PICK', side: 'A', slotName: 'NM1' });
-  await page.goto(origin + `/admin/t/${t.slug}/referee/${m.id}`);
+  await page.goto(origin + `/t/${t.slug}/admin/referee/${m.id}`);
   await expect(page.getByRole('heading', { name: /now playing.*NM1/i })).toBeVisible();
   const action = await db.matchMapAction.findFirstOrThrow({
     where: { matchId: m.id, kind: 'PICK' },

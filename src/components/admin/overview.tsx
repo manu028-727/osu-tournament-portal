@@ -60,11 +60,13 @@ export function Overview({ actor }: { actor: Actor }) {
     <>
       <SectionTitle title="Overview" />
       <div className="card relative mb-7 overflow-hidden p-7 md:p-9">
-        <img
-          src={t.settings.banner}
-          alt=""
-          className="absolute inset-0 size-full object-cover opacity-40"
-        />
+        {t.settings.banner && (
+          <img
+            src={t.settings.banner}
+            alt=""
+            className="absolute inset-0 size-full object-cover opacity-40"
+          />
+        )}
         <div className="absolute inset-0 bg-gradient-to-r from-card via-card/90 to-transparent" />
         <div className="relative">
           <Badge className="mb-5 border-emerald-200/20 text-emerald-200">

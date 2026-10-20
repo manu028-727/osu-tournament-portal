@@ -316,7 +316,7 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                         {r.id && (
                           <a
                             className="ml-2 text-primary"
-                            href={`/admin/t/${report.tournament.slug}/referee/${r.id}`}
+                            href={`/t/${report.tournament.slug}/admin/referee/${r.id}`}
                           >
                             Open history
                           </a>

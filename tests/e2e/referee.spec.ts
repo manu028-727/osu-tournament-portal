@@ -236,7 +236,7 @@ test('guided BO9 completes protects, Blue-first ABBA, corrections, refresh and a
     where: { id: stage.mappool!.id },
     data: { state: 'PUBLISHED', draftRevisionId: rev.id, publishedRevisionId: rev.id },
   });
-  await page.goto('/admin/stages');
+  await page.goto('/t/test-cup/admin/stages');
   await page.getByRole('button', { name: `Edit ${stage.name}`, exact: true }).click();
   for (const order of ['AB', 'ABAB', 'ABBA']) {
     await page.getByLabel('Ban order', { exact: true }).selectOption(order);
@@ -276,8 +276,8 @@ test('guided BO9 completes protects, Blue-first ABBA, corrections, refresh and a
       watch = await observer.newPage();
     const errors: string[] = [];
     ref.on('pageerror', (e) => errors.push(e.message));
-    await ref.goto(`/admin/t/test-cup/referee/${id}`);
-    await watch.goto(`/admin/t/test-cup/referee/${id}`);
+    await ref.goto(`/t/test-cup/admin/referee/${id}`);
+    await watch.goto(`/t/test-cup/admin/referee/${id}`);
     await ref.getByRole('button', { name: 'Start match', exact: true }).click();
     await expect(ref.getByTestId('current-phase')).toHaveText('Roll phase');
     await ref.getByLabel('Team Red roll', { exact: true }).fill('50');
@@ -407,7 +407,7 @@ test('guided BO9 completes protects, Blue-first ABBA, corrections, refresh and a
     await ref.getByLabel('Final match notes').fill('BO9 verified through the browser, manual only');
     await ref.getByRole('button', { name: 'Submit result', exact: true }).click();
     await expect(ref.getByRole('status')).toContainText('submitted for confirmation');
-    await page.goto(`/admin/referee/${id}`);
+    await page.goto(`/t/test-cup/admin/referee/${id}`);
     await page.getByRole('button', { name: 'Confirm result', exact: true }).click();
     await page.getByLabel('Reason', { exact: true }).fill('All nine map winners and ABBA verified');
     await page
@@ -470,7 +470,7 @@ test('Referees see all matches, observe live updates and cannot edit other assig
       expect(response.status()).toBe(200);
       created.push({ ...(await response.json()), code });
     }
-    await page.goto('/admin/referee');
+    await page.goto('/t/test-cup/admin/referee');
     await expect(page.getByLabel('Assigned referee', { exact: true })).toHaveValue('');
     for (const m of created)
       await expect(
@@ -514,11 +514,11 @@ test('Referees see all matches, observe live updates and cannot edit other assig
       page.getByRole('link', { name: 'Open multiplayer lobby', exact: true }),
     ).toHaveAttribute('href', 'https://osu.ppy.sh/community/matches/12345', { timeout: 10000 });
     const assigned = await second.newPage();
-    await assigned.goto('/admin/referee/' + created[1].id);
+    await assigned.goto('/t/test-cup/admin/referee/' + created[1].id);
     await expect(
       assigned.getByText('Editing match · Assigned referee', { exact: true }),
     ).toBeVisible();
-    await assigned.goto('/admin/referee/' + created[2].id);
+    await assigned.goto('/t/test-cup/admin/referee/' + created[2].id);
     await expect(assigned.getByText('Viewing match · Read only', { exact: true })).toBeVisible();
     expect(
       (await post(second, { type: 'match.start', id: created[2].id, baseVersion: 1 })).status(),
@@ -542,7 +542,7 @@ test('Owner schedules a match; assigned referees collaborate, submit and review 
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await login(context, 0);
-  await page.goto('/admin/matches');
+  await page.goto('/t/test-cup/admin/matches');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Match management');
   await page.getByRole('button', { name: 'New match', exact: true }).click();
   await page.getByLabel('Match code', { exact: true }).fill(prefix);
@@ -575,14 +575,14 @@ test('Owner schedules a match; assigned referees collaborate, submit and review 
     observer.on('pageerror', (e) => errors.push(e.message));
     await ref.goto('/admin');
     await expect(ref).toHaveURL('http://localhost:3001/admin/tournaments');
-    await ref.goto('/admin/referee');
+    await ref.goto('/t/test-cup/admin/referee');
     await expect(
       ref
         .getByRole('navigation', { name: 'Administration' })
         .getByRole('link', { name: 'Users', exact: true }),
     ).toHaveCount(0);
     await ref.getByRole('link', { name: `Open match ${prefix}`, exact: true }).click();
-    await observer.goto(`/admin/referee/${match.id}`);
+    await observer.goto(`/t/test-cup/admin/referee/${match.id}`);
     await ref.getByRole('button', { name: 'Start match', exact: true }).click();
     await expect(ref.getByRole('status')).toContainText('Match started');
     await ref.getByLabel('Team Red roll', { exact: true }).fill('80');
@@ -619,7 +619,7 @@ test('Owner schedules a match; assigned referees collaborate, submit and review 
     await ref.getByRole('button', { name: 'Submit result', exact: true }).click();
     await expect(ref.getByRole('status')).toContainText('submitted for confirmation');
     await expect(ref.getByRole('button', { name: 'Confirm result', exact: true })).toHaveCount(0);
-    await page.goto(`/admin/referee/${match.id}`);
+    await page.goto(`/t/test-cup/admin/referee/${match.id}`);
     await page.getByRole('button', { name: 'Confirm result', exact: true }).click();
     await page.getByLabel('Reason', { exact: true }).fill('Referee result checked');
     await page
@@ -679,7 +679,7 @@ test('qualifier lobby persists scores, commands, observing and a confirmed resul
   expect(upload.status()).toBe(200);
   const asset = await upload.json();
   await db.team.update({ where: { id: teamAId }, data: { logoImageId: asset.id } });
-  await page.goto('/admin/referee/qualifiers');
+  await page.goto('/t/test-cup/admin/referee/qualifiers');
   await page.getByRole('button', { name: 'Create qualifier lobby', exact: true }).click();
   await page.getByLabel('Qualifier lobby code', { exact: true }).fill(`${prefix}-Q1`);
   await page.getByLabel('Qualifier stage', { exact: true }).selectOption(stageId);
@@ -707,8 +707,8 @@ test('qualifier lobby persists scores, commands, observing and a confirmed resul
     await login(observerContext, 2);
     const ref = await refContext.newPage(),
       observer = await observerContext.newPage();
-    await ref.goto(`/admin/referee/qualifiers/${lobby.id}`);
-    await observer.goto(`/admin/referee/qualifiers/${lobby.id}`);
+    await ref.goto(`/t/test-cup/admin/referee/qualifiers/${lobby.id}`);
+    await observer.goto(`/t/test-cup/admin/referee/qualifiers/${lobby.id}`);
     await expect(
       observer.getByText('Viewing qualifier lobby · Read only', { exact: true }),
     ).toBeVisible();
@@ -745,7 +745,7 @@ test('qualifier lobby persists scores, commands, observing and a confirmed resul
     await ref.getByLabel('Qualifier status reason', { exact: true }).fill('Scores checked');
     await ref.getByRole('button', { name: 'Confirm qualifier action', exact: true }).click();
     await expect(ref.getByRole('status')).toContainText('Qualifier status saved');
-    await page.goto(`/admin/referee/qualifiers/${lobby.id}`);
+    await page.goto(`/t/test-cup/admin/referee/qualifiers/${lobby.id}`);
     await page.getByRole('button', { name: 'Confirm qualifier results', exact: true }).click();
     await page
       .getByLabel('Qualifier status reason', { exact: true })
@@ -802,7 +802,7 @@ test('assigned referee records a no-show and an Owner confirms the forfeit', asy
   try {
     await login(referee, 1);
     const ref = await referee.newPage();
-    await ref.goto(`/admin/referee/${match.id}`);
+    await ref.goto(`/t/test-cup/admin/referee/${match.id}`);
     await ref.getByText('Match administration', { exact: true }).click();
     await ref.getByRole('button', { name: 'Record forfeit', exact: true }).click();
     await ref.getByLabel('Winning team', { exact: true }).selectOption('B');
@@ -821,7 +821,7 @@ test('assigned referee records a no-show and an Owner confirms the forfeit', asy
       scoreA: 0,
       scoreB: 1,
     });
-    await page.goto(`/admin/referee/${match.id}`);
+    await page.goto(`/t/test-cup/admin/referee/${match.id}`);
     await page.getByRole('button', { name: 'Confirm result', exact: true }).click();
     await page.getByLabel('Reason', { exact: true }).fill('No-show and decision verified');
     await page
@@ -854,7 +854,7 @@ test('organizer adds and replaces the visible MP link and permanently deletes a 
   };
   const code = `${prefix}-removable`,
     created = await create(code);
-  await page.goto(`/admin/t/test-cup/referee/${created.id}`);
+  await page.goto(`/t/test-cup/admin/referee/${created.id}`);
   await page.getByRole('button', { name: 'Add multiplayer link', exact: true }).click();
   await page
     .getByLabel('osu! multiplayer URL', { exact: true })
@@ -918,7 +918,7 @@ test('organizer adds and replaces the visible MP link and permanently deletes a 
   ).toBeDisabled();
   await page.getByLabel('Match code confirmation', { exact: true }).fill(code);
   await page.getByRole('button', { name: 'Permanently delete match', exact: true }).click();
-  await expect(page).toHaveURL('http://localhost:3001/admin/t/test-cup/matches');
+  await expect(page).toHaveURL('http://localhost:3001/t/test-cup/admin/matches');
   expect(await db.match.findUnique({ where: { id: created.id } })).toBeNull();
   expect(await db.auditLog.count({ where: { entityId: created.id, action: 'match.delete' } })).toBe(
     1,

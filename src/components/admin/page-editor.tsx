@@ -24,7 +24,8 @@ import {
   useUnsaved,
 } from './shared';
 type PageData = {
-  id: string;
+  id: string | null;
+  title: string;
   slug: 'home' | 'rules';
   state: string;
   draftRevisionId: string | null;
@@ -54,7 +55,7 @@ export function PageEditor({
   useEffect(() => {
     if (data) {
       const revision = data.draftRevision || data.publishedRevision;
-      setTitle(revision?.title || 'Untitled page');
+      setTitle(revision?.title || data.title);
       setHtml(revision?.html || '');
       setBlocks((revision?.blocks || []) as Block[]);
       setBase(data.draftRevisionId);

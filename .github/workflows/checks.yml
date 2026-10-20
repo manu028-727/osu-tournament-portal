@@ -53,6 +53,9 @@ jobs:
       - run: node scripts/source-audit.mjs --tracked
   containers:
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_DB: platform_workspace_prod_test
+      OWNER_OSU_ID: '990200001'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -60,6 +63,20 @@ jobs:
       - run: node scripts/configure.mjs
       - run: docker compose config --quiet
       - run: ./portal install
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npx playwright install --with-deps chromium
+      - name: Verify the first tournament in the production container
+        env:
+          ALLOW_ISOLATED_CONTAINER_TESTS: 'yes'
+        run: |
+          export FRESH_DATABASE_HOST="$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$(docker compose ps --quiet postgres)")"
+          node --env-file=.env --import tsx --input-type=module <<'JS'
+          const url = new URL(process.env.DATABASE_URL);
+          url.hostname = process.env.FRESH_DATABASE_HOST;
+          process.env.DATABASE_URL = url.href;
+          await import('./tests/smoke/workspace.ts');
+          JS
       - run: ./portal compose build irc-gateway
       - name: Validate optional overlays
         run: |

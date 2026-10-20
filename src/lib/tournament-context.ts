@@ -2,6 +2,7 @@ import { headers } from 'next/headers.js';
 import { cache } from 'react';
 import { db } from './db';
 import { AppError } from './permissions';
+import { tournamentAdminBase } from './tournament-paths';
 export const requestScope = cache(async () => {
   let slug: string | null = null,
     path = '';
@@ -25,7 +26,7 @@ export const requestScope = cache(async () => {
       slug,
       path,
       publicBase: `/t/${slug}`,
-      adminBase: `/admin/t/${slug}`,
+      adminBase: tournamentAdminBase(slug),
     };
   }
   const platform = await db.platformSettings.findUnique({ where: { id: 'main' } });
@@ -43,7 +44,7 @@ export const requestScope = cache(async () => {
       slug: t.slug,
       path,
       publicBase: `/t/${t.slug}`,
-      adminBase: `/admin/t/${t.slug}`,
+      adminBase: tournamentAdminBase(t.slug),
     };
   }
   const fallback =

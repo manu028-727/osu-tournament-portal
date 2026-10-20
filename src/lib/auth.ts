@@ -72,6 +72,13 @@ export const getActor = cache(async (tournamentId?: string): Promise<Actor | nul
   const { user } = session;
   return actorForTournament(user, tournamentId || (await requestScope()).tournamentId);
 });
+export async function requireTournamentActor() {
+  const actor = await getActor();
+  if (!actor) throw new AppError('Sign in to continue.', 401);
+  if (!actor.tournamentId || actor.tournamentId === 'none')
+    throw new AppError('Select a tournament in the Organizer Workspace before continuing.', 400);
+  return actor;
+}
 export async function createSession(userId: string) {
   const raw = token();
   const expiresAt = new Date(Date.now() + 7 * 86400000);

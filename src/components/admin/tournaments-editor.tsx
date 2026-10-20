@@ -82,7 +82,7 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
               </p>
               <div className="flex flex-wrap gap-2">
                 <Button asChild size="sm">
-                  <Link href={`/admin/t/${t.slug}`}>
+                  <Link href={`/t/${t.slug}/admin`}>
                     Open tournament
                     <ArrowUpRight size={16} />
                   </Link>
@@ -91,7 +91,7 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
                   <Link
                     title="Tournament settings"
                     aria-label={`Edit ${t.name}`}
-                    href={`/admin/t/${t.slug}/settings`}
+                    href={`/t/${t.slug}/admin/settings`}
                   >
                     <Settings size={17} />
                   </Link>

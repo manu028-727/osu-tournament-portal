@@ -48,11 +48,13 @@ export function AdminShell({
   actor,
   name,
   acronym,
+  platform = false,
   children,
 }: {
   actor: Actor;
   name: string;
   acronym: string;
+  platform?: boolean;
   children: React.ReactNode;
 }) {
   const path = usePathname();
@@ -93,46 +95,48 @@ export function AdminShell({
                 className="mb-5 flex items-center gap-3 rounded-lg border px-3 py-3 text-sm"
               >
                 <PanelsTopLeft size={16} />
-                Switch tournament
+                {platform ? 'Tournaments' : 'Switch tournament'}
               </Link>
-              {[
-                { label: 'Overview', sections: [''] },
-                {
-                  label: 'Content management',
-                  sections: ['homepage', 'mappools', 'staff', 'rules', 'media'],
-                },
-                {
-                  label: 'Tournament management',
-                  sections: ['teams', 'stages', 'referee', 'matches', 'sheet-data'],
-                },
-                { label: 'Administration', sections: ['users', 'roles', 'settings', 'audit'] },
-              ].map((group) => {
-                const visible = links.filter(
-                  ([slug]) =>
-                    group.sections.includes(slug) && (!slug || canAccessSection(actor, slug)),
-                );
-                return visible.length ? (
-                  <div key={group.label} className="mb-6">
-                    <p className="mb-2 px-3 text-xs font-semibold text-muted">{group.label}</p>
-                    {visible.map(([slug, label, Icon]) => {
-                      const href = `/admin${slug ? '/' + slug : ''}`,
-                        active = localPath === href || (!!slug && localPath.startsWith(href + '/'));
-                      return (
-                        <Link
-                          href={href}
-                          key={href}
-                          onClick={() => setOpen(false)}
-                          className={`flex items-center gap-3 rounded-lg px-3 py-3 text-sm ${active ? 'bg-primary/10 text-primary' : 'text-muted hover:bg-white/5 hover:text-foreground'}`}
-                        >
-                          <Icon size={16} />
-                          {label}
-                          {active && <span className="ml-auto size-1 rounded-full bg-primary" />}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                ) : null;
-              })}
+              {!platform &&
+                [
+                  { label: 'Overview', sections: [''] },
+                  {
+                    label: 'Content management',
+                    sections: ['homepage', 'mappools', 'staff', 'rules', 'media'],
+                  },
+                  {
+                    label: 'Tournament management',
+                    sections: ['teams', 'stages', 'referee', 'matches', 'sheet-data'],
+                  },
+                  { label: 'Administration', sections: ['users', 'roles', 'settings', 'audit'] },
+                ].map((group) => {
+                  const visible = links.filter(
+                    ([slug]) =>
+                      group.sections.includes(slug) && (!slug || canAccessSection(actor, slug)),
+                  );
+                  return visible.length ? (
+                    <div key={group.label} className="mb-6">
+                      <p className="mb-2 px-3 text-xs font-semibold text-muted">{group.label}</p>
+                      {visible.map(([slug, label, Icon]) => {
+                        const href = `/admin${slug ? '/' + slug : ''}`,
+                          active =
+                            localPath === href || (!!slug && localPath.startsWith(href + '/'));
+                        return (
+                          <Link
+                            href={href}
+                            key={href}
+                            onClick={() => setOpen(false)}
+                            className={`flex items-center gap-3 rounded-lg px-3 py-3 text-sm ${active ? 'bg-primary/10 text-primary' : 'text-muted hover:bg-white/5 hover:text-foreground'}`}
+                          >
+                            <Icon size={16} />
+                            {label}
+                            {active && <span className="ml-auto size-1 rounded-full bg-primary" />}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  ) : null;
+                })}
             </nav>
           </div>
           <div className="border-t p-4">
@@ -169,10 +173,12 @@ export function AdminShell({
               </Button>
               <span className="hidden text-muted sm:inline">Workspace</span>
               <ChevronRight size={12} className="hidden shrink-0 text-muted sm:block" />
-              <span className="truncate">{current?.[1] || 'Editor'}</span>
+              <span className="truncate">
+                {platform ? 'Tournaments' : current?.[1] || 'Editor'}
+              </span>
             </div>
             <Button asChild variant="outline" size="sm" className="shrink-0 whitespace-nowrap">
-              <Link href="/">
+              <Link href={platform ? '/tournaments' : '/'}>
                 View website
                 <ArrowUpRight size={13} />
               </Link>

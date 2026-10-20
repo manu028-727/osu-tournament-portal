@@ -1,10 +1,10 @@
-import { getActor } from '@/lib/auth';
+import { getWorkspaceActor } from '@/lib/workspace-server';
 import { Overview } from '@/components/admin/overview';
 import { canAccessSection, WORKSPACE_SECTIONS } from '@/lib/workspace';
 import { redirect } from 'next/navigation';
 import { requestScope } from '@/lib/tournament-context';
 export default async function Admin() {
-  const actor = await getActor();
+  const actor = await getWorkspaceActor();
   if (!actor) return null;
   const scope = await requestScope();
   if (scope.path === '/admin') redirect('/admin/tournaments');

@@ -22,7 +22,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             Sign in with your osu! account to access your tournament workspace.
           </p>
           <Button asChild>
-            <a href="/api/auth/login">
+            <a href={`/api/auth/login?returnTo=${encodeURIComponent(scope.path)}`}>
               Login with osu!
               <ArrowUpRight size={15} />
             </a>
@@ -36,7 +36,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (scope.path === '/admin/tournaments') {
     if (!actor.workspaceAny && !actor.platformAdmin) redirect('/?notice=workspace-restricted');
     return (
-      <AdminShell actor={actor} name="Tournament platform" acronym="osu!">
+      <AdminShell actor={actor} name="Tournament platform" acronym="osu!" platform>
         {children}
       </AdminShell>
     );

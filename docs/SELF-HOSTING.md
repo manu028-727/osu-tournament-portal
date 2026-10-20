@@ -12,9 +12,18 @@ one-time owner bootstrap, initializes private storage, then starts the website.
 Only the numeric osu! account you selected can acquire initial platform ownership
 through real OAuth. Restarting or reseeding cannot rearm that designation.
 
-After signing in, open `/admin/tournaments`. Set platform branding, create a
-tournament, assign staff and publish reviewed content. No tournament is seeded.
+After signing in, open `/admin/tournaments`. Set platform branding and create a
+tournament, then choose **Open tournament**. Tournament editors use
+`/t/<slug>/admin/...`; drafts and unpublished tournaments are editable there.
+The platform chooser hides tournament-specific menus until a tournament is opened.
+Assign staff and publish reviewed content when ready. No tournament is seeded.
 Do not use fresh installation against a legacy database; read [adoption](UPGRADING.md).
+
+Old `/admin/t/<slug>/...` bookmarks redirect to the canonical workspace. Unscoped
+editor URLs such as `/admin/homepage` return to the tournament chooser. Admin API
+calls include `?tournament=<slug>`; an authenticated request without a selected or
+configured context returns a selection error, not a missing-record 404. Empty
+collections are valid. No special reverse-proxy rules are needed for the workspace.
 
 ## Running and Updating
 

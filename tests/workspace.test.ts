@@ -8,6 +8,14 @@ describe('public sign-in and workspace policy', () => {
     (path) => expect(safeReturnTo(path)).toBe(path),
   );
   it.each([
+    '/admin/tournaments',
+    '/t/spring-cup/admin',
+    '/t/spring-cup/admin/homepage',
+    '/t/spring-cup/admin/referee/match-1',
+  ])('preserves a scoped organizer return path %s', (path) =>
+    expect(safeReturnTo(path)).toBe(path),
+  );
+  it.each([
     undefined,
     '',
     '//evil.example',

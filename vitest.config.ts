@@ -11,6 +11,7 @@ export default defineConfig({
       'tests/mappool-order.test.ts',
       'tests/match-access.test.ts',
       'tests/workspace.test.ts',
+      'tests/tournament-paths.test.ts',
       'tests/teams-csv.test.ts',
       'tests/match-engine.test.ts',
       'tests/discord-result.test.ts',

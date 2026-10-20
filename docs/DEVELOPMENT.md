@@ -57,6 +57,18 @@ Never enable it against real Bancho. For example, with a staging S3 env:
 node --env-file=.env.staging --import tsx tests/smoke/storage.ts
 ```
 
+`tests/smoke/workspace.ts` verifies the actual first-tournament lifecycle without
+the seeded `main` fixture. It requires a separately migrated, bootstrapped,
+**empty** database named `platform_workspace_dev_test` or
+`platform_workspace_prod_test`, a reachable development/production server using
+that database, and the test-only pinned owner ID `990200001`. Run with matching
+DATABASE_URL, APP_DATABASE_NAME and loopback APP_URL, plus
+`ALLOW_ISOLATED_CONTAINER_TESTS=yes`. Never point it at an installation database.
+It checks every organizer section before/after publication, blank CMS initialization,
+draft isolation, scoped admin/guest permissions and canonical workspace URLs.
+CI runs it against a freshly installed production Docker container. Tests preserve
+their records for inspection; use a new isolated environment for another fresh run.
+
 CI runs formatting, lint, types, Prisma, tests, builds, Docker installation and
 security scans. Container publication is a separate manually approved workflow.
 Generate third-party notices with `npm run licenses`; generated reports belong in

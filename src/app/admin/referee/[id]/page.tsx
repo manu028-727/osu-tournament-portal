@@ -1,12 +1,12 @@
 import { notFound } from 'next/navigation';
-import { getActor } from '@/lib/auth';
+import { getWorkspaceActor } from '@/lib/workspace-server';
 import { getTournament } from '@/lib/queries';
 import { db } from '@/lib/db';
 import { can } from '@/lib/permissions';
 import { matchScope } from '@/lib/matches-service';
 import { RefereePanel } from '@/components/admin/referee-panel';
 export default async function MatchPage({ params }: { params: Promise<{ id: string }> }) {
-  const actor = await getActor();
+  const actor = await getWorkspaceActor();
   if (!actor) return null;
   if (
     !can(actor, 'matches.view') &&

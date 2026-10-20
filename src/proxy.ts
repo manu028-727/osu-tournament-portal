@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { tournamentAdminBase, tournamentPath } from '@/lib/tournament-paths';
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
   const isDev = process.env.NODE_ENV !== 'production';
@@ -7,10 +8,9 @@ export function proxy(request: NextRequest) {
   headers.delete('x-tournament-slug');
   headers.set('x-original-path', request.nextUrl.pathname);
   const path = request.nextUrl.pathname;
-  const scoped =
-    path.match(/^\/admin\/t\/([a-z0-9-]+)(\/.*)?$/) || path.match(/^\/t\/([a-z0-9-]+)(\/.*)?$/);
+  const scoped = tournamentPath(path);
   const slug =
-    scoped?.[1] ||
+    scoped?.slug ||
     (path.startsWith('/api/') ? request.nextUrl.searchParams.get('tournament') : null);
   if (slug) headers.set('x-tournament-slug', slug);
   headers.set('x-nonce', nonce);
@@ -18,15 +18,23 @@ export function proxy(request: NextRequest) {
   // NextURL normalizes loopback IPs to localhost; rewrites must keep the raw
   // server origin or they become external self-proxies and lose tenant headers.
   const destination = new URL(request.url);
-  if (scoped)
-    destination.pathname = (path.startsWith('/admin/') ? '/admin' : '') + (scoped[2] || '/');
+  if (scoped) destination.pathname = scoped.path;
   if (destination.pathname.endsWith('/schedule'))
     destination.pathname = destination.pathname.replace(/\/schedule$/, '/matches');
-  const response = scoped
-    ? NextResponse.rewrite(destination, { request: { headers } })
-    : NextResponse.next({ request: { headers } });
+  const canonical = new URL(process.env.APP_URL || request.url);
+  if (scoped?.legacy) {
+    canonical.pathname = tournamentAdminBase(scoped.slug) + scoped.path.slice('/admin'.length);
+    canonical.search = request.nextUrl.search;
+    canonical.hash = '';
+  }
+  const response = scoped?.legacy
+    ? NextResponse.redirect(canonical, 308)
+    : scoped
+      ? NextResponse.rewrite(destination, { request: { headers } })
+      : NextResponse.next({ request: { headers } });
   response.headers.set('Content-Security-Policy', csp);
   if (
+    scoped?.admin ||
     request.nextUrl.pathname.startsWith('/admin') ||
     request.nextUrl.pathname.startsWith('/api/admin') ||
     request.nextUrl.pathname.startsWith('/api/auth')
