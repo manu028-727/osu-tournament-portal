@@ -1,4 +1,5 @@
 'use client';
+import { ExportTournamentButton } from './tournament-export-button';
 import { useEffect, useState } from 'react';
 import { Plus, Trash2, Save } from 'lucide-react';
 import { Tabs } from 'radix-ui';
@@ -406,6 +407,7 @@ export function SettingsEditor({ actor }: { actor: Actor }) {
           </Tabs.Content>
         </Tabs.Root>
         <div className="flex items-center justify-end gap-4">
+          {can(actor, 'users.manage') && can(actor, 'roles.manage') && <ExportTournamentButton />}
           {dirty && <span className="text-xs text-amber-200">Unsaved changes</span>}
           <SaveButton busy={busy} disabled={busy || !dirty}>
             Save settings

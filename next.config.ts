@@ -2,6 +2,7 @@ import type { NextConfig } from 'next';
 const config: NextConfig = {
   output: 'standalone',
   skipProxyUrlNormalize: true,
+  experimental: { proxyClientMaxBodySize: '65mb' },
   turbopack: { root: process.cwd() },
   serverExternalPackages: ['pg', '@prisma/adapter-pg', 'sharp'],
   images: {

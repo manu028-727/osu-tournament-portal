@@ -60,6 +60,7 @@
     "tailwind-merge": "^3.3.1",
     "ws": "8.22.0",
     "yauzl": "^3.4.0",
+    "yazl": "^3.3.1",
     "zod": "^4.1.12"
   },
   "devDependencies": {
@@ -73,6 +74,7 @@
     "@types/sanitize-html": "^2.16.0",
     "@types/ws": "8.18.2",
     "@types/yauzl": "^3.4.0",
+    "@types/yazl": "^3.3.1",
     "esbuild": "0.28.2",
     "eslint": "10.13.0",
     "prettier": "^3.9.10",

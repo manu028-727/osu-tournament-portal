@@ -56,6 +56,7 @@ storage and an optional Bancho IRC gateway are also supported.
 - [Self-hosting and configuration](docs/SELF-HOSTING.md)
 - [Updates, backups and existing-installation adoption](docs/UPGRADING.md)
 - [Development and tests](docs/DEVELOPMENT.md)
+- [Tournament export, import and legacy migration](docs/TOURNAMENT-TRANSFERS.md)
 - [Architecture and security](docs/ARCHITECTURE.md)
 - [Interface design and visual testing](docs/DESIGN.md)
 - [Optional IRC and credential security](docs/IRC.md)

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import type { Actor } from '@/lib/permissions';
 import { api, Field, Modal, SectionTitle, useTask, LoadingState, ConfirmButton } from './shared';
 import { PlatformSettingsEditor, type PlatformConfig } from './platform-settings';
+import { TournamentImporter } from './tournament-transfer';
 type Item = {
   canPublish: boolean;
   matchCount: number;
@@ -58,6 +59,7 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
             Public directory
           </Link>
         </Button>
+        {actor.platformAdmin && <TournamentImporter onImported={reload} />}
         {actor.platformAdmin && (
           <Button onClick={() => setOpen(true)}>
             <Plus size={17} />

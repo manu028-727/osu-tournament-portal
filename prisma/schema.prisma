@@ -793,3 +793,18 @@ model PlatformAsset {
   size      Int
   createdAt DateTime @default(now())
 }
+
+model TournamentTransfer {
+  id                String   @id
+  initiatedBy       String
+  sourceFingerprint String
+  tournamentId      String?
+  status            String
+  objectKeys        Json
+  report            Json
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([initiatedBy, createdAt])
+  @@index([status, createdAt])
+}
