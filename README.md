@@ -1,88 +1,66 @@
 # osu! Tournament Portal
 
-Self-hosted tournament management with osu! OAuth, a browser CMS, mappools, teams,
-match scheduling and referee workspaces. One application manages multiple isolated
-tournaments; independent installations use their own database, storage and secrets.
-
-Next.js App Router, React, TypeScript, Tailwind, TipTap, Prisma and PostgreSQL.
-Uploads support a persistent filesystem or private S3-compatible storage. The
-optional Bancho IRC gateway runs alongside the website, not in a serverless function.
+Self-hosted osu! tournament management with a browser CMS, mappools, teams,
+scheduling and referee workspaces. One installation can manage multiple tournaments.
 
 ## Quick Start
 
-Requires Docker Engine, Compose v2+, an HTTPS reverse proxy for production, and an
-osu! OAuth application. No host Node installation is required for Docker hosting.
+You need a Linux server with **Docker Engine and Docker Compose**, a domain with
+an HTTPS reverse proxy, and an osu! account. Node.js is not required on the server.
 
 ```bash
 git clone https://github.com/manu028-727/osu-tournament-portal.git
 cd osu-tournament-portal
-docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" -w /work node:22.23.3-trixie-slim node scripts/provision-docker.mjs
+./portal setup
 ```
 
-Edit the generated private `.env.docker`. Set APP_URL, OSU_CLIENT_ID,
-OSU_CLIENT_SECRET, OSU_REDIRECT_URI and your numeric OWNER_OSU_ID. Register the
-callback `https://YOUR_DOMAIN/api/auth/callback` in
-[osu! account settings](https://osu.ppy.sh/home/account/edit#oauth). Use a separate
-OAuth application for each environment. Never enter an ordinary osu! password.
+Setup asks for your public URL, local port, osu! OAuth credentials and numeric osu!
+user ID. It prints the callback URL to register in
+[osu! account settings](https://osu.ppy.sh/home/account/edit#oauth), hides secret
+input, and generates database/storage passwords in a private `.env` file.
+It then builds and starts the website. The first build can take several minutes.
+
+Point your HTTPS proxy at `http://127.0.0.1:3335` (or your selected port). Open
+your public URL, sign in as the designated account, and create your first tournament
+in `/admin/tournaments`. Branding and content are edited there. There are no default
+tournaments or fake player accounts.
+
+See [self-hosting](docs/SELF-HOSTING.md) for proxy configuration and troubleshooting.
+
+## Everyday Commands
 
 ```bash
-docker compose --env-file .env.docker -f compose.docker.yaml build web migrate
-docker compose --env-file .env.docker -f compose.docker.yaml up -d --wait postgres object-storage
-docker compose --env-file .env.docker -f compose.docker.yaml run --rm migrate
-docker compose --env-file .env.docker -f compose.docker.yaml run --rm bootstrap
-docker compose --env-file .env.docker -f compose.docker.yaml run --rm storage-init
-docker compose --env-file .env.docker -f compose.docker.yaml up -d --wait web
+./portal start
+./portal status
+./portal logs
+./portal stop
 ```
 
-The generated listener is `http://localhost:3335`. Put your existing HTTPS proxy in
-front of it. Open `/setup`, sign in as the designated account, then open
-`/admin/tournaments`. Configure platform branding and create your first tournament.
-There are **no default tournaments, matches, players or staff**. Bootstrap creates
-system permissions and pins the designated owner; genuine OAuth sign-in consumes
-that designation once. Restarting or reseeding cannot reopen owner provisioning.
+Stopping does not delete data. Starting does not run migrations. With an existing
+configuration, `./portal install` builds, applies migrations, initializes configured
+storage and starts services. Back up before using it for an update; read
+[updates and recovery](docs/UPGRADING.md) first.
 
-## Tournament Operations
+## Included
 
-Each tournament has independent branding, content drafts and publication, staff,
-teams, stages, mappools, schedules and role assignments. Public sites use `/t/SLUG`;
-workspaces use `/admin/t/SLUG`. The platform root can show the directory or a
-published featured tournament. Platform ownership and local tournament roles are
-separate. Public staff positions do not grant website permissions.
-
-Pool editing supports metadata lookup, bulk IDs, compact rows, custom categories,
-numeric slot sorting and independent published revisions. Referees can view all
-authorized tournament matches, with editing checked separately by assignment and
-permission. Match actions, results, corrections and history persist in PostgreSQL.
-Protects, AB/ABAB/ABBA sequences, qualifiers, FreeMod conversion, reviewed multiplayer
-evidence, spreadsheet import and Discord output are included.
-
-The CMS handles media, rules, homepage blocks, banners, navigation and publication.
-Platform name, description, logo, favicon, social image, colors, footer, contact,
-social links, default timezone and document language are configured separately from
-tournament content. Document language is not automatic translation of organizer text.
+osu! login, scoped roles, visual page/rules editing, draft/publish workflows,
+image uploads, mappool metadata/import/sorting, staff and team management, schedules,
+qualifiers, pick/bans, scoring, history imports and Discord result formatting.
+PostgreSQL and private S3-compatible storage are included. Filesystem/external S3
+storage and an optional Bancho IRC gateway are also supported.
 
 ## Guides
 
-- [Installation, configuration and storage](docs/SELF-HOSTING.md)
+- [Self-hosting and configuration](docs/SELF-HOSTING.md)
+- [Updates, backups and existing-installation adoption](docs/UPGRADING.md)
 - [Development and tests](docs/DEVELOPMENT.md)
 - [Architecture and security](docs/ARCHITECTURE.md)
-- [Updates, backups and existing-installation adoption](docs/UPGRADING.md)
 - [Optional IRC and credential security](docs/IRC.md)
-- [Publication audit and verification](docs/PUBLICATION-AUDIT.md)
 - [Contributing](CONTRIBUTING.md) and [security reporting](SECURITY.md)
-- [License and attribution status](docs/LICENSING.md)
 
-## Limits
-
-IRC is disabled by default. It has automated mock-server coverage, not verified
-live Bancho credentials. The official server connection is unencrypted; read the
-warning before entering a separate IRC password. Unknown command outcomes never
-automatically become confirmed match results.
-
-RustFS is integration-tested. External AWS S3, R2 and B2 use standard SDK settings
-but need verification against your provider. Single-node PostgreSQL/storage volumes
-are persistence, not redundancy or off-host backups. OAuth provider interaction
-needs your registered credentials; automated tests substitute the external provider.
+IRC is off by default and tested with a mock server, not live Bancho credentials.
+Its plaintext-network warning matters. External OAuth/S3 providers require your
+credentials and deployment checks. Persistent volumes are not off-host backups.
 
 ## License
 

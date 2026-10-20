@@ -4,7 +4,7 @@ import { cp, mkdir, readFile, writeFile, unlink, symlink } from 'node:fs/promise
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import pg from 'pg';
-import { createStorage, contentHash } from '../src/lib/storage';
+import { createStorage, contentHash } from '../../src/lib/storage';
 
 if (process.env.ALLOW_ISOLATED_CONTAINER_TESTS !== 'yes')
   throw new Error('Explicit isolated staging tests only.');

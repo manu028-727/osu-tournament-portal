@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import sharp from 'sharp';
 import { chromium, expect, type APIRequestContext } from '@playwright/test';
-import { db } from '../src/lib/db';
-import { loginUser, createSession } from '../src/lib/auth';
-import { matchRulesSchema } from '../src/lib/match-rules';
+import { db } from '../../src/lib/db';
+import { loginUser, createSession } from '../../src/lib/auth';
+import { matchRulesSchema } from '../../src/lib/match-rules';
 if (
   process.env.ALLOW_ISOLATED_CONTAINER_TESTS !== 'yes' ||
   new URL(process.env.DATABASE_URL!).pathname !== '/platform_onboarding_test'

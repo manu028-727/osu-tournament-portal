@@ -9,8 +9,8 @@ services:
     image: ${TOOLS_IMAGE:-tournament-tools:local}
     environment:
       ALLOW_MOCK_BANCHO: 'yes'
-    entrypoint: [node, --import, tsx, scripts/mock-bancho.ts]
+    entrypoint: [node, --import, tsx, tests/smoke/mock-bancho.ts]
     volumes:
-      - ./scripts/mock-bancho.ts:/app/scripts/mock-bancho.ts:ro
+      - ./tests/smoke/mock-bancho.ts:/app/tests/smoke/mock-bancho.ts:ro
       - ./tests/helpers:/app/tests/helpers:ro
     networks: [backend]

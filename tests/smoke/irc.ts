@@ -3,9 +3,9 @@ import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { chromium, expect, type Browser } from '@playwright/test';
-import { PrismaClient, type Prisma } from '../src/generated/prisma/client';
+import { PrismaClient, type Prisma } from '../../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { DEFAULT_ROLES } from '../src/lib/permissions';
+import { DEFAULT_ROLES } from '../../src/lib/permissions';
 
 if (process.env.ALLOW_ISOLATED_CONTAINER_TESTS !== 'yes')
   throw new Error('Explicit isolated staging fixtures only.');

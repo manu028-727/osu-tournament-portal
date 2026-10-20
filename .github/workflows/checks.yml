@@ -57,9 +57,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - run: node scripts/provision-docker.mjs
-      - run: docker compose --env-file .env.docker -f compose.docker.yaml config --quiet
-      - run: docker compose --env-file .env.docker -f compose.docker.yaml build web migrate irc-gateway
+      - run: node scripts/configure.mjs
+      - run: docker compose config --quiet
+      - run: ./portal install
+      - run: ./portal compose build irc-gateway
+      - name: Validate optional overlays
+        run: |
+          docker compose -f compose.yaml -f compose.dev.yaml config --quiet
+          INSTANCE_PUBLIC_DIRECTORY="$PWD/public" docker compose -f compose.yaml -f deploy/compose.assets.yaml config --quiet
+          EXTERNAL_SERVICE_NETWORK=external-services docker compose -f compose.yaml -f deploy/compose.external-network.yaml config --quiet
+          docker compose -f compose.yaml -f deploy/compose.qa.yaml --profile irc --profile qa config --quiet
       - name: Scan release images
         run: |
           cd "$RUNNER_TEMP"
@@ -69,13 +76,10 @@ jobs:
           for image in tournament-web:local tournament-tools:local tournament-irc:local; do
             ./trivy image --scanners vuln,secret --severity HIGH,CRITICAL --exit-code 1 "$image"
           done
-      - run: docker compose --env-file .env.docker -f compose.docker.yaml up -d --wait postgres object-storage
-      - run: docker compose --env-file .env.docker -f compose.docker.yaml run --rm migrate
-      - run: docker compose --env-file .env.docker -f compose.docker.yaml run --rm bootstrap
-      - run: docker compose --env-file .env.docker -f compose.docker.yaml run --rm storage-init
-      - run: docker compose --env-file .env.docker -f compose.docker.yaml run --rm storage-init scripts/test-storage.ts
-      - run: docker compose --env-file .env.docker -f compose.docker.yaml up -d --wait web
+      - run: ./portal compose run --rm storage-init tests/smoke/storage.ts
+      - name: Verify packaged license notices
+        run: ./portal compose run --rm --entrypoint node bootstrap --input-type=module -e 'import fs from "node:fs"; const notices = fs.readFileSync("/app/THIRD_PARTY_NOTICES.txt", "utf8"); if (!fs.readFileSync("/LICENSE", "utf8").includes("MIT License") || !notices.includes("sharp") || !notices.includes("libvips")) process.exit(1);'
       - run: curl --fail http://localhost:3335/api/health
       - run: curl --fail http://localhost:3335/
       - if: always()
-        run: docker compose --env-file .env.docker -f compose.docker.yaml stop
+        run: ./portal stop

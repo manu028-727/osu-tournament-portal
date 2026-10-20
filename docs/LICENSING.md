@@ -13,18 +13,18 @@ by Lucide. Factual country names/codes support flag formatting; no player record
 are included. Spreadsheet-compatible algorithms/output are native interoperability
 code; no original workbook or Apps Script is distributed.
 
-Dependency licenses are recorded in `docs/dependency-licenses.json`. Review the
-full notices of runtime/distributed transitive dependencies before release; a
-package metadata inventory alone is not legal clearance. Major components use
+Review the full notices of runtime/distributed transitive dependencies before
+release. Major components use
 MIT/Apache/BSD/ISC-style licenses. Sharp's native libvips distribution also includes
 LGPL-licensed components and accompanying notices; retain upstream licenses and
 assess native-binary redistribution obligations for container releases.
 
-Collected upstream license/notice texts are retained in
-`docs/THIRD-PARTY-NOTICES.txt` and `/app/THIRD_PARTY_NOTICES.txt` in web/IRC images,
-including available native libvips notices. Third-party components retain their
-own licenses; the application license does not replace those notices. Release
-images also include the application license at `/LICENSE`.
+Docker builds automatically collect upstream notices from the locked dependencies,
+including available native libvips notices, into `/app/THIRD_PARTY_NOTICES.txt` in
+all release images. The application license is also included at `/LICENSE`.
+For a local report, run `npm ci` then `npm run licenses`; the output is
+`.data/licenses/THIRD_PARTY_NOTICES.txt`. Generated copies are not checked into Git.
+Third-party components retain their own licenses; MIT does not replace them.
 
 One package omits its license field: middleware-handler includes an MIT LICENSE
 file, verified locally. The old workbook unzip dependency pulled in buffers 0.1.1,

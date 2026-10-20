@@ -7,6 +7,7 @@ export default defineConfig({
       'tests/unit.test.ts',
       'tests/instance.test.ts',
       'tests/setup.test.ts',
+      'tests/portal.test.ts',
       'tests/mappool-order.test.ts',
       'tests/match-access.test.ts',
       'tests/workspace.test.ts',

@@ -1,3 +1,4 @@
+# Optional override; combine with the root compose.yaml.
 services:
   web:
     volumes:

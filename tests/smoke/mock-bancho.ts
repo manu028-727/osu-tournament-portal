@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { mockBancho } from '../tests/helpers/mock-bancho';
+import { mockBancho } from '../helpers/mock-bancho';
 if (process.env.ALLOW_MOCK_BANCHO !== 'yes')
   throw new Error('Mock Bancho requires the explicit QA configuration.');
 const mock = mockBancho();

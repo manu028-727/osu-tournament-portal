@@ -1,4 +1,4 @@
-# Optional: reuse an existing Docker database/storage network without moving data.
+# Optional override: reuse an existing database/storage network without moving data.
 services:
   web:
     networks: [backend, outbound, existing]

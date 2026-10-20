@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import sharp from 'sharp';
 import { S3Client, CreateBucketCommand } from '@aws-sdk/client-s3';
-import { createStorage, contentHash } from '../src/lib/storage';
+import { createStorage, contentHash } from '../../src/lib/storage';
 
 const store = createStorage({ ...process.env, STORAGE_DRIVER: 's3' });
 const key = `${randomUUID()}.webp`;

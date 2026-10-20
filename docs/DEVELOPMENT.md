@@ -1,61 +1,63 @@
 # Development
 
-Use Node 22.12+ (`.nvmrc` selects 22) and `npm ci --include=dev`. Docker production
-builds pin Node 22.23.3 and install the lockfile. Read bundled Next.js documentation
-before changing framework code; this release has version-specific APIs.
+The app uses Next.js App Router, React, TypeScript, Tailwind, TipTap and Prisma.
+Use Node 22.12+ (`.nvmrc` selects 22) and `npm ci`. Read the bundled Next.js guides
+before changing framework code; this version has API differences.
 
-Initialize a separate development stack as in the README, with localhost APP_URL
-and a dedicated OAuth callback. Then run:
+## Docker Development
+
+Use a separate checkout/configuration with a unique STACK_NAME, local APP_URL and
+OAuth callback. Initialize it with `./portal install`, then:
 
 ```bash
-docker compose --env-file .env.docker -f compose.docker.yaml -f compose.development.yaml up --build web
+./portal compose -f compose.yaml -f compose.dev.yaml up --build web
 ```
 
-Source/config mounts are read-only; dependencies, Prisma generation and Next output
-use separate volumes. The dev server runs as UID 1000, matching production. Only
-those disposable generated volumes get a permission-initialization helper. Host
-`.env` and `.data` are never mounted. Dependencies must be refreshed after lockfile
-changes, without removing database/storage volumes. Container development uses
-Next's supported Webpack HMR path; production builds use Turbopack.
-The `development` build target includes npm and a shell; release `tools` only
-provides Node/TypeScript/Prisma maintenance commands in a minimal runtime.
+The `development` target includes npm and a shell, runs as UID 1000 and supports
+Webpack hot reload. Source mounts are read-only; dependencies, generated Prisma
+code and Next output use separate development volumes. Host `.env`/`.data` are not
+mounted. Refresh only development-generated/dependency volumes after relevant
+changes; never delete database or storage volumes. Production uses standalone Next
+and separate minimal runtime images.
 
-For host Node development, configure an isolated reachable DATABASE_URL and
-APP_DATABASE_NAME, generate Prisma and use `npm run dev -- --port 3000`.
-The CLI listener port must be exported/passed explicitly; an env-file PORT alone
-does not configure `next dev`. IRC WebSockets need the Docker front listener.
+For host development, configure a reachable isolated DATABASE_URL and matching
+APP_DATABASE_NAME in `.env`, generate Prisma and run `npm run dev -- --port 3000`.
+IRC WebSockets use the Docker front listener. Do not point test commands at an
+installation database.
 
 ## Tests
 
-Create a dedicated database named `tournament_platform_test` and set
-TEST_DATABASE_URL in `.env.test`. It must never be an installation database.
-`test:db:setup` applies the generic baseline and explicitly creates **synthetic test
-fixtures**, not default application content. It rejects other database names.
+Create a database named `tournament_platform_test` and set TEST_DATABASE_URL in
+`.env.test`. Setup rejects other names and creates only synthetic test fixtures.
 
 ```bash
 npm run db:generate
 npm run test:db:setup
-npm run lint
 npm run format:check
+npm run lint
 npm run typecheck
 npm test
 npm run test:integration
 npx playwright install --with-deps chromium
 npm run test:e2e
 npm run build
-npm audit
 ```
 
-Run integration/browser suites sequentially when they share a test database.
-Test fixtures insert sessions only into explicitly isolated databases; there is
-no production fake-login endpoint. External OAuth/API calls use fixtures where
-not expressly tested with real credentials. All workbook records in tests are
-synthetic; do not add real players, rosters or historical match payloads.
+Run integration/browser suites sequentially when they share a database. Session
+fixtures exist only in tests; there is no web fake-login endpoint. Use synthetic
+profiles/workbooks, never real registration data or captured private match payloads.
 
-For real isolated S3 checks, run `scripts/test-storage.ts` with a staging S3 env.
-The optional QA Compose mock and `verify-container-irc.ts` test the real gateway
-transport without contacting Bancho. Never enable the QA override in production.
+Optional end-to-end infrastructure checks live in `tests/smoke/`: fresh onboarding,
+S3, media migration, upload authorization and the mock Bancho gateway. They need
+explicit isolated environments; guarded scripts reject installation databases.
+The QA override is `deploy/compose.qa.yaml`, combined with root `compose.yaml`.
+Never enable it against real Bancho. For example, with a staging S3 env:
 
-Formatting is Prettier; ESLint checks TypeScript correctness and unused bindings.
-The standard CI also validates Prisma and Compose, runs tests and builds images.
-Manual release publication is separate and requires a protected approval environment.
+```bash
+node --env-file=.env.staging --import tsx tests/smoke/storage.ts
+```
+
+CI runs formatting, lint, types, Prisma, tests, builds, Docker installation and
+security scans. Container publication is a separate manually approved workflow.
+Generate third-party notices with `npm run licenses`; generated reports belong in
+ignored `.data`, not in the source tree.

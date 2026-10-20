@@ -34,7 +34,28 @@ to APP_DATABASE_NAME, retain the actual database URLs, callback, storage driver 
 keys. New generic cookie names require users to sign in again; user identities and
 stored sessions are not deleted. Existing staff permissions, published revisions,
 media references and static graphics stay authoritative. Static graphics can be
-mounted read-only through `compose.assets.yaml`, without distributing them in code.
+mounted read-only through `deploy/compose.assets.yaml`, without distributing them in code.
+
+## Ordinary Updates
+
+First back up the database, uploads and private `.env`; read the release notes.
+Keep STACK_NAME, database URLs and storage credentials unchanged. During your
+approved maintenance window:
+
+```bash
+./portal stop
+git pull --ff-only
+./portal install
+```
+
+`install` explicitly builds and runs migrations; `start` never does. Stop if a
+migration fails. Do not use a reset or regenerate credentials as a repair. Retain
+the previous release and backups for rollback.
+
+The main file is now `compose.yaml`; development uses `compose.dev.yaml`. Existing
+`.env.docker` files still work through `./portal` when `.env` is absent. The same
+STACK_NAME keeps the existing volumes. Update any external scripts that referenced
+the previous filenames; specialist overlays are now under `deploy/`.
 
 ## Release Cutover
 
@@ -52,14 +73,14 @@ mounted read-only through `compose.assets.yaml`, without distributing them in co
 7. Smoke-test login, branding, histories, protected drafts and a non-disruptive edit.
    Monitor logs/health before authorizing cleanup of the old checkout or backups.
 
-Rebuild with `docker compose --env-file .env.docker -f compose.docker.yaml build
---pull --no-cache web migrate irc-gateway` when refreshing security patches. The
+Rebuild with `./portal compose build --pull --no-cache web migrate irc-gateway`
+when refreshing security patches. The
 build base is digest-pinned, with current distro updates layered during builds;
 record the resulting image digests and scan them. Runtime images are separately
 digest-pinned Distroless images without shell/npm/yarn tooling. Refresh those base
 digests explicitly when updates are available. Lockfile installation is deterministic;
-distro package refreshes are a
-deliberate security update, not a claim of byte-identical OS layers forever.
+distro package refreshes are a deliberate security update, not a claim of
+byte-identical OS layers forever.
 
 Allow a brief controlled write pause for final reconciliation and service restart;
 the exact downtime depends on backup size and migration review. Staging is not

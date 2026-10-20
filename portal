@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+NODE_IMAGE='node:22.23.3-trixie-slim@sha256:154ba2f4d6fec323d28e4f4bb86bba4677f1223391a1979cf521304e03a98dfa'
+COMMAND="${1:-help}"
+if [[ $# -gt 0 ]]; then shift; fi
+
+case "$COMMAND" in
+  help|--help|-h)
+    printf '%s\n' 'Usage: ./portal COMMAND' \
+      '  setup    Guided configuration and first installation' \
+      '  install  Install using an existing configuration' \
+      '  start    Start the installed website without running migrations' \
+      '  stop     Stop services without deleting data' \
+      '  status   Show service status' \
+      '  logs     Follow website logs' \
+      '  compose  Run an advanced Docker Compose command'
+    exit 0 ;;
+  setup|install|start|stop|status|logs|compose) ;;
+  *) printf 'Unknown command: %s. Run ./portal help.\n' "$COMMAND" >&2; exit 1 ;;
+esac
+command -v docker >/dev/null || { printf 'Install Docker Engine and Docker Compose first.\n' >&2; exit 1; }
+docker compose version >/dev/null
+docker info >/dev/null
+cd "$ROOT"
+ENV_FILE="${PORTAL_ENV_FILE:-$ROOT/.env}"
+if [[ -z "${PORTAL_ENV_FILE:-}" && ! -f "$ENV_FILE" && -f "$ROOT/.env.docker" ]]; then
+  ENV_FILE="$ROOT/.env.docker"
+fi
+if [[ "$ENV_FILE" != /* ]]; then ENV_FILE="$ROOT/$ENV_FILE"; fi
+export STACK_ENV_FILE="$ENV_FILE"
+compose() { docker compose --project-directory "$ROOT" --env-file "$ENV_FILE" "$@"; }
+network_check() {
+  local pools networks ids
+  pools="$(docker info --format '{{json .DefaultAddressPools}}')"
+  ids="$(docker network ls --quiet)"
+  if [[ -n "$ids" ]]; then
+    # Docker IDs contain no whitespace; expansion intentionally supplies separate IDs.
+    networks="$(docker network inspect $ids)"
+  else networks='[]'; fi
+  printf '{"pools":%s,"networks":%s}' "$pools" "$networks" | \
+    docker run --rm --interactive --network none --user "$(id -u):$(id -g)" \
+      --env SSH_CONNECTION --volume "$ROOT:/work:ro" --workdir /work \
+      "$NODE_IMAGE" node scripts/configure.mjs --check-network
+}
+has_service() { [[ $'\n'"$SERVICES"$'\n' == *$'\n'"$1"$'\n'* ]]; }
+start() {
+  local runtime=()
+  for service in postgres object-storage irc-gateway web; do
+    if has_service "$service"; then runtime+=("$service"); fi
+  done
+  compose up -d --wait --no-build "${runtime[@]}"
+  printf '\nWebsite started. Open your configured public URL, then /setup.\n'
+}
+
+if [[ "$COMMAND" == setup ]]; then
+  [[ ! -e "$ENV_FILE" ]] || { printf 'Configuration exists. Use ./portal install or ./portal start.\n' >&2; exit 1; }
+  [[ "$ENV_FILE" == "$ROOT/.env" ]] || { printf 'Guided setup creates .env in this checkout. Use install for custom configurations.\n' >&2; exit 1; }
+  network_check
+  docker run --rm --interactive --tty --network none --user "$(id -u):$(id -g)" \
+    --env STACK_NAME --env POSTGRES_DB \
+    --volume "$ROOT:/work" --workdir /work "$NODE_IMAGE" \
+    node scripts/configure.mjs --interactive
+  COMMAND=install
+fi
+[[ -f "$ENV_FILE" ]] || { printf 'No configuration found. Run ./portal setup first.\n' >&2; exit 1; }
+if [[ "$COMMAND" == install || "$COMMAND" == start ]]; then network_check; fi
+case "$COMMAND" in
+  install)
+    SERVICES="$(compose config --services)"
+    build=(web migrate)
+    if has_service irc-gateway; then build+=(irc-gateway); fi
+    compose build "${build[@]}"
+    persistence=()
+    for service in postgres object-storage; do
+      if has_service "$service"; then persistence+=("$service"); fi
+    done
+    if [[ ${#persistence[@]} -gt 0 ]]; then compose up -d --wait "${persistence[@]}"; fi
+    compose run --rm migrate
+    compose run --rm bootstrap
+    if has_service storage-init; then compose run --rm storage-init; fi
+    start ;;
+  start) SERVICES="$(compose config --services)"; start ;;
+  stop) compose stop ;;
+  status) compose ps ;;
+  logs) compose logs --tail 100 --follow web ;;
+  compose) compose "$@" ;;
+esac

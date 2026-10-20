@@ -1,4 +1,4 @@
-# Separate from compose.yaml so existing host deployments are never retargeted.
+# Default deployment. Optional services are selected by COMPOSE_PROFILES in .env.
 name: ${STACK_NAME:-tournament}
 x-web-environment: &web-environment
   NODE_ENV: production
@@ -111,7 +111,7 @@ services:
     build:
       context: .
       target: tools
-    env_file: ${STACK_ENV_FILE:-.env.docker}
+    env_file: ${STACK_ENV_FILE:-.env}
     command: [scripts/init-storage.mjs]
     depends_on:
       object-storage:
