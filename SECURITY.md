@@ -1,9 +1,8 @@
 # Security
 
 Do not report credentials, IRC passwords, player contacts or private tournament
-records in a public issue. Once the public repository exists, use its private
-security-advisory channel if enabled. Until then, contact the maintainer privately;
-no public reporting address has been fabricated for this release candidate.
+records in a public issue. Report vulnerabilities privately through the
+repository's [Security tab](https://github.com/manu028-727/osu-tournament-portal/security).
 
 Include affected version, minimal synthetic reproduction, impact and remediation
 ideas. Do not test destructive operations against running tournaments. Rotate

@@ -1,4 +1,4 @@
-# osu! Tournament Platform
+# osu! Tournament Portal
 
 Self-hosted tournament management with osu! OAuth, a browser CMS, mappools, teams,
 match scheduling and referee workspaces. One application manages multiple isolated
@@ -14,6 +14,8 @@ Requires Docker Engine, Compose v2+, an HTTPS reverse proxy for production, and 
 osu! OAuth application. No host Node installation is required for Docker hosting.
 
 ```bash
+git clone https://github.com/manu028-727/osu-tournament-portal.git
+cd osu-tournament-portal
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" -w /work node:22.23.3-trixie-slim node scripts/provision-docker.mjs
 ```
 
@@ -82,5 +84,7 @@ but need verification against your provider. Single-node PostgreSQL/storage volu
 are persistence, not redundancy or off-host backups. OAuth provider interaction
 needs your registered credentials; automated tests substitute the external provider.
 
-No final project license or public distribution approval has been granted yet.
-This repository is a local release candidate until those decisions are approved.
+## License
+
+[MIT](LICENSE). Third-party components retain their own licenses and notices;
+see [licensing and attribution](docs/LICENSING.md).

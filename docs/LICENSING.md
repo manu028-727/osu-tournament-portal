@@ -1,13 +1,9 @@
 # License and Attribution Review
 
-No final application license has been applied. The package remains private and
-UNLICENSED pending the owner's explicit approval. Public availability alone would
-not grant reuse permission. Do not publish a license or release until that decision.
-
-Recommendation: MIT for a permissive reusable platform, subject to confirming
-ownership/contributor permission and the dependency notices. AGPL-3.0 is an
-alternative if hosted modifications should be shared; that is a policy decision,
-not an automatic cleanup step.
+The application is licensed under [MIT](../LICENSE), approved by the owner on
+20 October 2026 for public distribution as `manu028-727/osu-tournament-portal`.
+The npm package remains marked private to prevent accidental npm publication;
+that flag does not restrict the source-code license.
 
 The release tree excludes original tournament graphics, imported spreadsheets,
 rosters, historical match datasets, production screenshots and instance media.
@@ -26,7 +22,9 @@ assess native-binary redistribution obligations for container releases.
 
 Collected upstream license/notice texts are retained in
 `docs/THIRD-PARTY-NOTICES.txt` and `/app/THIRD_PARTY_NOTICES.txt` in web/IRC images,
-including available native libvips notices. This does not license the application.
+including available native libvips notices. Third-party components retain their
+own licenses; the application license does not replace those notices. Release
+images also include the application license at `/LICENSE`.
 
 One package omits its license field: middleware-handler includes an MIT LICENSE
 file, verified locally. The old workbook unzip dependency pulled in buffers 0.1.1,
@@ -43,6 +41,6 @@ The Distroless runtime is distributed by GoogleContainerTools under its upstream
 [license and package terms](https://github.com/GoogleContainerTools/distroless).
 Preserve image notices as well as the collected application dependency notices.
 
-Unresolved approvals: application license, contributor/provenance confirmation,
-public repository creation and release/image publication. No rights to any
-installation's privately mounted assets are granted by the platform.
+Container-registry publication and production cutovers require separate approval.
+No rights to any installation's privately mounted assets are granted by the
+platform. Contributors must have the necessary rights to their contributions.

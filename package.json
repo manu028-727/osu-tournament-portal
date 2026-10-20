@@ -1,8 +1,16 @@
 {
-  "name": "osu-tournament-platform",
+  "name": "osu-tournament-portal",
   "version": "1.0.0",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/manu028-727/osu-tournament-portal.git"
+  },
+  "homepage": "https://github.com/manu028-727/osu-tournament-portal#readme",
+  "bugs": {
+    "url": "https://github.com/manu028-727/osu-tournament-portal/issues"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",

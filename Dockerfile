@@ -6,6 +6,8 @@ RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/* && npm i
 
 FROM ${RUNTIME_IMAGE} AS runtime-base
 ENV PATH=/nodejs/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+LABEL org.opencontainers.image.licenses="MIT" org.opencontainers.image.source="https://github.com/manu028-727/osu-tournament-portal"
+COPY LICENSE /LICENSE
 USER 1000:1000
 
 FROM patched-base AS dependencies

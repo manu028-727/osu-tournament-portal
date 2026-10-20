@@ -15,5 +15,6 @@ The generic main branch is the only application source. Installations consume
 versioned images and keep private configuration/content outside Git. Releases need
 maintainer approval; no deployment-specific application branches are required.
 
-Project licensing is pending owner approval. Do not assume a public release or
-license grant exists yet; obtain permission before distributing this candidate.
+Contributions to the application are made under the [MIT license](LICENSE).
+Preserve copyright and third-party notices. Do not include assets or code without
+the necessary redistribution rights.

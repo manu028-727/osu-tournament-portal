@@ -1,8 +1,9 @@
 # Extraction and Publication Audit
 
-Release candidate prepared on 20 October 2026. Intended repository name:
-`osu-tournament-platform`. No public remote, push, license grant or production
-cutover has been authorized or performed.
+Extraction prepared on 20 October 2026. The owner approved public publication as
+[`manu028-727/osu-tournament-portal`](https://github.com/manu028-727/osu-tournament-portal)
+under the [MIT license](../LICENSE) on the same date. Container-registry publication
+and production cutover remain separately controlled operations.
 
 ## Removed and Generalized
 
@@ -54,8 +55,8 @@ Every direct application dependency retains a concrete use.
 The only shipped bitmap is a generated solid-color test fixture. There are no
 tournament artworks, imported workbook files, captured screenshots or bundled
 commercial fonts. Dependency metadata and known native-library notice requirements
-are documented in [licensing](LICENSING.md). No final platform license has been
-applied. The missing middleware-handler metadata license was resolved by inspecting
+are documented in [licensing](LICENSING.md). MIT now applies to the application.
+The missing middleware-handler metadata license was resolved by inspecting
 its shipped MIT LICENSE; this is not a blanket legal clearance of container images.
 
 ## Verification
@@ -97,7 +98,8 @@ used where the test substituted a provider.
   exercised separately from the release runtime.
 - TypeScript, ESLint, Prettier, Prisma validation, npm audit (zero findings),
   Compose validation and production/Docker builds passed. Local verification ran
-  on Linux/amd64; other architectures and remote GitHub CI were not exercised.
+  on Linux/amd64; other architectures were not exercised. Subsequent remote runs
+  are recorded in the repository's GitHub Actions Checks workflow.
 
 ## Security Scans
 
@@ -137,10 +139,11 @@ synthetic Discord snowflake is used in the privacy test rather than a plausible 
 
 ## Repository Handoff
 
-The new local repository is initialized only after the clean candidate audit, with
-one independent root commit on `main`, no inherited history, no tags and no remote.
-The final handoff records its commit and clean-tree verification. The initial commit
-uses a neutral automation identity rather than publishing a personal email address.
+The new repository was initialized after the clean candidate audit, with independent
+root commit `7d4a4d9` on `main` and no inherited history. A publication commit adds
+MIT and the approved repository metadata. Only this clean history is published;
+the original private repository's branches and tags are not copied. The commits
+use a neutral automation identity rather than publishing a personal email address.
 Private envs, backup dumps, original media, reports and test runtime volumes are
 excluded from Git and the Docker build context. No exposed credential was detected
 in the candidate; that is not a retrospective audit of the original private history.
@@ -153,11 +156,12 @@ both existing sites were subsequently checked for HTTP 200 responses.
 
 ## Remaining Approvals and Limits
 
-Public repository creation/push, final application licensing, container registry
-publication and live-service/database/storage/proxy changes require approval.
+Public repository publication and MIT licensing are approved. Container-registry
+publication and live-service/database/storage/proxy changes still require approval.
 Configure required reviewers on the `release-approval` environment before enabling
 manual image publication. Both web/tools/IRC use the same reviewed release version.
-GitHub workflows are prepared locally; no remote CI run is claimed.
+GitHub workflows run checks on push; image publication remains manual and disabled
+unless explicitly requested through its protected release workflow.
 
 Live OAuth and uncached osu! metadata need deployment credentials. Live Bancho
 login/commands remain unverified; automated IRC tests use mocks. AWS/R2/B2 account
