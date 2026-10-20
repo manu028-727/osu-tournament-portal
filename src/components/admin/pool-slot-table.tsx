@@ -10,6 +10,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import type { BeatmapMetadata } from '@/lib/osu';
+import { themeStyle } from '@/lib/theme';
 import {
   poolSlotErrors,
   sortPoolSlots,
@@ -85,14 +86,17 @@ export function PoolSlotTable({
                 aria-label={label}
                 disabled={inactive}
                 onClick={onClick}
-                className="inline-flex size-8 shrink-0 items-center justify-center rounded hover:bg-white/10 focus-visible:outline-2"
+                className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg hover:bg-[var(--surface-hover)] focus-visible:outline-2"
               >
                 {content}
               </button>
             );
             return (
               <Fragment key={s.editorId}>
-                <tr data-slot-id={s.editorId} className="h-[54px] border-t hover:bg-white/[.025]">
+                <tr
+                  data-slot-id={s.editorId}
+                  className="h-[54px] border-t hover:bg-[var(--surface-hover)]"
+                >
                   <td className="px-1">
                     <div className="flex">
                       {icon(
@@ -116,7 +120,11 @@ export function PoolSlotTable({
                       maxLength={20}
                       disabled={disabled}
                       aria-invalid={!!problems.length}
-                      style={{ color: categories.find((c) => c.acronym === s.category)?.color }}
+                      style={{
+                        color: themeStyle(categories.find((c) => c.acronym === s.category)?.color)[
+                          '--brand'
+                        ],
+                      }}
                       className="font-semibold"
                       onChange={(e) => onUpdate(s.editorId, { name: e.target.value.toUpperCase() })}
                     />
@@ -195,7 +203,7 @@ export function PoolSlotTable({
                         aria-label={`Details for ${s.name}`}
                         aria-expanded={expanded === s.editorId}
                         onClick={() => setExpanded(expanded === s.editorId ? null : s.editorId)}
-                        className="inline-flex size-8 items-center justify-center rounded hover:bg-white/10"
+                        className="inline-flex size-8 items-center justify-center rounded-lg hover:bg-[var(--surface-hover)]"
                       >
                         {expanded === s.editorId ? (
                           <ChevronUp size={14} />
@@ -213,7 +221,7 @@ export function PoolSlotTable({
                   </td>
                 </tr>
                 {expanded === s.editorId && (
-                  <tr className="border-t bg-white/[.025]">
+                  <tr className="border-t bg-[var(--surface-hover)]">
                     <td colSpan={7} className="p-4">
                       {map ? (
                         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">

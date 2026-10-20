@@ -124,10 +124,8 @@ test('creates private tournaments, switches scoped CMS contexts and publishes in
     for (const suffix of ['a', 'b']) {
       await page.goto('/admin/tournaments');
       await page.locator(`a[href="/t/${prefix}-${suffix}/admin"]`).click();
-      await page
-        .getByRole('navigation', { name: 'Administration' })
-        .getByRole('link', { name: 'Rules', exact: true })
-        .click();
+      await page.getByRole('button', { name: 'More', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'Rules', exact: true }).click();
       await expect(page).toHaveURL(`http://localhost:3001/t/${prefix}-${suffix}/admin/rules`);
       await expect(page.getByRole('heading', { level: 1 })).toContainText('Rules editor');
       const url = `/api/admin/data?section=rules&tournament=${prefix}-${suffix}`;
@@ -168,6 +166,15 @@ test('creates private tournaments, switches scoped CMS contexts and publishes in
           })
         ).ok(),
       ).toBe(true);
+      const emptyHome = await visitor.newPage();
+      await emptyHome.goto(`/t/${prefix}-${suffix}`);
+      await expect(
+        emptyHome.getByRole('heading', { level: 1, name: `${prefix}-${suffix}`, exact: true }),
+      ).toBeVisible();
+      expect(await emptyHome.locator('body').innerText()).not.toContain(
+        'Gli organizzatori stanno preparando',
+      );
+      await emptyHome.close();
       await page.goto(`/t/${prefix}-${suffix}/admin/stages`);
       await expect(
         page.getByRole('heading', { name: 'Tournament stages', exact: true }),
@@ -186,7 +193,7 @@ test('creates private tournaments, switches scoped CMS contexts and publishes in
     await expect(publicPage.getByRole('heading', { level: 1 })).toContainText('a rules only');
     await expect(
       publicPage
-        .getByRole('navigation', { name: 'Main navigation', exact: true })
+        .getByRole('navigation', { name: 'Tournament navigation', exact: true })
         .getByRole('link', { name: 'Teams', exact: true }),
     ).toHaveAttribute('href', `/t/${prefix}-a/teams`);
     await publicPage.goto(`/t/${prefix}-b/rules`);
@@ -213,12 +220,19 @@ test('creates private tournaments, switches scoped CMS contexts and publishes in
     await publicPage.screenshot({ path: 'test-results/neutral-copy-mobile.png', fullPage: true });
     await page.screenshot({ path: 'test-results/tournament-stages-desktop.png', fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect
-      .poll(async () => {
-        const box = await page.getByRole('complementary').boundingBox();
-        return box ? Math.round(box.x + box.width) : 0;
-      })
-      .toBeLessThanOrEqual(0);
+    await expect(page.getByRole('navigation', { name: 'Administration' })).toBeVisible();
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Administration' })
+        .getByRole('link', { name: 'Homepage', exact: true }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'More', exact: true }).click();
+    const moreMenu = page.getByRole('menu');
+    await expect(moreMenu.getByRole('menuitem', { name: 'Rules', exact: true })).toBeVisible();
+    const menuBox = await moreMenu.boundingBox();
+    expect(menuBox && menuBox.x >= 0 && menuBox.x + menuBox.width <= 390).toBeTruthy();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'More', exact: true })).toBeFocused();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
@@ -231,5 +245,151 @@ test('creates private tournaments, switches scoped CMS contexts and publishes in
     expect(errors).toEqual([]);
   } finally {
     await visitor.close();
+  }
+});
+
+test('public tournament profile stays mounted across tabs without duplicate navigation', async ({
+  browser,
+  context,
+}) => {
+  test.setTimeout(240000);
+  await context.addCookies([
+    { name: 'tournament_session', value: raw, url: 'http://localhost:3001' },
+  ]);
+  const slug = `${prefix}-layout`;
+  const headers = { Origin: 'http://localhost:3001' };
+  const created = await context.request.post('/api/tournaments', {
+    headers,
+    data: { type: 'create', name: 'Persistent profile QA', acronym: 'QA', slug, gameMode: 'osu' },
+  });
+  expect(created.ok()).toBe(true);
+  const tournament = await created.json();
+  const home = await db.page.findFirstOrThrow({
+    where: { tournamentId: tournament.id, slug: 'home' },
+  });
+  const revision = await db.pageRevision.create({
+    data: {
+      tournamentId: tournament.id,
+      pageId: home.id,
+      title: 'Published homepage',
+      blocks: {
+        create: {
+          type: 'hero',
+          position: 0,
+          visible: true,
+          content: {
+            title: 'Published profile identity',
+            image: '/layout-banner.png',
+            text: 'Published homepage body',
+          },
+        },
+      },
+    },
+  });
+  await db.page.update({
+    where: { id: home.id },
+    data: { state: 'PUBLISHED', publishedRevisionId: revision.id },
+  });
+  // Leave an independent, unpublished draft to check that the shared layout never exposes it.
+  await db.contentBlock.create({
+    data: {
+      revisionId: home.draftRevisionId!,
+      type: 'hero',
+      position: 0,
+      visible: true,
+      content: { title: 'PRIVATE HEADER DRAFT', image: '/private-banner.png' },
+    },
+  });
+  const published = await context.request.post('/api/tournaments', {
+    headers,
+    data: {
+      type: 'lifecycle',
+      id: tournament.id,
+      baseVersion: 1,
+      published: true,
+      archived: false,
+    },
+  });
+  expect(published.ok()).toBe(true);
+  for (const mode of ['dark', 'light'] as const) {
+    for (const width of [1920, 1366, 768, 390, 320]) {
+      const visitor = await browser.newContext({
+        viewport: { width, height: 900 },
+        colorScheme: mode,
+        hasTouch: width <= 768,
+      });
+      try {
+        await visitor.addCookies([
+          { name: 'portal_appearance', value: mode, url: 'http://localhost:3001' },
+        ]);
+        const page = await visitor.newPage();
+        const errors: string[] = [],
+          documents: string[] = [],
+          images: string[] = [];
+        page.on('pageerror', (error) => errors.push(error.message));
+        page.on('request', (request) => {
+          if (request.resourceType() === 'document') documents.push(request.url());
+          if (request.url().endsWith('/layout-banner.png')) images.push(request.url());
+        });
+        await page.route('**/layout-banner.png', (route) =>
+          route.fulfill({
+            contentType: 'image/png',
+            body: Buffer.from(
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jD1sAAAAASUVORK5CYII=',
+              'base64',
+            ),
+            headers: { 'Cache-Control': 'no-store' },
+          }),
+        );
+        await page.goto(`/t/${slug}`);
+        const profile = page.getByRole('banner', { name: 'Tournament profile', exact: true });
+        const banner = profile.getByRole('img', { name: 'Persistent profile QA banner' });
+        await expect(banner).toBeVisible();
+        await expect(profile).toContainText('Published profile identity');
+        const profileNode = await profile.elementHandle(),
+          bannerNode = await banner.elementHandle();
+        const initialHeight = (await profile.boundingBox())!.height;
+        const tabs = page.getByRole('navigation', { name: 'Tournament navigation', exact: true });
+        for (const [label, path] of [
+          ['Mappools', '/mappools'],
+          ['Matches', '/matches'],
+          ['Teams', '/teams'],
+          ['Staff', '/staff'],
+          ['Rules', '/rules'],
+          ['Home', ''],
+        ]) {
+          const link = tabs.getByRole('link', { name: label, exact: true });
+          await link.click();
+          await expect(page).toHaveURL(`http://localhost:3001/t/${slug}${path}`);
+          await expect(link).toHaveAttribute('aria-current', 'page');
+          await expect(tabs).toHaveCount(1);
+          await expect(
+            page.getByRole('banner', { name: 'Platform controls' }).getByRole('link'),
+          ).toHaveCount(2);
+          expect(await profile.evaluate((node, original) => node === original, profileNode)).toBe(
+            true,
+          );
+          expect(await banner.evaluate((node, original) => node === original, bannerNode)).toBe(
+            true,
+          );
+          expect((await profile.boundingBox())!.height).toBe(initialHeight);
+          expect(
+            await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+          ).toBe(true);
+          await expect(page.locator('html')).toHaveAttribute('data-appearance', mode);
+          await expect(page.getByText('PRIVATE HEADER DRAFT')).toHaveCount(0);
+          await expect(page.locator('img[src="/private-banner.png"]')).toHaveCount(0);
+        }
+        expect(documents).toHaveLength(1);
+        expect(images).toHaveLength(1);
+        expect(errors).toEqual([]);
+        await page.screenshot({
+          path: `test-results/persistent-profile-${mode}-${width}.png`,
+          fullPage: true,
+        });
+      } finally {
+        await visitor.close();
+      }
+    }
   }
 });

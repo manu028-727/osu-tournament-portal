@@ -21,7 +21,7 @@ import { firstTo, type Side } from '@/lib/match-rules';
 import { lobbyCommands } from '@/lib/match-engine';
 import type { MatchView } from '@/lib/matches-types';
 import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
+import { MatchStatusBadge } from '../ui/badge';
 import {
   action,
   api,
@@ -183,12 +183,12 @@ export function RefereePanel({
         <ArrowLeft size={18} />
         Referee dashboard
       </Link>
-      <header className="border-b pb-3" aria-label="Match scoreboard">
+      <header className="referee-scoreboard border-b pb-3" aria-label="Match scoreboard">
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
           <p>
             {tournamentName} / {m.stage.name} / Match {m.code}
           </p>
-          <Badge>{MATCH_STATUS_LABELS[m.status]}</Badge>
+          <MatchStatusBadge status={m.status}>{MATCH_STATUS_LABELS[m.status]}</MatchStatusBadge>
           <span>
             {access.editable
               ? access.assigned
@@ -239,7 +239,7 @@ export function RefereePanel({
               'Unassigned'}
           </p>
         </div>
-        <details className="mt-2">
+        <details className="match-administration mt-2">
           <summary className="cursor-pointer text-sm text-muted">Match administration</summary>
           <div className="mt-5 flex flex-wrap gap-2">
             {manager && (

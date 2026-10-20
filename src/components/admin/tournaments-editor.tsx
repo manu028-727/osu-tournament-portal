@@ -65,9 +65,9 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
           </Button>
         )}
       </SectionTitle>
-      <div className="grid gap-5 xl:grid-cols-2">
+      <div className="grid min-w-0 gap-4 xl:grid-cols-2">
         {data.tournaments.map((t) => (
-          <article key={t.id} className="card overflow-hidden">
+          <article key={t.id} className="card min-w-0 overflow-hidden">
             {t.settings?.banner && (
               <img src={t.settings.banner} alt="" className="h-32 w-full object-cover" />
             )}

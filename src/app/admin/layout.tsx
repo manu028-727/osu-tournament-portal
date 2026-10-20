@@ -6,6 +6,7 @@ import { Shield, ArrowUpRight } from 'lucide-react';
 import { redirect } from 'next/navigation';
 import { canAccessWorkspace } from '@/lib/workspace';
 import { requestScope } from '@/lib/tournament-context';
+import { themeStyle } from '@/lib/theme';
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Organizer workspace', robots: { index: false, follow: false } };
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -17,7 +18,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <div className="card w-full max-w-md p-10 text-center">
           <Shield className="mx-auto mb-6 text-primary" size={30} />
           <p className="eyebrow mb-3">ORGANIZER WORKSPACE</p>
-          <h1 className="text-3xl font-semibold tracking-tight">Backstage starts here.</h1>
+          <h1 className="text-2xl font-semibold">Organizer sign in</h1>
           <p className="mb-8 mt-4 text-sm text-muted">
             Sign in with your osu! account to access your tournament workspace.
           </p>
@@ -47,12 +48,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const t = await getTournament();
   return (
     <div
-      style={
-        {
-          '--brand': t.settings?.primaryColor,
-          '--accent': t.settings?.accentColor,
-        } as React.CSSProperties
-      }
+      style={themeStyle(t.settings?.primaryColor, t.settings?.accentColor) as React.CSSProperties}
     >
       <AdminShell actor={actor} name={t.name} acronym={t.acronym}>
         {children}

@@ -6,6 +6,7 @@ import { sortPoolSlots } from '@/lib/mappool-order';
 import { lobbyCommands } from '@/lib/match-engine';
 import type { MatchRules } from '@/lib/match-rules';
 import type { MatchView } from '@/lib/matches-types';
+import { themeStyle } from '@/lib/theme';
 type Slot = NonNullable<MatchView['poolRevision']>['slots'][number];
 export function RefereePool({
   slots,
@@ -24,19 +25,21 @@ export function RefereePool({
 }) {
   return (
     <section aria-label="Match mappool" className="min-w-0 [container-type:inline-size]">
-      <h2 className="mb-3 text-lg font-semibold">
+      <h2 className="mb-3 text-base font-semibold">
         Mappool <span className="text-sm font-normal text-muted">{slots.length} maps</span>
       </h2>
-      <div className={`${dense ? 'max-h-[56vh]' : 'max-h-[65vh]'} overflow-auto border-y`}>
+      <div
+        className={`${dense ? 'referee-scroll max-h-[56vh]' : 'max-h-[65vh]'} overflow-auto border-y`}
+      >
         <table
           className={`referee-pool ${dense ? 'referee-pool-dense' : ''} w-full table-fixed text-sm`}
         >
           <thead className="sticky top-0 z-10 bg-background text-left text-xs text-muted">
             <tr>
-              <th className="w-16">Slot</th>
+              <th className="pool-slot w-16">Slot</th>
               <th>Beatmap</th>
               <th className="pool-id w-24">ID</th>
-              <th className="w-28">Copy</th>
+              <th className="pool-copy w-28">Copy</th>
               {action && <th className="w-12">Action</th>}
             </tr>
           </thead>
@@ -49,7 +52,10 @@ export function RefereePool({
                   className={`${dense ? 'h-11' : 'h-14'} border-t align-middle`}
                   data-slot={slot.name}
                 >
-                  <td className="font-mono font-semibold" style={{ color: slot.color }}>
+                  <td
+                    className="font-mono font-semibold"
+                    style={{ color: themeStyle(slot.color)['--brand'] }}
+                  >
                     <span className="block truncate" title={slot.name}>
                       {slot.name}
                     </span>
@@ -58,7 +64,7 @@ export function RefereePool({
                     <div className="flex items-center gap-2">
                       {slot.metadata.cover && (
                         <img
-                          className="size-8 shrink-0 rounded object-cover"
+                          className="pool-cover size-8 shrink-0 rounded object-cover"
                           src={slot.metadata.cover}
                           alt=""
                         />

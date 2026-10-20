@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Eye, Plus, Trash2, Save, Send, ArrowUp, ArrowDown } from 'lucide-react';
+import { Eye, Plus, Trash2, Save, Send, ArrowUp, ArrowDown, Ellipsis } from 'lucide-react';
 import { RichEditor } from './rich-editor';
 import { MediaField } from './media';
 import { Button } from '../ui/button';
@@ -50,7 +50,8 @@ export function PageEditor({
     [base, setBase] = useState<string | null>(null),
     [dirty, setDirty] = useState(false),
     [preview, setPreview] = useState(false),
-    [history, setHistory] = useState(false);
+    [history, setHistory] = useState(false),
+    [tools, setTools] = useState(false);
   const { busy, run } = useTask();
   useEffect(() => {
     if (data) {
@@ -86,21 +87,14 @@ export function PageEditor({
   const ruleSections = html.split(/(?=<h2(?:\s|>))/).filter(Boolean);
   return (
     <>
-      <SectionTitle
-        title={kind === 'homepage' ? 'Homepage editor' : 'Rules editor'}
-        description={
-          kind === 'homepage'
-            ? 'Shape the first impression. Arrange content blocks, update artwork, and publish when you’re ready.'
-            : 'Write clear, structured tournament rules. Every save creates a revision you can restore.'
-        }
-      >
+      <SectionTitle title={kind === 'homepage' ? 'Homepage editor' : 'Rules editor'}>
         <div className="flex flex-wrap items-center gap-2">
           <StateBadge state={data.state} />
-          {dirty && <span className="text-[10px] text-amber-200">Unsaved changes</span>}
+          {dirty && <span className="text-xs text-amber-200">Unsaved changes</span>}
         </div>
       </SectionTitle>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4">
-        <div className="flex gap-2">
+      <div className="editor-actionbar mb-6 flex flex-wrap items-center justify-between gap-3 border-b bg-background pb-4">
+        <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -110,11 +104,23 @@ export function PageEditor({
             <Eye size={14} />
             Preview draft
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setHistory(true)}>
-            Revision history
-          </Button>
+          {kind === 'rules' ? (
+            <Button variant="ghost" size="sm" onClick={() => setHistory(true)}>
+              Revision history
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Page options"
+              title="Page options"
+              onClick={() => setTools(true)}
+            >
+              <Ellipsis size={18} />
+            </Button>
+          )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {edit && (
             <SaveButton size="sm" busy={busy} onClick={() => void save()} disabled={busy || !dirty}>
               <Save size={13} />
@@ -147,7 +153,7 @@ export function PageEditor({
               Publish
             </ConfirmButton>
           )}
-          {publish && data.state === 'PUBLISHED' && (
+          {kind === 'rules' && publish && data.state === 'PUBLISHED' && (
             <ConfirmButton
               title="Unpublish this page?"
               description="The public page will be hidden until a draft is published again."
@@ -165,12 +171,12 @@ export function PageEditor({
         </div>
       </div>
       {dirty && (
-        <p className="mb-5 text-[11px] text-muted">
+        <p className="mb-5 text-xs text-muted">
           Save your draft to preview the sanitized content before publishing.
         </p>
       )}
       <fieldset disabled={!edit || busy} className="space-y-6">
-        <div className="card p-6">
+        <div className="max-w-3xl">
           <Field label="Page title">
             <input
               value={title}
@@ -250,166 +256,179 @@ export function PageEditor({
                 setDirty(true);
               }}
               renderItem={(b, i) => (
-                <div className="space-y-5">
-                  <div className="flex flex-wrap items-center gap-4">
-                    <Field label="Block type">
-                      <select
-                        value={b.type}
-                        onChange={(e) => update(i, { type: e.target.value as Block['type'] })}
-                      >
-                        {['hero', 'text', 'image', 'announcements', 'buttons', 'timeline'].map(
-                          (v) => (
-                            <option key={v} value={v}>
-                              {v[0].toUpperCase() + v.slice(1)}
-                            </option>
-                          ),
-                        )}
-                      </select>
-                    </Field>
-                    <label className="ml-auto flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={b.visible}
-                        onChange={(e) => update(i, { visible: e.target.checked })}
-                      />
-                      Visible
-                    </label>
-                    <ConfirmButton
-                      title="Remove this section?"
-                      description="Save the draft to persist this change. Previous revisions remain available."
-                      onConfirm={() => {
-                        setBlocks(blocks.filter((_, j) => j !== i));
-                        setDirty(true);
-                      }}
-                    >
-                      <Trash2 size={13} />
-                    </ConfirmButton>
-                  </div>
-                  <div className="grid-fields">
-                    <Field label="Eyebrow / small label">
-                      <input
-                        value={b.content.eyebrow || ''}
-                        onChange={(e) =>
-                          update(i, { content: { ...b.content, eyebrow: e.target.value } })
-                        }
-                      />
-                    </Field>
-                    <Field label="Section title">
-                      <textarea
-                        rows={2}
-                        className="min-h-20"
-                        value={b.content.title || ''}
-                        onChange={(e) =>
-                          update(i, { content: { ...b.content, title: e.target.value } })
-                        }
-                      />
-                    </Field>
-                  </div>
-                  {b.type === 'text' ? (
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium">Rich text content</p>
-                      <RichEditor
-                        value={
-                          b.content.html ||
-                          `<p>${(b.content.text || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}</p>`
-                        }
-                        onChange={(html) => update(i, { content: { ...b.content, html } })}
-                      />
-                    </div>
-                  ) : (
-                    <Field label="Body text">
-                      <textarea
-                        value={b.content.text || ''}
-                        onChange={(e) =>
-                          update(i, { content: { ...b.content, text: e.target.value } })
-                        }
-                      />
-                    </Field>
-                  )}
-                  {['hero', 'image', 'announcements'].includes(b.type) && (
-                    <MediaField
-                      label="Section image"
-                      value={b.content.image || ''}
-                      canUpload={can(actor, 'media.upload')}
-                      onChange={(image) => update(i, { content: { ...b.content, image } })}
-                    />
-                  )}
-                  <div className="space-y-3">
-                    <p className="text-xs font-medium">Buttons</p>
-                    {b.content.buttons?.map((button, j) => (
-                      <div key={j} className="flex flex-wrap gap-2">
-                        <input
-                          aria-label={`Button ${j + 1} label`}
-                          className="min-w-32 flex-1"
-                          value={button.label}
-                          placeholder="Button label"
-                          onChange={(e) =>
-                            update(i, {
-                              content: {
-                                ...b.content,
-                                buttons: b.content.buttons!.map((v, k) =>
-                                  k === j ? { ...v, label: e.target.value } : v,
-                                ),
-                              },
-                            })
-                          }
-                        />
-                        <input
-                          aria-label={`Button ${j + 1} link`}
-                          className="min-w-40 flex-[2]"
-                          value={button.href}
-                          placeholder="/mappools or https://…"
-                          onChange={(e) =>
-                            update(i, {
-                              content: {
-                                ...b.content,
-                                buttons: b.content.buttons!.map((v, k) =>
-                                  k === j ? { ...v, href: e.target.value } : v,
-                                ),
-                              },
-                            })
-                          }
-                        />
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Remove button"
-                          onClick={() =>
-                            update(i, {
-                              content: {
-                                ...b.content,
-                                buttons: b.content.buttons!.filter((_, k) => k !== j),
-                              },
-                            })
-                          }
+                <details className="cms-block" open={i === 0}>
+                  <summary className="cursor-pointer py-2 font-semibold">
+                    <span className="mr-3 font-mono text-xs text-muted">
+                      {String(i + 1).padStart(2, '0')}
+                    </span>
+                    {b.content.title || b.type}
+                    {!b.visible && (
+                      <span className="ml-3 text-xs font-normal text-muted">Hidden</span>
+                    )}
+                  </summary>
+                  <div className="space-y-5 border-t pt-4">
+                    <div className="flex flex-wrap items-center gap-4">
+                      <Field label="Block type">
+                        <select
+                          value={b.type}
+                          onChange={(e) => update(i, { type: e.target.value as Block['type'] })}
                         >
-                          <Trash2 size={14} />
-                        </Button>
+                          {['hero', 'text', 'image', 'announcements', 'buttons', 'timeline'].map(
+                            (v) => (
+                              <option key={v} value={v}>
+                                {v[0].toUpperCase() + v.slice(1)}
+                              </option>
+                            ),
+                          )}
+                        </select>
+                      </Field>
+                      <label className="ml-auto flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={b.visible}
+                          onChange={(e) => update(i, { visible: e.target.checked })}
+                        />
+                        Visible
+                      </label>
+                      <ConfirmButton
+                        title="Remove this section?"
+                        description="Save the draft to persist this change. Previous revisions remain available."
+                        onConfirm={() => {
+                          setBlocks(blocks.filter((_, j) => j !== i));
+                          setDirty(true);
+                        }}
+                      >
+                        <Trash2 size={13} />
+                      </ConfirmButton>
+                    </div>
+                    <div className="grid-fields">
+                      <Field label="Eyebrow / small label">
+                        <input
+                          value={b.content.eyebrow || ''}
+                          onChange={(e) =>
+                            update(i, { content: { ...b.content, eyebrow: e.target.value } })
+                          }
+                        />
+                      </Field>
+                      <Field label="Section title">
+                        <textarea
+                          rows={2}
+                          className="min-h-20"
+                          value={b.content.title || ''}
+                          onChange={(e) =>
+                            update(i, { content: { ...b.content, title: e.target.value } })
+                          }
+                        />
+                      </Field>
+                    </div>
+                    {b.type === 'text' ? (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium">Rich text content</p>
+                        <RichEditor
+                          value={
+                            b.content.html ||
+                            `<p>${(b.content.text || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}</p>`
+                          }
+                          onChange={(html) => update(i, { content: { ...b.content, html } })}
+                        />
                       </div>
-                    ))}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        update(i, {
-                          content: {
-                            ...b.content,
-                            buttons: [
-                              ...(b.content.buttons || []),
-                              { label: 'Learn more', href: '/rules' },
-                            ],
-                          },
-                        })
-                      }
-                    >
-                      <Plus size={13} />
-                      Add button
-                    </Button>
+                    ) : (
+                      <Field label="Body text">
+                        <textarea
+                          value={b.content.text || ''}
+                          onChange={(e) =>
+                            update(i, { content: { ...b.content, text: e.target.value } })
+                          }
+                        />
+                      </Field>
+                    )}
+                    {['hero', 'image', 'announcements'].includes(b.type) && (
+                      <MediaField
+                        label="Section image"
+                        value={b.content.image || ''}
+                        canUpload={can(actor, 'media.upload')}
+                        onChange={(image) => update(i, { content: { ...b.content, image } })}
+                      />
+                    )}
+                    <div className="space-y-3">
+                      <p className="text-xs font-medium">Buttons</p>
+                      {b.content.buttons?.map((button, j) => (
+                        <div key={j} className="flex flex-wrap gap-2">
+                          <input
+                            aria-label={`Button ${j + 1} label`}
+                            className="min-w-32 flex-1"
+                            value={button.label}
+                            placeholder="Button label"
+                            onChange={(e) =>
+                              update(i, {
+                                content: {
+                                  ...b.content,
+                                  buttons: b.content.buttons!.map((v, k) =>
+                                    k === j ? { ...v, label: e.target.value } : v,
+                                  ),
+                                },
+                              })
+                            }
+                          />
+                          <input
+                            aria-label={`Button ${j + 1} link`}
+                            className="min-w-40 flex-[2]"
+                            value={button.href}
+                            placeholder="/mappools or https://…"
+                            onChange={(e) =>
+                              update(i, {
+                                content: {
+                                  ...b.content,
+                                  buttons: b.content.buttons!.map((v, k) =>
+                                    k === j ? { ...v, href: e.target.value } : v,
+                                  ),
+                                },
+                              })
+                            }
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Remove button"
+                            onClick={() =>
+                              update(i, {
+                                content: {
+                                  ...b.content,
+                                  buttons: b.content.buttons!.filter((_, k) => k !== j),
+                                },
+                              })
+                            }
+                          >
+                            <Trash2 size={14} />
+                          </Button>
+                        </div>
+                      ))}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          update(i, {
+                            content: {
+                              ...b.content,
+                              buttons: [
+                                ...(b.content.buttons || []),
+                                { label: 'Learn more', href: '/rules' },
+                              ],
+                            },
+                          })
+                        }
+                      >
+                        <Plus size={13} />
+                        Add button
+                      </Button>
+                    </div>
+                    {b.type === 'timeline' && (
+                      <p className="text-xs text-muted">
+                        Dates are managed in Tournament settings.
+                      </p>
+                    )}
                   </div>
-                  {b.type === 'timeline' && (
-                    <p className="text-xs text-muted">Dates are managed in Tournament settings.</p>
-                  )}
-                </div>
+                </details>
               )}
             />
             <Button
@@ -429,6 +448,37 @@ export function PageEditor({
           </>
         )}
       </fieldset>
+      {kind === 'homepage' && (
+        <Modal open={tools} onOpenChange={setTools} title="Page options">
+          <div className="flex flex-wrap items-center gap-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setTools(false);
+                setHistory(true);
+              }}
+            >
+              Revision history
+            </Button>
+            {publish && data.state === 'PUBLISHED' && (
+              <ConfirmButton
+                title="Unpublish this page?"
+                description="The public page will be hidden until a draft is published again."
+                disabled={busy}
+                onConfirm={() =>
+                  void run(async () => {
+                    await action({ type: 'page.unpublish', slug: data.slug });
+                    await reload();
+                    setTools(false);
+                  }, 'Page unpublished.')
+                }
+              >
+                Unpublish
+              </ConfirmButton>
+            )}
+          </div>
+        </Modal>
+      )}
       <Modal
         open={preview}
         onOpenChange={setPreview}
@@ -453,7 +503,7 @@ export function PageEditor({
           <div className="flex items-center justify-between gap-4 border-b py-4" key={r.id}>
             <div>
               <p className="text-sm">{r.title}</p>
-              <p className="mt-1 text-[11px] text-muted">
+              <p className="mt-1 text-xs text-muted">
                 {new Date(r.createdAt).toLocaleString()}{' '}
                 {r.id === data.publishedRevisionId ? '· Published' : ''}
               </p>

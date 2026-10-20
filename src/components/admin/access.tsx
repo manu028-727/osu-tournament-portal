@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { Plus, Trash2, Shield, Search, LockKeyhole } from 'lucide-react';
+import { Plus, Trash2, Search, LockKeyhole } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { PERMISSIONS, type Actor, type PermissionKey } from '@/lib/permissions';
@@ -48,10 +48,7 @@ export function RolesEditor({ actor }: { actor: Actor }) {
   if (!data) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
   return (
     <>
-      <SectionTitle
-        title="Roles & permissions"
-        description="Define what each team member can do. Permissions are combined across all roles and enforced on the server."
-      >
+      <SectionTitle title="Roles & permissions">
         <Button
           size="sm"
           onClick={() => {
@@ -68,8 +65,8 @@ export function RolesEditor({ actor }: { actor: Actor }) {
           const own = actor.roles.some((a) => a.id === r.id);
           return (
             <div className="card flex flex-col p-6" key={r.id}>
-              <div className="flex items-center justify-between">
-                <Shield size={19} className="text-primary" />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold">{r.name}</h2>
                 {r.systemKey && (
                   <Badge>
                     {r.systemKey === 'Owner' ? (
@@ -83,9 +80,8 @@ export function RolesEditor({ actor }: { actor: Actor }) {
                   </Badge>
                 )}
               </div>
-              <h2 className="mt-5 text-xl font-semibold tracking-tight">{r.name}</h2>
               <p className="mt-2 text-xs text-muted">{r.description}</p>
-              <p className="mb-6 mt-4 text-[11px] text-muted">
+              <p className="mb-6 mt-4 text-xs text-muted">
                 {r.permissions.length} permissions · {r._count?.users || 0} users
               </p>
               <div className="mt-auto flex justify-between border-t pt-4">
@@ -187,10 +183,8 @@ export function RolesEditor({ actor }: { actor: Actor }) {
                     }}
                   />
                   <span>
-                    <span className="block font-mono text-[11px] text-primary">{key}</span>
-                    <span className="mt-1 block text-[11px] font-normal text-muted">
-                      {description}
-                    </span>
+                    <span className="block font-mono text-xs text-primary">{key}</span>
+                    <span className="mt-1 block text-xs font-normal text-muted">{description}</span>
                   </span>
                 </label>
               ))}
@@ -216,12 +210,9 @@ export function UsersEditor({ actor }: { actor: Actor }) {
   if (!data) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
   return (
     <>
-      <SectionTitle
-        title="User management"
-        description="Find tournament users, inspect effective permissions, and assign access roles. Users appear after their first osu! sign-in."
-      />
+      <SectionTitle title="User management" />
       <form
-        className="mb-6 flex max-w-lg gap-3"
+        className="mb-6 flex min-w-0 max-w-lg gap-3"
         onSubmit={(e) => {
           e.preventDefault();
           setSearch(query);
@@ -233,12 +224,12 @@ export function UsersEditor({ actor }: { actor: Actor }) {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search by osu! username or ID…"
         />
-        <Button type="submit" variant="outline">
+        <Button type="submit" variant="outline" className="shrink-0">
           <Search size={15} />
           Search
         </Button>
       </form>
-      <div className="card overflow-x-auto">
+      <div className="card relative overflow-x-auto">
         <table className="admin-table">
           <thead>
             <tr>
@@ -259,9 +250,7 @@ export function UsersEditor({ actor }: { actor: Actor }) {
                     <img src={u.avatarUrl} alt="" className="size-8 rounded-lg" />
                     <span className="font-medium">
                       {u.username}
-                      {u.id === actor.id && (
-                        <span className="ml-2 text-[10px] text-muted">You</span>
-                      )}
+                      {u.id === actor.id && <span className="ml-2 text-xs text-muted">You</span>}
                     </span>
                   </div>
                 </td>
@@ -297,7 +286,7 @@ export function UsersEditor({ actor }: { actor: Actor }) {
           <div className="py-16 text-center text-sm text-muted">No users match your search.</div>
         )}
       </div>
-      <p className="mt-4 text-[11px] text-muted">
+      <p className="mt-4 text-xs text-muted">
         Showing up to 100 matching users. Refine your search to find a specific account.
       </p>
       <Modal
@@ -349,7 +338,7 @@ export function UsersEditor({ actor }: { actor: Actor }) {
                   />
                   <span>
                     <span className="text-sm">{r.name}</span>
-                    <span className="mt-1 block text-[11px] font-normal text-muted">
+                    <span className="mt-1 block text-xs font-normal text-muted">
                       {r.description}
                     </span>
                   </span>
@@ -366,7 +355,7 @@ export function UsersEditor({ actor }: { actor: Actor }) {
                       .flatMap((r) => r.permissions.map((p) => p.permissionKey)),
                   ),
                 ].map((p) => (
-                  <Badge key={p} className="font-mono text-[9px] text-primary">
+                  <Badge key={p} className="font-mono text-xs text-primary">
                     {p}
                   </Badge>
                 ))}

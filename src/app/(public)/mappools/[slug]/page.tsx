@@ -17,17 +17,18 @@ export default async function Stage({ params }: { params: Promise<{ slug: string
       <PageHeading
         eyebrow="MAPPOOL UFFICIALE"
         title={stage.name}
-        description={
-          stage.description ||
-          'Tutti i pick ufficiali di questo stage. Apri le mappe direttamente su osu!.'
-        }
+        description={stage.description || ''}
       />
-      <nav aria-label="Tournament stages" className="mb-10 flex gap-2 overflow-x-auto pb-3">
+      <nav
+        aria-label="Tournament stages"
+        className="stage-tabs mb-6 flex gap-1 overflow-x-auto border-b pb-1"
+      >
         {stages.map((s) => (
           <Link
             href={`/mappools/${s.slug}`}
             key={s.slug}
-            className={`whitespace-nowrap rounded-lg border px-5 py-2.5 text-xs ${s.slug === slug ? 'border-primary/30 bg-primary/10 text-primary' : 'border-white/10 text-muted hover:text-foreground'}`}
+            aria-current={s.slug === slug ? 'page' : undefined}
+            className={`min-h-11 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm ${s.slug === slug ? 'border-primary text-primary' : 'border-transparent text-muted hover:text-foreground'}`}
           >
             {s.name}
           </Link>

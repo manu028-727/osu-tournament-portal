@@ -8,7 +8,11 @@ that flag does not restrict the source-code license.
 The release tree excludes original tournament graphics, imported spreadsheets,
 rosters, historical match datasets, production screenshots and instance media.
 The small WebP fixture is generated from a solid color for tests, not copied art.
-There are no bundled web fonts; typography uses system fonts. Icons are provided
+Typography uses self-hosted IBM Plex Sans (Regular/SemiBold) and IBM Plex Mono
+(Regular), distributed under the SIL Open Font License 1.1. The original license
+and copyright notice are retained in `public/fonts/LICENSE.txt`. The unmodified
+WOFF2 files come from the [official IBM Plex repository](https://github.com/IBM/plex).
+No font requests are made to third-party services. Icons are provided
 by Lucide. Factual country names/codes support flag formatting; no player records
 are included. Spreadsheet-compatible algorithms/output are native interoperability
 code; no original workbook or Apps Script is distributed.

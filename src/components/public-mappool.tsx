@@ -22,7 +22,10 @@ const noHover = () => false;
 
 function SlotBadge({ slot }: { slot: Pick<Slot, 'name' | 'color'> }) {
   return (
-    <span className={styles.slot} style={{ color: slot.color, background: `${slot.color}20` }}>
+    <span
+      className={styles.slot}
+      style={{ '--slot-color': slot.color, background: `${slot.color}20` } as CSSProperties}
+    >
       {slot.name}
     </span>
   );

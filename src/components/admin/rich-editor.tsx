@@ -43,7 +43,7 @@ export function RichEditor({ value, onChange }: { value: string; onChange: (s: s
     if (editor && value !== editor.getHTML())
       editor.commands.setContent(value, { emitUpdate: false });
   }, [editor, value]);
-  if (!editor) return <div className="skeleton h-96 rounded-xl" />;
+  if (!editor) return <div className="skeleton h-96 rounded-lg" />;
   const tools = [
     {
       label: 'Bold',
@@ -115,8 +115,8 @@ export function RichEditor({ value, onChange }: { value: string; onChange: (s: s
   ];
   return (
     <>
-      <div className="overflow-hidden rounded-xl border bg-[#15151c]">
-        <div className="flex flex-wrap gap-1 border-b bg-white/[.02] p-2">
+      <div className="overflow-hidden rounded-lg border bg-background">
+        <div className="flex flex-wrap gap-1 border-b bg-card p-2">
           {tools.map((t) => (
             <Button
               type="button"

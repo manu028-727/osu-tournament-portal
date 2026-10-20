@@ -19,7 +19,7 @@ export default async function Admin() {
     return (
       <div className="card max-w-2xl p-8">
         <p className="eyebrow mb-4">SIGNED IN AS PLAYER</p>
-        <h1 className="text-3xl font-semibold tracking-tight">You’re part of the community.</h1>
+        <h1 className="text-3xl font-semibold tracking-normal">You’re part of the community.</h1>
         <p className="mt-5 text-sm text-muted">
           Your osu! account is connected. An organizer can assign a staff access role if you need to
           work in the CMS. Public staff listings do not grant website permissions.

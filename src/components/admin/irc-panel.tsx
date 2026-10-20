@@ -422,7 +422,7 @@ export function IrcPanel({
                             type="button"
                             role="tab"
                             aria-selected={active === channel}
-                            className={`min-h-10 rounded-md px-3 text-xs ${active === channel ? 'bg-white/10 text-foreground' : 'text-muted'}`}
+                            className={`min-h-10 rounded-md px-3 text-xs ${active === channel ? 'bg-[var(--surface-hover)] text-foreground' : 'text-muted'}`}
                             onClick={() => setActive(channel)}
                           >
                             {channel}

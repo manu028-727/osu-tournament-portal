@@ -20,6 +20,7 @@ export default defineConfig({
       'tests/storage.test.ts',
       'tests/irc.test.ts',
       'tests/container-proxy.test.ts',
+      'tests/theme.test.ts',
     ],
   },
 });

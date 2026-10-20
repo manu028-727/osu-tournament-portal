@@ -38,7 +38,7 @@ function ModsPicker({
                 onChange(checked === true ? [...value, mod] : value.filter((v) => v !== mod))
               }
               onSelect={(e) => e.preventDefault()}
-              className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 outline-none focus:bg-white/10"
+              className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 outline-none focus:bg-[var(--surface-hover)]"
             >
               <span className="size-4">
                 <DropdownMenu.ItemIndicator>

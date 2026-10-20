@@ -177,11 +177,11 @@ export function PoolEditor({ actor }: { actor: Actor }) {
               if (dirty && !window.confirm('Discard unsaved changes and switch stages?')) return;
               setActive(s.id);
             }}
-            className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${active === s.id ? 'border-primary/30 bg-primary/10 text-primary' : 'border-white/10 bg-card text-muted hover:text-white'}`}
+            className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${active === s.id ? 'border-primary/30 bg-primary/10 text-primary' : 'bg-card text-muted hover:text-foreground'}`}
           >
             {s.name}
             <span
-              className={`size-1 rounded-full ${s.mappool?.state === 'PUBLISHED' ? 'bg-emerald-300' : 'bg-white/20'}`}
+              className={`size-1 rounded-full ${s.mappool?.state === 'PUBLISHED' ? 'bg-emerald-300' : 'bg-muted/50'}`}
             />
           </button>
         ))}
@@ -190,9 +190,9 @@ export function PoolEditor({ actor }: { actor: Actor }) {
         <>
           <div className="mb-5 flex flex-wrap items-center justify-between gap-5">
             <div className="flex flex-wrap items-center gap-3">
-              <h2 className="text-xl font-semibold tracking-tight">{stage.name}</h2>
+              <h2 className="text-xl font-semibold tracking-normal">{stage.name}</h2>
               <StateBadge state={pool.state} />
-              {dirty && <span className="text-[10px] text-amber-200">Unsaved changes</span>}
+              {dirty && <span className="text-xs text-amber-200">Unsaved changes</span>}
               {pool.draftRevisionId !== pool.publishedRevisionId && pool.draftRevisionId && (
                 <Badge>Draft changes</Badge>
               )}
@@ -397,7 +397,7 @@ export function PoolEditor({ actor }: { actor: Actor }) {
             </details>
           </div>
           <div className="mt-8 flex items-center justify-between border-t pt-5">
-            <span className="text-[11px] text-muted">
+            <span className="text-xs text-muted">
               {slots.length} slots · Saving creates an independent draft revision
             </span>
             {can(actor, 'mappools.delete') && (
@@ -421,7 +421,7 @@ export function PoolEditor({ actor }: { actor: Actor }) {
         </>
       ) : (
         <EmptyState
-          title="Make room for the next round"
+          title="No tournament stages"
           description="Create a tournament stage to start preparing its mappool."
         />
       )}

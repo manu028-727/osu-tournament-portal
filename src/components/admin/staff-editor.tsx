@@ -51,7 +51,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
     <>
       <SectionTitle
         title="Staff manager"
-        description="Give credit to the people behind the tournament. Public staff positions are independent of website permissions."
+        description="Public staff positions do not grant website access."
       >
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => setCategoryOpen(true)}>
@@ -84,7 +84,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                 <img
                   src={m.customImage || m.avatarUrl}
                   alt=""
-                  className="size-12 rounded-xl object-cover"
+                  className="size-12 rounded-lg object-cover"
                 />
                 <div className="min-w-0 flex-1">
                   <a
@@ -96,7 +96,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                     {m.username}
                     <ArrowUpRight size={12} className="text-muted" />
                   </a>
-                  <span className="text-[10px] text-muted">osu! #{m.osuId}</span>
+                  <span className="text-xs text-muted">osu! #{m.osuId}</span>
                 </div>
                 {!m.visible && <EyeOff size={16} className="text-muted" />}
               </div>

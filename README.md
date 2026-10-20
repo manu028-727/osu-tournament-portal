@@ -57,6 +57,7 @@ storage and an optional Bancho IRC gateway are also supported.
 - [Updates, backups and existing-installation adoption](docs/UPGRADING.md)
 - [Development and tests](docs/DEVELOPMENT.md)
 - [Architecture and security](docs/ARCHITECTURE.md)
+- [Interface design and visual testing](docs/DESIGN.md)
 - [Optional IRC and credential security](docs/IRC.md)
 - [Contributing](CONTRIBUTING.md) and [security reporting](SECURITY.md)
 

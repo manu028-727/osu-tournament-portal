@@ -1,67 +1,41 @@
 'use client';
 import Link from '@/components/tournament-scope';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { useState } from 'react';
 import { DropdownMenu } from 'radix-ui';
 import {
-  Menu,
-  X,
   ArrowUpRight,
   LogIn,
   ChevronDown,
   ExternalLink,
   LayoutDashboard,
+  ArrowLeft,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { LogoutButton } from './logout-button';
+import { AppearanceControl } from './appearance';
 
 type Profile = { username: string; avatarUrl: string; osuId: number; workspace: boolean };
-export function PublicNav({
-  name,
-  acronym,
-  logo,
-  links,
-  user,
-}: {
-  name: string;
-  acronym: string;
-  logo: string;
-  links: { label: string; href: string }[];
-  user?: Profile;
-}) {
-  const [open, setOpen] = useState(false);
+export function PublicNav({ user }: { user?: Profile }) {
   const pathname = usePathname();
   const search = useSearchParams().toString();
   const login = `/api/auth/login?returnTo=${encodeURIComponent(pathname + (search ? '?' + search : ''))}`;
   const item =
-    'flex cursor-pointer items-center gap-3 rounded-md px-4 py-3 text-sm outline-none focus:bg-white/10';
+    'flex cursor-pointer items-center gap-3 rounded-xl px-4 py-3 text-sm outline-none focus:bg-[var(--surface-hover)]';
   return (
-    <header className="sticky top-0 z-40 border-b border-white/[.06] bg-background/95 backdrop-blur-xl">
-      <div className="wrap flex min-h-20 items-center justify-between gap-3 py-3">
-        <Link href="/" className="flex shrink-0 items-center gap-3" aria-label={`${name} home`}>
-          {logo ? (
-            <img src={logo} alt={name} className="h-10 w-28 object-contain sm:w-32" />
-          ) : (
-            <span className="font-semibold text-primary">{acronym}</span>
-          )}
-          <span className="hidden text-sm font-semibold text-muted xl:inline">{acronym}</span>
+    <header
+      className="public-navigation sticky top-0 z-40 border-b bg-background"
+      aria-label="Platform controls"
+    >
+      <div className="wrap flex min-h-16 items-center justify-between gap-3 py-2">
+        <Link
+          href="/tournaments"
+          className="flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm text-muted hover:bg-card"
+        >
+          <ArrowLeft size={16} />
+          Tournaments
         </Link>
-        <nav aria-label="Main navigation" className="hidden items-center gap-5 lg:flex">
-          <Link href="/tournaments" className="text-sm text-muted">
-            Tournaments
-          </Link>
-          {links.map((l) => (
-            <Link
-              key={l.href + l.label}
-              href={l.href}
-              className={`text-sm ${pathname === l.href ? 'text-foreground' : 'text-muted hover:text-foreground'}`}
-              aria-current={pathname === l.href ? 'page' : undefined}
-            >
-              {l.label}
-            </Link>
-          ))}
-        </nav>
         <div className="flex shrink-0 items-center gap-2">
+          <AppearanceControl />
           {user ? (
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
@@ -85,7 +59,7 @@ export function PublicNav({
                   align="end"
                   sideOffset={10}
                   collisionPadding={12}
-                  className="z-[70] w-72 max-w-[calc(100vw-24px)] rounded-lg border bg-card p-2 shadow-xl"
+                  className="z-[70] w-72 max-w-[calc(100vw-24px)] rounded-2xl border bg-card p-2 shadow-xl"
                 >
                   <DropdownMenu.Label className="flex items-center gap-3 border-b px-4 py-3">
                     <img src={user.avatarUrl} alt="" className="size-10 rounded-md" />
@@ -126,34 +100,8 @@ export function PublicNav({
               </a>
             </Button>
           )}
-          <Button
-            aria-label={open ? 'Close navigation' : 'Open navigation'}
-            variant="ghost"
-            size="icon"
-            className="lg:hidden"
-            onClick={() => setOpen(!open)}
-          >
-            {open ? <X size={21} /> : <Menu size={21} />}
-          </Button>
         </div>
       </div>
-      {open && (
-        <nav className="border-t px-5 py-4 lg:hidden" aria-label="Mobile navigation">
-          <Link href="/tournaments" className="block p-3 text-base">
-            Tournaments
-          </Link>
-          {links.map((l) => (
-            <Link
-              key={l.href + l.label}
-              href={l.href}
-              onClick={() => setOpen(false)}
-              className="block p-3 text-base"
-            >
-              {l.label}
-            </Link>
-          ))}
-        </nav>
-      )}
     </header>
   );
 }

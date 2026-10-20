@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Plus, SlidersHorizontal, Play, Users, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { DeleteMatchDialog, type DeleteMatchSelection } from './delete-match-dialog';
 import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
+import { MatchStatusBadge } from '../ui/badge';
 import { can, type Actor } from '@/lib/permissions';
 import { matchAccess } from '@/lib/match-access';
 import type { MatchListData, MatchSummary } from '@/lib/matches-types';
@@ -49,6 +49,14 @@ export function MatchesDashboard({
     time: '',
     q: '',
   });
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const activeFilters = [
+    filters.stage,
+    filters.status,
+    filters.assigned,
+    filters.date,
+    filters.date ? filters.time : '',
+  ].filter(Boolean).length;
   const [deleting, setDeleting] = useState<DeleteMatchSelection | null>(null);
   const params = new URLSearchParams();
   for (const key of ['stage', 'status', 'assigned', 'q'] as const)
@@ -125,6 +133,41 @@ export function MatchesDashboard({
     ['AWAITING_CONFIRMATION', 'To confirm'],
     ['COMPLETED', 'Completed'],
   ] as const;
+  const matchActions = (m: MatchSummary) => (
+    <div className="flex gap-1">
+      <Button asChild size="icon" variant="outline">
+        <Link
+          href={`/admin/referee/${m.id}`}
+          aria-label={`Open match ${m.code}`}
+          title="Open referee panel"
+        >
+          <Play size={17} />
+        </Link>
+      </Button>
+      {matchAccess(actor, m).schedule && !['COMPLETED', 'CANCELLED'].includes(m.status) && (
+        <Button
+          size="icon"
+          variant="ghost"
+          aria-label={`Assign ${m.code}`}
+          title="Schedule and referee assignments"
+          onClick={() => begin(m)}
+        >
+          <Pencil size={17} />
+        </Button>
+      )}
+      {can(actor, 'matches.delete') && (
+        <Button
+          size="icon"
+          variant="ghost"
+          aria-label={`Delete match ${m.code}`}
+          title="Permanently delete match"
+          onClick={() => setDeleting({ id: m.id, code: m.code, version: m.version })}
+        >
+          <Trash2 size={17} className="text-red-200" />
+        </Button>
+      )}
+    </div>
+  );
   return (
     <>
       <SectionTitle
@@ -174,15 +217,31 @@ export function MatchesDashboard({
         {Object.values(data.counts).reduce((sum, n) => sum + (n || 0), 0)} matches ·{' '}
         {data.counts.IN_PROGRESS || 0} in progress · {data.matches.length} shown
       </p>
-      <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="match-counts mb-6 grid grid-cols-2 gap-3 border-b pb-4 lg:grid-cols-4">
         {stats.map(([key, label]) => (
-          <div className="card p-5" key={key}>
+          <div className="py-2" key={key}>
             <p className="text-sm text-muted">{label}</p>
-            <p className="mt-2 text-3xl font-semibold">{data.counts[key] || 0}</p>
+            <p className="mt-1 font-mono text-xl tabular-nums">{data.counts[key] || 0}</p>
           </div>
         ))}
       </div>
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="mb-3 sm:hidden"
+        aria-expanded={filtersOpen}
+        aria-controls="match-filters"
+        onClick={() => setFiltersOpen(!filtersOpen)}
+      >
+        <SlidersHorizontal size={16} />
+        {filtersOpen ? 'Hide filters' : 'Filters'}
+        {activeFilters ? ` (${activeFilters})` : ''}
+      </Button>
+      <div
+        id="match-filters"
+        className={`match-filters mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5 ${filtersOpen ? 'filters-open' : ''}`}
+      >
         <Field label="Search matches">
           <input
             type="search"
@@ -250,97 +309,105 @@ export function MatchesDashboard({
         </Field>
       </div>
       {data.matches.length ? (
-        <div className="overflow-x-auto">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Match</th>
-                <th>Stage / date</th>
-                <th>Teams</th>
-                <th>Score</th>
-                <th>Referees</th>
-                <th>Status</th>
-                <th>Open</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.matches.map((m) => (
-                <tr key={m.id}>
-                  <td className="font-semibold">{m.code}</td>
-                  <td>
-                    <p>
-                      {m.stage.name}
-                      {m.bracket ? ` · ${m.bracket}` : ''}
-                    </p>
-                    <p className="whitespace-nowrap text-xs text-muted">
-                      {matchTime(m.scheduledAt)}
-                    </p>
-                  </td>
-                  <td className="min-w-40">
+        <>
+          <div className="border-t md:hidden">
+            {data.matches.map((m) => (
+              <article key={m.id} className="border-b py-4" aria-label={`Match ${m.code}`}>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <Link
+                    href={`/admin/referee/${m.id}`}
+                    className="min-w-0 max-w-full break-words font-mono text-primary"
+                  >
+                    #{m.code} · {m.stage.name}
+                  </Link>
+                  <MatchStatusBadge status={m.status}>
+                    {MATCH_STATUS_LABELS[m.status]}
+                  </MatchStatusBadge>
+                </div>
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                  <Link href={`/admin/referee/${m.id}`} className="min-w-0 space-y-1 font-semibold">
                     <p className="text-red-200">{m.participants.A.name}</p>
                     <p className="text-sky-200">{m.participants.B.name}</p>
-                  </td>
-                  <td className="whitespace-nowrap font-semibold">
+                  </Link>
+                  <p className="whitespace-nowrap font-mono text-xl tabular-nums">
                     {m.scoreA} : {m.scoreB}
-                  </td>
-                  <td>
-                    {matchCredits(m.source).referee && (
-                      <p className="text-xs">{matchCredits(m.source).referee} · Sheet</p>
-                    )}
-                    {m.assignments.map((r) => (
-                      <p key={r.userId} className="text-xs">
-                        {r.user.username}
-                        {r.primary ? ' · Lead' : ''}
-                      </p>
-                    ))}
-                  </td>
-                  <td>
-                    <Badge>{MATCH_STATUS_LABELS[m.status]}</Badge>
-                    <p className="mt-1 text-xs text-muted">{m.published ? 'Public' : 'Private'}</p>
-                  </td>
-                  <td>
-                    <div className="flex gap-1">
-                      <Button asChild size="icon" variant="outline">
-                        <Link
-                          href={`/admin/referee/${m.id}`}
-                          aria-label={`Open match ${m.code}`}
-                          title="Open referee panel"
-                        >
-                          <Play size={17} />
-                        </Link>
-                      </Button>
-                      {matchAccess(actor, m).schedule &&
-                        !['COMPLETED', 'CANCELLED'].includes(m.status) && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            aria-label={`Assign ${m.code}`}
-                            title="Schedule and referee assignments"
-                            onClick={() => begin(m)}
-                          >
-                            <Pencil size={17} />
-                          </Button>
-                        )}
-                      {can(actor, 'matches.delete') && (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          aria-label={`Delete match ${m.code}`}
-                          title="Permanently delete match"
-                          onClick={() =>
-                            setDeleting({ id: m.id, code: m.code, version: m.version })
-                          }
-                        >
-                          <Trash2 size={17} className="text-red-200" />
-                        </Button>
-                      )}
-                    </div>
-                  </td>
+                  </p>
+                </div>
+                <p className="mt-2 text-xs text-muted">
+                  {matchTime(m.scheduledAt)}
+                  {m.bracket ? ' · ' + m.bracket : ''}
+                </p>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <p className="min-w-0 text-xs text-muted">
+                    {m.assignments.map((r) => r.user.username).join(', ') ||
+                      matchCredits(m.source).referee ||
+                      'Unassigned'}
+                    <span className="mt-1 block">{m.published ? 'Public' : 'Private'}</span>
+                  </p>
+                  {matchActions(m)}
+                </div>
+              </article>
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Match</th>
+                  <th>Stage / date</th>
+                  <th>Teams</th>
+                  <th>Score</th>
+                  <th>Referees</th>
+                  <th>Status</th>
+                  <th>Open</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {data.matches.map((m) => (
+                  <tr key={m.id}>
+                    <td className="font-semibold">{m.code}</td>
+                    <td>
+                      <p>
+                        {m.stage.name}
+                        {m.bracket ? ` · ${m.bracket}` : ''}
+                      </p>
+                      <p className="whitespace-nowrap text-xs text-muted">
+                        {matchTime(m.scheduledAt)}
+                      </p>
+                    </td>
+                    <td className="min-w-40">
+                      <p className="text-red-200">{m.participants.A.name}</p>
+                      <p className="text-sky-200">{m.participants.B.name}</p>
+                    </td>
+                    <td className="whitespace-nowrap font-semibold">
+                      {m.scoreA} : {m.scoreB}
+                    </td>
+                    <td>
+                      {matchCredits(m.source).referee && (
+                        <p className="text-xs">{matchCredits(m.source).referee} · Sheet</p>
+                      )}
+                      {m.assignments.map((r) => (
+                        <p key={r.userId} className="text-xs">
+                          {r.user.username}
+                          {r.primary ? ' · Lead' : ''}
+                        </p>
+                      ))}
+                    </td>
+                    <td>
+                      <MatchStatusBadge status={m.status}>
+                        {MATCH_STATUS_LABELS[m.status]}
+                      </MatchStatusBadge>
+                      <p className="mt-1 text-xs text-muted">
+                        {m.published ? 'Public' : 'Private'}
+                      </p>
+                    </td>
+                    <td>{matchActions(m)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       ) : (
         <div className="border-y py-16 text-center text-muted">
           <Users size={30} className="mx-auto mb-4" />

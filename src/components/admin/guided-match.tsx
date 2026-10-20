@@ -101,7 +101,7 @@ export function GuidedMatch({
   return (
     <div className="guided-match-grid mt-4 grid items-start gap-4" aria-label="Live match workflow">
       <section
-        className="guided-current min-w-0 border-t-2 border-primary pt-3"
+        className="guided-current min-w-0 border-t-2 border-primary bg-primary/[.025] p-3"
         aria-label="Current action"
       >
         <p className="mb-1 text-xs uppercase text-muted">Current action</p>
@@ -113,7 +113,7 @@ export function GuidedMatch({
             Team {w.side === 'A' ? 'Red' : 'Blue'} · {m.participants[w.side].name}
           </p>
         )}
-        <h2 className="text-xl font-bold capitalize" data-testid="current-phase">
+        <h2 className="text-lg font-semibold capitalize" data-testid="current-phase">
           {heading}
         </h2>
         {summaryCorrection && access.manager && (
@@ -482,9 +482,9 @@ export function GuidedMatch({
                     : 'Available';
         }}
       />
-      <section className="min-w-0 border-t pt-3" aria-label="Match action timeline">
+      <section className="guided-history min-w-0 border-t pt-3" aria-label="Match action timeline">
         <h2 className="mb-3 text-base font-semibold">Match history</h2>
-        <ol className="max-h-[56vh] space-y-0 overflow-auto text-sm">
+        <ol className="referee-scroll max-h-[56vh] space-y-0 overflow-auto text-sm">
           {actions.map((a, index) => {
             const result = results.find((r) => r.actionId === a.id);
             if (result) result.winnerSide === 'A' ? scoreA++ : scoreB++;
@@ -500,7 +500,7 @@ export function GuidedMatch({
                     <Button
                       size="icon"
                       variant="ghost"
-                      className="size-6 shrink-0"
+                      className="size-8 shrink-0"
                       title={`Correct ${a.slotName} result`}
                       aria-label={`Correct ${a.slotName} result`}
                       onClick={() => onScore(a.id)}
@@ -512,7 +512,7 @@ export function GuidedMatch({
                     <Button
                       size="icon"
                       variant="ghost"
-                      className="size-6 shrink-0"
+                      className="size-8 shrink-0"
                       title={`Correct action ${a.sequence}`}
                       aria-label={`Correct action ${a.sequence}`}
                       onClick={() => onCorrect(a.id)}

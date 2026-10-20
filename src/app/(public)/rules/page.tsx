@@ -16,6 +16,16 @@ export default async function Rules() {
       </div>
     );
   const toc = tableOfContents(page.html);
+  const contents = toc.map((h, i) => (
+    <a
+      key={h.id}
+      href={`#${h.id}`}
+      className="flex gap-3 py-2 text-sm leading-5 text-muted hover:text-primary"
+    >
+      <span className="font-mono text-xs text-muted">{String(i + 1).padStart(2, '0')}</span>
+      {h.text}
+    </a>
+  ));
   return (
     <div className="wrap pb-20">
       <PageHeading
@@ -23,22 +33,23 @@ export default async function Rules() {
         title={page.title}
         description={copy.rulesDescription}
       />
-      <div className="grid items-start gap-12 lg:grid-cols-[240px_1fr]">
-        <aside className="border-l border-white/10 pl-6 lg:sticky lg:top-28">
-          <p className="eyebrow mb-5">IN QUESTA PAGINA</p>
-          <nav aria-label="Rules sections" className="space-y-4">
-            {toc.map((h, i) => (
-              <a
-                key={h.id}
-                href={`#${h.id}`}
-                className="flex gap-3 text-xs leading-5 text-muted hover:text-primary"
-              >
-                <span className="text-white/25">{String(i + 1).padStart(2, '0')}</span>
-                {h.text}
-              </a>
-            ))}
-          </nav>
-          <p className="mt-6 border-t border-white/5 pt-4 text-[10px] text-muted">
+      <div className="rules-layout grid items-start gap-8 lg:grid-cols-[240px_1fr]">
+        <aside className="rules-contents border-l pl-4 lg:sticky lg:top-24">
+          <div className="hidden lg:block">
+            <p className="eyebrow mb-3">IN QUESTA PAGINA</p>
+            <nav aria-label="Rules sections" className="space-y-1">
+              {contents}
+            </nav>
+          </div>
+          <details className="lg:hidden">
+            <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold">
+              In questa pagina
+            </summary>
+            <nav aria-label="Rules sections" className="space-y-1">
+              {contents}
+            </nav>
+          </details>
+          <p className="mt-6 border-t pt-4 text-xs text-muted">
             Aggiornato il{' '}
             {page.createdAt.toLocaleDateString('it-IT', {
               day: 'numeric',

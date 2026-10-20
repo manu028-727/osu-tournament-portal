@@ -104,7 +104,7 @@ export function Notices({ children }: { children: ReactNode }) {
         {notice && (
           <div
             role={notice.error ? 'alert' : 'status'}
-            className={`toast fixed bottom-6 right-6 z-[100] flex max-w-[calc(100vw-48px)] items-start gap-3 rounded-xl border bg-[#25232d] p-4 text-sm shadow-2xl ${notice.error ? 'border-red-300/30' : 'border-primary/30'}`}
+            className={`toast fixed bottom-4 right-4 z-[100] flex max-w-[calc(100vw-32px)] items-start gap-3 rounded-md border bg-card p-4 text-sm shadow-lg ${notice.error ? 'border-red-300/50' : 'border-primary/40'}`}
           >
             {notice.error ? (
               <AlertCircle size={18} className="shrink-0 text-red-300" />
@@ -165,6 +165,13 @@ export function useUnsaved(dirty: boolean) {
     };
   }, [dirty]);
 }
+export function useWorkspacePortal() {
+  const [container, setContainer] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setContainer(document.getElementById('workspace'));
+  }, []);
+  return container;
+}
 export function Modal({
   open,
   onOpenChange,
@@ -180,19 +187,20 @@ export function Modal({
   children: ReactNode;
   wide?: boolean;
 }) {
+  const container = useWorkspacePortal();
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm" />
+      <Dialog.Portal container={container}>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/75" />
         <Dialog.Content
-          className={`fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[calc(100%-32px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border bg-[#1b1b22] p-6 shadow-2xl md:p-8 ${wide ? 'max-w-6xl' : 'max-w-xl'}`}
+          className={`workspace-dialog fixed left-1/2 top-1/2 z-50 max-h-[90dvh] w-[calc(100%-32px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border bg-card p-5 shadow-xl md:p-6 ${wide ? 'max-w-6xl' : 'max-w-xl'}`}
         >
-          <Dialog.Title className="pr-8 text-xl font-semibold tracking-tight">{title}</Dialog.Title>
+          <Dialog.Title className="pr-10 text-xl font-semibold">{title}</Dialog.Title>
           <Dialog.Description className={description ? 'mt-2 text-xs text-muted' : 'sr-only'}>
             {description || title}
           </Dialog.Description>
           <Dialog.Close
-            className="absolute right-5 top-5 rounded p-1 text-muted hover:text-foreground"
+            className="absolute right-2 top-2 flex size-11 items-center justify-center rounded-xl text-muted hover:bg-[var(--surface-hover)] hover:text-foreground"
             aria-label="Close dialog"
           >
             <X size={18} />
@@ -218,28 +226,37 @@ export function ConfirmButton({
   disabled?: boolean;
   variant?: 'destructive' | 'outline' | 'default';
 }) {
+  const container = useWorkspacePortal();
+  const iconOnly = isValidElement<{ size?: number }>(children) && children.props.size !== undefined;
   return (
     <AlertDialog.Root>
       <AlertDialog.Trigger asChild>
-        <Button variant={variant} size="sm" disabled={disabled}>
+        <Button
+          type="button"
+          variant={variant}
+          size="sm"
+          disabled={disabled}
+          title={title}
+          aria-label={iconOnly ? title : undefined}
+        >
           {children}
         </Button>
       </AlertDialog.Trigger>
-      <AlertDialog.Portal>
+      <AlertDialog.Portal container={container}>
         <AlertDialog.Overlay className="fixed inset-0 z-[60] bg-black/75" />
-        <AlertDialog.Content className="fixed left-1/2 top-1/2 z-[60] w-[calc(100%-32px)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-card p-7">
+        <AlertDialog.Content className="fixed left-1/2 top-1/2 z-[60] max-h-[90dvh] w-[calc(100%-32px)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border bg-card p-5">
           <AlertDialog.Title className="text-lg font-semibold">{title}</AlertDialog.Title>
           <AlertDialog.Description className="mt-3 text-sm leading-6 text-muted">
             {description}
           </AlertDialog.Description>
           <div className="mt-7 flex justify-end gap-3">
             <AlertDialog.Cancel asChild>
-              <Button variant="outline" size="sm">
+              <Button type="button" variant="outline" size="sm">
                 Cancel
               </Button>
             </AlertDialog.Cancel>
             <AlertDialog.Action asChild>
-              <Button variant={variant} size="sm" onClick={onConfirm}>
+              <Button type="button" variant={variant} size="sm" onClick={onConfirm}>
                 Confirm
               </Button>
             </AlertDialog.Action>
@@ -273,7 +290,7 @@ export function Field({
       <span id={labelId}>{label}</span>
       {control}
       {hint && (
-        <span id={`${labelId}-hint`} className="text-[11px] font-normal leading-5 text-muted">
+        <span id={`${labelId}-hint`} className="text-xs font-normal leading-5 text-muted">
           {hint}
         </span>
       )}
@@ -282,17 +299,19 @@ export function Field({
 }
 export function LoadingState({ error, retry }: { error?: string; retry?: () => void }) {
   return error ? (
-    <div role="alert" className="card p-8">
-      <AlertCircle size={22} className="mb-4 text-primary" />
+    <div role="alert" className="border-l-2 border-red-300 bg-red-300/5 p-5">
+      <AlertCircle size={20} className="mb-3 text-red-300" />
       <p className="mb-4 text-sm">{error}</p>
       <Button variant="outline" onClick={retry}>
         Try again
       </Button>
     </div>
   ) : (
-    <div role="status" aria-label="Loading" className="space-y-5">
-      <div className="skeleton h-28 rounded-xl" />
-      <div className="skeleton h-80 rounded-xl" />
+    <div role="status" aria-label="Loading" className="space-y-3">
+      <div className="skeleton h-8 max-w-64 rounded" />
+      <div className="skeleton h-12 rounded" />
+      <div className="skeleton h-12 rounded" />
+      <div className="skeleton h-12 rounded" />
     </div>
   );
 }
@@ -389,10 +408,10 @@ export function SectionTitle({
   children?: ReactNode;
 }) {
   return (
-    <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-[-.04em]">{title}</h1>
-        {description && <p className="mt-3 max-w-xl text-xs leading-6 text-muted">{description}</p>}
+    <div className="workspace-heading mb-6 flex min-w-0 flex-wrap items-center justify-between gap-4 border-b pb-5">
+      <div className="min-w-0">
+        <h1 className="text-2xl font-semibold">{title}</h1>
+        {description && <p className="mt-2 max-w-2xl text-sm text-muted">{description}</p>}
       </div>
       {children}
     </div>

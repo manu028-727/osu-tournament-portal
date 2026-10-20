@@ -1,4 +1,4 @@
-import { ContentBlocks, EmptyState } from '@/components/content';
+import { ContentBlocks } from '@/components/content';
 import { getTournament, publicPage } from '@/lib/queries';
 import type { PageContent, TournamentView } from '@/lib/types';
 import { db } from '@/lib/db';
@@ -12,17 +12,13 @@ export default async function Home() {
   )
     return <TournamentDirectory />;
   const [page, tournament] = await Promise.all([publicPage('home'), getTournament()]);
-  return page ? (
+  return (
     <ContentBlocks
-      page={page as unknown as PageContent}
+      showHeader={false}
+      page={
+        (page || { id: '', title: tournament.name, html: '', blocks: [] }) as unknown as PageContent
+      }
       tournament={tournament as unknown as TournamentView}
     />
-  ) : (
-    <div className="wrap py-20">
-      <EmptyState
-        title={tournament.name}
-        description="Gli organizzatori stanno preparando questa pagina."
-      />
-    </div>
   );
 }

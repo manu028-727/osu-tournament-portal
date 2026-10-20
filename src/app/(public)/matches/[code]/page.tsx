@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { ArrowLeft, ExternalLink, Users } from 'lucide-react';
 import { publicMatches, publicMatchHistory } from '@/lib/public-matches';
 import { matchTime, PUBLIC_MATCH_STATUS, bracketEntrant } from '@/lib/match-display';
-import { Badge } from '@/components/ui/badge';
+import { MatchStatusBadge } from '@/components/ui/badge';
 export async function generateMetadata({ params }: { params: Promise<{ code: string }> }) {
   const m = (await publicMatches({ code: (await params).code }))[0];
   return {
@@ -14,36 +14,36 @@ export default async function Match({ params }: { params: Promise<{ code: string
   const m = await publicMatchHistory((await params).code);
   if (!m) notFound();
   return (
-    <div className="wrap py-12 md:py-16">
+    <div className="wrap py-8">
       <Link href="/matches" className="inline-flex items-center gap-2 text-sm text-primary">
         <ArrowLeft size={18} />
         Tutti gli incontri
       </Link>
-      <header className="mt-8 border-b pb-8">
+      <header className="public-scoreboard mt-6 border-b pb-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <p className="text-muted">
             Incontro #{m.code} · {m.stage.name} · {m.bracket}
           </p>
-          <Badge>{PUBLIC_MATCH_STATUS[m.status]}</Badge>
+          <MatchStatusBadge status={m.status}>{PUBLIC_MATCH_STATUS[m.status]}</MatchStatusBadge>
         </div>
         <h1 className="sr-only">
           {m.participants.A.name} contro {m.participants.B.name}
         </h1>
-        <div className="my-8 grid grid-cols-2 items-center gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+        <div className="my-5 grid grid-cols-2 items-center gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
           {(['A', 'B'] as const).map((side, i) => (
             <div
               key={side}
               className={`min-w-0 ${i ? 'col-start-2 row-start-2 text-right sm:col-start-3 sm:row-start-1' : 'col-start-1 row-start-2 sm:row-start-1'}`}
             >
               <h2
-                className={`break-words text-2xl font-semibold md:text-3xl ${i ? 'text-sky-200' : 'text-red-200'}`}
+                className={`break-words text-xl font-semibold md:text-2xl ${i ? 'text-sky-200' : 'text-red-200'}`}
               >
                 {m.participants[side].name}
               </h2>
               {m.forfeitSide === side && <p className="mt-2 text-sm text-amber-200">Forfait</p>}
             </div>
           ))}
-          <p className="col-span-2 row-start-1 whitespace-nowrap text-center text-4xl font-semibold sm:col-span-1 sm:col-start-2">
+          <p className="col-span-2 row-start-1 whitespace-nowrap text-center font-mono text-3xl tabular-nums sm:col-span-1 sm:col-start-2">
             {m.status === 'SCHEDULED'
               ? 'vs'
               : `${m.forfeitSide === 'A' ? 'FF' : m.scoreA} : ${m.forfeitSide === 'B' ? 'FF' : m.scoreB}`}
@@ -53,7 +53,7 @@ export default async function Match({ params }: { params: Promise<{ code: string
           {matchTime(m.scheduledAt, m.timezone)} · {m.timezone}
         </p>
       </header>
-      <dl className="my-8 grid gap-6 border-b pb-8 sm:grid-cols-3">
+      <dl className="my-5 grid gap-4 border-b pb-5 sm:grid-cols-3">
         {[
           ['Referee', m.credits.referee],
           ['Streamer', m.credits.streamer],
@@ -90,7 +90,7 @@ export default async function Match({ params }: { params: Promise<{ code: string
         <section aria-label="Match action history" className="mt-8 border-y py-6">
           <h2 className="mb-4 text-xl font-semibold">Cronologia della partita</h2>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="history-table w-full text-left text-sm">
               <thead className="text-muted">
                 <tr>
                   <th className="px-2 py-3">#</th>

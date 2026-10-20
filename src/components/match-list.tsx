@@ -1,6 +1,6 @@
 import Link from '@/components/tournament-scope';
 import { ArrowUpRight } from 'lucide-react';
-import { Badge } from './ui/badge';
+import { MatchStatusBadge } from './ui/badge';
 import { matchTime, PUBLIC_MATCH_STATUS } from '@/lib/match-display';
 import type { PublicMatch } from '@/lib/public-matches';
 
@@ -12,15 +12,16 @@ export function MatchList({ matches }: { matches: PublicMatch[] }) {
           <Link
             key={m.id}
             href={`/matches/${encodeURIComponent(m.code)}`}
-            className="block border-b py-5"
+            className="block border-b py-4"
+            data-match-status={m.status}
             aria-label={`Apri incontro ${m.code}`}
           >
-            <div className="mb-4 flex items-start justify-between gap-3">
+            <div className="mb-3 flex items-start justify-between gap-3">
               <p className="min-w-0 text-xs text-muted">
                 <span className="font-semibold text-primary">#{m.code}</span> · {m.stage.name}
                 <span className="mt-1 block">{m.bracket}</span>
               </p>
-              <Badge>{PUBLIC_MATCH_STATUS[m.status]}</Badge>
+              <MatchStatusBadge status={m.status}>{PUBLIC_MATCH_STATUS[m.status]}</MatchStatusBadge>
             </div>
             <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2">
               {(['A', 'B'] as const).map((side) => (
@@ -30,7 +31,7 @@ export function MatchList({ matches }: { matches: PublicMatch[] }) {
                   >
                     {m.participants[side].name}
                   </p>
-                  <p className="min-w-8 text-right text-xl font-semibold">
+                  <p className="min-w-8 text-right font-mono text-xl tabular-nums">
                     {m.status === 'SCHEDULED'
                       ? '?'
                       : m.forfeitSide === side
@@ -56,7 +57,7 @@ export function MatchList({ matches }: { matches: PublicMatch[] }) {
               <th>Incontro</th>
               <th>Squadre</th>
               <th>Risultato</th>
-              <th>Data · Italia</th>
+              <th>Data</th>
               <th>Stato</th>
               <th>
                 <span className="sr-only">Dettagli</span>
@@ -65,7 +66,7 @@ export function MatchList({ matches }: { matches: PublicMatch[] }) {
           </thead>
           <tbody>
             {matches.map((m) => (
-              <tr key={m.id}>
+              <tr key={m.id} data-match-status={m.status}>
                 <td className="min-w-32">
                   <Link
                     className="font-semibold text-primary"
@@ -81,7 +82,7 @@ export function MatchList({ matches }: { matches: PublicMatch[] }) {
                   <p className="text-red-200">{m.participants.A.name}</p>
                   <p className="mt-1 text-sky-200">{m.participants.B.name}</p>
                 </td>
-                <td className="whitespace-nowrap text-lg font-semibold">
+                <td className="whitespace-nowrap font-mono text-lg tabular-nums">
                   {m.status === 'SCHEDULED'
                     ? 'vs'
                     : `${m.forfeitSide === 'A' ? 'FF' : m.scoreA} : ${m.forfeitSide === 'B' ? 'FF' : m.scoreB}`}
@@ -90,11 +91,13 @@ export function MatchList({ matches }: { matches: PublicMatch[] }) {
                   {matchTime(m.scheduledAt, m.timezone)}
                 </td>
                 <td>
-                  <Badge>{PUBLIC_MATCH_STATUS[m.status]}</Badge>
+                  <MatchStatusBadge status={m.status}>
+                    {PUBLIC_MATCH_STATUS[m.status]}
+                  </MatchStatusBadge>
                 </td>
                 <td>
                   <Link
-                    className="inline-flex size-10 items-center justify-center rounded-md hover:bg-white/5"
+                    className="inline-flex size-10 items-center justify-center rounded-md hover:bg-[var(--surface-hover)]"
                     href={`/matches/${encodeURIComponent(m.code)}`}
                     aria-label={`Apri incontro ${m.code}`}
                     title="Dettagli incontro"

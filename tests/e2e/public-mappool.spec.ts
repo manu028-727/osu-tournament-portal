@@ -190,7 +190,7 @@ for (const width of [1920, 1366, 768, 390, 320]) {
       expect(frame.insets).toEqual([11, 11, 11, 11]);
       expect(frame.border).toBe('1px');
       expect(frame.borderStyle).toBe('solid');
-      expect(frame.radius).toBe('8px');
+      expect(frame.radius).toBe('16px');
       const layout = await list.evaluate((node) => ({
         left: node.getBoundingClientRect().left,
         width: node.getBoundingClientRect().width,
@@ -355,7 +355,9 @@ for (const width of [1920, 1366, 768, 390, 320]) {
   });
 }
 
-test('group colors stay behind the cards without tinting their pixels', async ({ page }) => {
+test('group colors stay behind the cards without tinting their pixels', async ({
+  page,
+}, testInfo) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto(`/mappools/${slug}`);
   const section = page.getByRole('region', { name: 'Categoria NM', exact: true });
@@ -364,8 +366,15 @@ test('group colors stay behind the cards without tinting their pixels', async ({
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).not.toBeVisible();
+  // Compare artwork, not the browser's subpixel focus-ring rasterization.
+  await card.getByRole('button', { name: 'Dettagli NM1', exact: true }).blur();
+  await page.mouse.move(0, 0);
   await card.scrollIntoViewIfNeeded();
   await expect(card.locator('img')).toHaveJSProperty('complete', true);
+  await card.locator('img').evaluate(async (image) => {
+    await (image as HTMLImageElement).decode();
+  });
+  await page.evaluate(() => document.fonts.ready);
   const box = (await card.boundingBox())!;
   const clip = { x: box.x + 12, y: box.y + 4, width: box.width - 24, height: box.height - 8 };
   const before = await page.screenshot({ clip });
@@ -377,6 +386,10 @@ test('group colors stay behind the cards without tinting their pixels', async ({
       (node as HTMLElement).style.setProperty('--mod-color', '#00ff00'),
     );
     const after = await page.screenshot({ clip });
+    if (!after.equals(before)) {
+      await testInfo.attach('card-before', { body: before, contentType: 'image/png' });
+      await testInfo.attach('card-after', { body: after, contentType: 'image/png' });
+    }
     expect(after.equals(before)).toBe(true);
   } finally {
     await section.evaluate(

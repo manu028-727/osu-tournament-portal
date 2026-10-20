@@ -40,12 +40,7 @@ export function MediaLibrary({ onSelect }: { onSelect?: (url: string) => void })
   };
   return (
     <>
-      {!onSelect && (
-        <SectionTitle
-          title="Media library"
-          description="Your tournament’s visual identity, all in one place. Images are optimized and stored for reuse."
-        />
-      )}
+      {!onSelect && <SectionTitle title="Media library" />}
       <input
         ref={input}
         type="file"
@@ -71,13 +66,13 @@ export function MediaLibrary({ onSelect }: { onSelect?: (url: string) => void })
           setDrag(false);
           upload(e.dataTransfer.files);
         }}
-        className={`mb-7 flex w-full flex-col items-center gap-3 rounded-xl border border-dashed px-6 py-10 ${drag ? 'border-primary bg-primary/10' : 'border-white/20 bg-white/[.02] hover:border-primary/40'}`}
+        className={`mb-6 flex w-full flex-wrap items-center justify-center gap-3 rounded-lg border border-dashed px-4 py-5 ${drag ? 'border-primary bg-primary/10' : 'bg-card hover:border-primary/40'}`}
       >
         <Upload size={24} className="text-primary" />
         <span className="text-sm font-medium">
           {busy ? 'Uploading images…' : 'Drop your images here, or click to browse'}
         </span>
-        <span className="text-[11px] text-muted">
+        <span className="w-full text-xs text-muted">
           PNG, JPEG, WebP or AVIF · Up to 4 MB each · Optimized to WebP
         </span>
       </button>
@@ -99,7 +94,7 @@ export function MediaLibrary({ onSelect }: { onSelect?: (url: string) => void })
                 <p className="truncate text-xs font-medium" title={a.name}>
                   {a.name}
                 </p>
-                <p className="mt-2 text-[10px] text-muted">
+                <p className="mt-2 text-xs text-muted">
                   {a.width} × {a.height} · {Math.round(a.size / 1024)} KB
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
@@ -141,9 +136,8 @@ export function MediaLibrary({ onSelect }: { onSelect?: (url: string) => void })
           ))}
         </div>
       ) : (
-        <div className="card py-12 text-center">
-          <ImagePlus className="mx-auto mb-4 text-muted" />
-          <p className="text-sm text-muted">Your library is ready for its first image.</p>
+        <div className="border-b py-6">
+          <p className="text-sm text-muted">No images uploaded.</p>
         </div>
       )}
     </>
