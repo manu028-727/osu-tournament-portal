@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { Client } from 'irc-framework';
+import type { Client } from 'irc-framework';
+import { BanchoClient } from './bancho-client';
 import { WebSocketServer, WebSocket } from 'ws';
 import {
   ircClientMessage,
@@ -16,6 +17,7 @@ import type {
   IrcDelivery,
   IrcLobby,
   IrcServerEvent,
+  IrcConnectionDiagnostic,
 } from '../../src/lib/irc-types';
 
 export type GatewayRpc = (
@@ -57,12 +59,23 @@ export function createGateway(options: {
   port?: number;
   outcomeMs?: number;
   idleMs?: number;
+  onDiagnostic?: (diagnostic: IrcConnectionDiagnostic) => void;
 }) {
   const sessions = new Map<string, Session>();
   const tickets = new Map<string, number>();
   const upgrades = new Map<string, number[]>();
   const sockets = new Set<WebSocket>();
   const alive = new Set<WebSocket>();
+  function diagnose(
+    nickname: string,
+    stage: IrcConnectionDiagnostic['stage'],
+    source: IrcConnectionDiagnostic['source'],
+    code: string,
+  ): IrcConnectionDiagnostic {
+    const diagnostic = { nickname: ircNickname(nickname), stage, source, code };
+    options.onDiagnostic?.(diagnostic);
+    return diagnostic;
+  }
   const server = createServer((req, res) => {
     res.writeHead(req.url === '/health' ? 200 : 404, {
       'Content-Type': 'application/json',
@@ -239,8 +252,11 @@ export function createGateway(options: {
   async function handle(s: Session, v: Viewer, input: Exclude<IrcClientMessage, { type: 'auth' }>) {
     s.lastActivity = Date.now();
     const authorization = await options.rpc(v.identity, 'authorize');
-    if (ircNickname(String(authorization.username)) !== ircNickname(v.identity.username))
+    const authorizedNick = ircNickname(String(authorization.username));
+    if (authorizedNick !== ircNickname(v.identity.username)) {
+      diagnose(authorizedNick, 'identity', 'gateway', 'USERNAME_CHANGED');
       throw new Error('Your osu! username changed. Refresh before reconnecting.');
+    }
     if (input.type === 'connect') {
       if (s.state !== 'disconnected')
         throw new Error(
@@ -250,15 +266,30 @@ export function createGateway(options: {
       if (s.connectAttempts.length >= 3)
         throw new Error('Too many connection attempts. Wait one minute.');
       s.connectAttempts.push(Date.now());
-      const nick = ircNickname(v.identity.username);
-      const client = new Client();
+      const nick = authorizedNick;
+      const client = new BanchoClient();
+      let stage: IrcConnectionDiagnostic['stage'] = 'connecting';
+      s.username = nick;
       s.irc = client;
       s.state = 'connecting';
       state(s);
-      client.on('registered', () => {
+      diagnose(nick, stage, 'gateway', 'CONNECTING');
+      client.on('socket connected', () => {
+        stage = 'registration';
+        diagnose(nick, stage, 'transport', 'TCP_CONNECTED');
+      });
+      client.on('registered', (event: { nick: string }) => {
+        if (s.irc !== client || s.state !== 'connecting') return;
+        if (event.nick.toLowerCase() !== nick.toLowerCase()) {
+          stage = 'identity';
+          failed('gateway', 'NICKNAME_MISMATCH');
+          return;
+        }
         clearTimeout(s.loginTimer);
         forgetPassword(client);
+        stage = 'connected';
         s.state = 'connected';
+        diagnose(nick, stage, 'bancho', '001');
         client.join('#osu');
         state(s);
       });
@@ -275,6 +306,7 @@ export function createGateway(options: {
         }
       });
       const incoming = (event: { nick?: string; target?: string; message?: string }) => {
+        if (s.irc !== client || s.state !== 'connected') return;
         const sender = event.nick || '',
           text = event.message || '';
         const target = event.target?.startsWith('#')
@@ -330,22 +362,42 @@ export function createGateway(options: {
       };
       client.on('message', incoming);
       client.on('notice', incoming);
-      const failed = () => {
+      const failed = (source: IrcConnectionDiagnostic['source'], code: string) => {
         if (s.irc !== client) return;
+        const diagnostic = diagnose(nick, stage, source, code);
+        const explanation =
+          source === 'gateway'
+            ? 'Gateway refused an IRC identity that does not match your authenticated account.'
+            : source === 'bancho'
+              ? code === '464'
+                ? 'Bancho rejected IRC authentication.'
+                : 'Bancho rejected or ended the IRC connection.'
+              : code === 'TIMEOUT'
+                ? 'IRC connection timed out; no password rejection was received.'
+                : 'IRC transport disconnected; no password rejection was confirmed.';
         disconnect(s);
         broadcast(s, {
           type: 'error',
-          error:
-            'Bancho disconnected or rejected IRC authentication. Verify the separate IRC password; reconnect manually.',
+          error: `${explanation} Nickname: ${nick}; stage: ${stage}; source: ${source}; code: ${code}. Reconnect manually.`,
+          diagnostic,
         });
       };
-      client.on('socket close', failed);
-      client.on('socket error', failed);
-      client.on('nick in use', failed);
-      client.on('nick invalid', failed);
+      // Inspect parsed reply codes only; raw server reasons may echo credentials.
+      client.raw_middleware.use((command, _message, _line, _client, next) => {
+        if (s.irc !== client) return;
+        if ((s.state === 'connecting' && /^[45]\d{2}$/.test(command)) || command === 'ERROR') {
+          failed('bancho', command);
+          return;
+        }
+        next();
+      });
+      client.on('socket close', () => failed('transport', 'SOCKET_CLOSED'));
+      client.on('socket error', () => failed('transport', 'SOCKET_ERROR'));
+      client.on('nick in use', () => failed('bancho', '433'));
+      client.on('nick invalid', () => failed('bancho', '432'));
       client.on('irc error', (event: { error?: string; channel?: string }) => {
         if (s.state === 'connecting' || ['irc', 'password_mismatch'].includes(event.error || '')) {
-          failed();
+          failed('bancho', event.error === 'password_mismatch' ? '464' : 'ERROR');
           return;
         }
         if (event.channel)
@@ -356,7 +408,7 @@ export function createGateway(options: {
             'Bancho rejected this channel or user operation. Check room membership and Bancho referee permissions.',
         });
       });
-      s.loginTimer = setTimeout(failed, 20000);
+      s.loginTimer = setTimeout(() => failed('transport', 'TIMEOUT'), 20000);
       client.connect({
         host: options.host || 'irc.ppy.sh',
         port: options.port || 6667,
@@ -373,7 +425,8 @@ export function createGateway(options: {
       });
       input.password = '';
       client.connection.transport?.socket?.on('data', () => {
-        if ((client.connection.transport?.incoming_buffer?.length || 0) > 65536) failed();
+        if ((client.connection.transport?.incoming_buffer?.length || 0) > 65536)
+          failed('transport', 'BUFFER_LIMIT');
       });
       return;
     }
@@ -499,10 +552,38 @@ export function createGateway(options: {
             parsed = JSON.parse(raw);
           } catch {
             throw new Error('Invalid IRC request.');
+          } finally {
+            raw = '';
+            if (Buffer.isBuffer(data)) data.fill(0);
           }
-          const input = ircClientMessage.parse(parsed);
-          raw = '';
-          if (Buffer.isBuffer(data)) data.fill(0);
+          const validated = ircClientMessage.safeParse(parsed);
+          if (parsed && typeof parsed === 'object' && 'password' in parsed) parsed.password = '';
+          if (!validated.success) {
+            if (
+              viewer &&
+              session &&
+              parsed &&
+              typeof parsed === 'object' &&
+              'type' in parsed &&
+              parsed.type === 'connect'
+            ) {
+              const diagnostic = diagnose(
+                session.username,
+                'validation',
+                'gateway',
+                'INVALID_CONNECT_REQUEST',
+              );
+              send(socket, {
+                type: 'error',
+                error:
+                  'Gateway validation rejected the IRC connection request before contacting Bancho. Use a single-line IRC password of 1-200 printable ASCII characters, without spaces.',
+                diagnostic,
+              });
+              return;
+            }
+            throw new Error('Invalid IRC request.');
+          }
+          const input = validated.data;
           if (!viewer) {
             if (input.type !== 'auth') throw new Error('Authenticate first.');
             const identity = readTicket(input.ticket, options.secret);
@@ -542,7 +623,11 @@ export function createGateway(options: {
             return;
           }
           if (input.type === 'auth') throw new Error('This socket is already authenticated.');
-          await handle(session!, viewer, input);
+          try {
+            await handle(session!, viewer, input);
+          } finally {
+            if (input.type === 'connect') input.password = '';
+          }
         })
         .catch((error: unknown) => {
           send(socket, {

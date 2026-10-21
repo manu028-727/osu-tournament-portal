@@ -4,6 +4,12 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { createHash, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { matchRulesSchema } from '../../src/lib/match-rules';
+import { once } from 'node:events';
+import type { AddressInfo } from 'node:net';
+import { WebSocket } from 'ws';
+import { createGateway } from '../../services/irc/gateway';
+import { mockBancho } from '../helpers/mock-bancho';
+import { rpcHeaders } from '../../src/lib/irc-security';
 const db = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.TEST_DATABASE_URL }),
 });
@@ -147,6 +153,108 @@ test.afterAll(async () => {
   await db.user.deleteMany({ where: { id: { in: accounts.map((a) => a.id) } } });
   await db.beatmap.deleteMany({ where: { id: { in: extraBeatmaps } } });
   await db.$disconnect();
+});
+
+test('IRC browser preserves credentials through the signed gateway and rejects overlong input locally', async ({
+  page,
+  context,
+}) => {
+  test.skip(
+    process.env.IRC_ENABLED !== 'true',
+    'Run with IRC_ENABLED=true and a test-only IRC_GATEWAY_SECRET.',
+  );
+  const secret = process.env.IRC_GATEWAY_SECRET!;
+  expect(secret.length).toBeGreaterThanOrEqual(64);
+  await login(context, 0);
+  const previousUsername = accounts[0].username;
+  const username = `IRC Ref ${Date.now()}`;
+  await db.user.update({ where: { id: accounts[0].id }, data: { username } });
+  accounts[0].username = username;
+  const created = await context.request.post('/api/admin/action?tournament=test-cup', {
+    headers: { Origin: 'http://localhost:3001' },
+    data: {
+      type: 'match.create',
+      code: `${prefix}-irc-auth`,
+      stageId,
+      teamAId,
+      teamBId,
+      refereeIds: [],
+    },
+  });
+  expect(created.ok()).toBe(true);
+  const match = await created.json();
+  const password = ':Browser+%2F/\\"=Token'.padEnd(200, 'z');
+  const mock = mockBancho({ strictRegistration: true, password });
+  mock.server.listen(0, '127.0.0.1');
+  await once(mock.server, 'listening');
+  const gateway = createGateway({
+    origin: 'http://localhost:3001',
+    secret,
+    host: '127.0.0.1',
+    port: (mock.server.address() as AddressInfo).port,
+    async rpc(identity, operation, extra) {
+      const body = JSON.stringify({ identity, operation, ...extra });
+      const result = await fetch('http://localhost:3001/api/internal/irc', {
+        method: 'POST',
+        headers: rpcHeaders(body, secret),
+        body,
+      });
+      if (!result.ok) throw Error('Isolated IRC authorization failed.');
+      return result.json();
+    },
+  });
+  gateway.server.listen(0, '127.0.0.1');
+  await once(gateway.server, 'listening');
+  try {
+    await page.routeWebSocket('**/api/irc/socket', (route) => {
+      const socket = new WebSocket(
+        `ws://127.0.0.1:${(gateway.server.address() as AddressInfo).port}/api/irc/socket`,
+        { origin: 'http://localhost:3001' },
+      );
+      route.onMessage((message) => {
+        if (socket.readyState === WebSocket.OPEN) socket.send(message);
+        else socket.once('open', () => socket.send(message));
+      });
+      socket.on('message', (data) => route.send(data.toString()));
+      socket.on('close', () => route.close());
+      socket.on('error', () => route.close());
+      route.onClose(() => socket.close());
+    });
+    await page.goto(`/t/test-cup/admin/referee/${match.id}`);
+    const panel = page
+      .locator('details')
+      .filter({ has: page.locator('summary').filter({ hasText: 'Bancho IRC' }) });
+    await panel.locator('summary').click();
+    await panel.getByRole('button', { name: 'Open IRC', exact: true }).click();
+    const input = panel.getByLabel('Separate osu! IRC password', { exact: true });
+    await expect(input).toBeVisible();
+    expect(await input.getAttribute('maxlength')).toBeNull();
+    await panel.getByRole('checkbox').check();
+    await input.fill('z'.repeat(201));
+    await panel.getByRole('button', { name: 'Connect to Bancho', exact: true }).click();
+    await expect(panel.getByRole('alert')).toContainText('Browser validation rejected');
+    expect(mock.registrations).toHaveLength(0);
+    await expect(input).toHaveValue('');
+    await input.fill(password);
+    await panel.getByRole('button', { name: 'Connect to Bancho', exact: true }).click();
+    await expect(panel.getByRole('status')).toContainText(/· connected$/);
+    expect(mock.registrations).toEqual([
+      {
+        nickname: username.replaceAll(' ', '_'),
+        commands: ['PASS', 'NICK', 'USER'],
+        passwordMatches: true,
+      },
+    ]);
+    expect(gateway.sessions.get(accounts[0].id)?.irc?.options.password).toBeUndefined();
+    await expect(panel.getByRole('alert')).toHaveCount(0);
+  } finally {
+    await page.close();
+    await gateway.close();
+    await mock.close();
+    await db.match.deleteMany({ where: { id: match.id, code: `${prefix}-irc-auth` } });
+    await db.user.update({ where: { id: accounts[0].id }, data: { username: previousUsername } });
+    accounts[0].username = previousUsername;
+  }
 });
 
 test('guided BO9 completes protects, Blue-first ABBA, corrections, refresh and a tiebreaker entirely in the browser', async ({

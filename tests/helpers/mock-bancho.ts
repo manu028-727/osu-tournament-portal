@@ -1,8 +1,19 @@
 import { createServer, type Socket } from 'node:net';
 
-export function mockBancho(options: { silentCreate?: boolean } = {}) {
+export type MockBanchoOptions = {
+  silentCreate?: boolean;
+  strictRegistration?: boolean;
+  password?: string | ((nickname: string) => string);
+  registrationError?: {
+    code: '464' | 'ERROR' | '432' | '433' | '461';
+    reason: string;
+    lateWelcome?: boolean;
+  };
+};
+export function mockBancho(options: MockBanchoOptions = {}) {
   const sockets = new Set<Socket>();
   const lines: string[] = [];
+  const registrations: { nickname: string; commands: string[]; passwordMatches: boolean }[] = [];
   let made = 100;
   const server = createServer((socket) => {
     sockets.add(socket);
@@ -10,7 +21,10 @@ export function mockBancho(options: { silentCreate?: boolean } = {}) {
     let buffer = '',
       nick = '',
       pass = '',
-      registered = false;
+      registered = false,
+      rejected = false;
+    const registration = { nickname: '', commands: [] as string[], passwordMatches: false };
+    registrations.push(registration);
     const say = (line: string) => socket.write(line + '\r\n');
     socket.on('data', (chunk) => {
       buffer += chunk;
@@ -18,13 +32,49 @@ export function mockBancho(options: { silentCreate?: boolean } = {}) {
         const index = buffer.indexOf('\n');
         const line = buffer.slice(0, index).replace(/\r$/, '');
         buffer = buffer.slice(index + 1);
+        if (rejected) continue;
         if (!line.startsWith('PASS ')) lines.push(line);
+        const command = line.split(' ', 1)[0];
+        if (['CAP', 'PASS', 'NICK', 'USER'].includes(command)) registration.commands.push(command);
+        if (line.startsWith('CAP ') && options.strictRegistration) {
+          say(':mock 421 * CAP :Unknown command');
+          rejected = true;
+          socket.end();
+          continue;
+        }
         if (line.startsWith('PASS ')) pass = line.slice(5).replace(/^:/, '');
         if (line.startsWith('NICK ')) nick = line.slice(5).replace(/^:/, '');
         if (line.startsWith('CAP LS')) say(`:mock CAP ${nick || '*'} LS :`);
         if (line.startsWith('USER ') && !registered) {
-          if (pass !== 'separate-test-irc-password') {
+          registration.nickname = nick;
+          registration.passwordMatches =
+            pass ===
+            (typeof options.password === 'function'
+              ? options.password(nick)
+              : (options.password ?? 'separate-test-irc-password'));
+          pass = '';
+          if (
+            options.strictRegistration &&
+            (registration.commands.join(',') !== 'PASS,NICK,USER' ||
+              line !== `USER ${nick} 0 * :${nick}`)
+          ) {
+            say(`:mock 461 ${nick} USER :Invalid registration format`);
+            rejected = true;
+            socket.end();
+            continue;
+          }
+          if (!registration.passwordMatches) {
             say(`:mock 464 ${nick} :Password incorrect`);
+            socket.end();
+            continue;
+          }
+          if (options.registrationError) {
+            const { code, reason, lateWelcome } = options.registrationError;
+            // Deliberately allow hostile replies in tests; the gateway must never log their text.
+            say(`:BanchoBot!bot@mock NOTICE ${nick} :${reason}`);
+            say(code === 'ERROR' ? `ERROR :${reason}` : `:mock ${code} ${nick} :${reason}`);
+            if (lateWelcome) say(`:mock 001 ${nick} :Late welcome`);
+            rejected = true;
             socket.end();
             continue;
           }
@@ -63,6 +113,7 @@ export function mockBancho(options: { silentCreate?: boolean } = {}) {
     server,
     sockets,
     lines,
+    registrations,
     close: async () => {
       for (const socket of sockets) socket.destroy();
       await new Promise<void>((resolve) => server.close(() => resolve()));

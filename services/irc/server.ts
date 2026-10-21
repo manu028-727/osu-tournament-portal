@@ -9,6 +9,9 @@ const gateway = createGateway({
   secret,
   host: process.env.IRC_SERVER_HOST || 'irc.ppy.sh',
   port: Number(process.env.IRC_SERVER_PORT || 6667),
+  onDiagnostic(diagnostic) {
+    console.info(JSON.stringify({ event: 'irc.connection', ...diagnostic }));
+  },
   async rpc(identity, operation, extra) {
     const body = JSON.stringify({ identity, operation, ...extra });
     const result = await fetch(backend, {

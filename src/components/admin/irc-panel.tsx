@@ -21,6 +21,7 @@ import { api, action, Field, Modal, useTask } from './shared';
 import type { MatchView } from '@/lib/matches-types';
 import type { IrcChatMessage, IrcDelivery, IrcLobby, IrcServerEvent } from '@/lib/irc-types';
 import type { lobbyCommands } from '@/lib/match-engine';
+import { ircClientMessage } from '@/lib/irc-protocol';
 
 type Ticket = {
   ticket: string;
@@ -306,8 +307,20 @@ export function IrcPanel({
                     if (!acknowledged || !password.current) return;
                     let value = password.current.value;
                     password.current.value = '';
-                    send({ type: 'connect', acknowledged: true, password: value });
+                    const request = ircClientMessage.safeParse({
+                      type: 'connect',
+                      acknowledged: true,
+                      password: value,
+                    });
                     value = '';
+                    if (!request.success) {
+                      setError(
+                        'Browser validation rejected the password before contacting the gateway. Use 1-200 printable ASCII characters without spaces or line breaks; the password is never trimmed or truncated.',
+                      );
+                      return;
+                    }
+                    send(request.data);
+                    if (request.data.type === 'connect') request.data.password = '';
                   }}
                 >
                   <label className="flex items-start gap-3 text-sm">
@@ -327,8 +340,10 @@ export function IrcPanel({
                         type="password"
                         name="separate-irc-password"
                         autoComplete="off"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
                         required
-                        maxLength={200}
                         className="max-w-full"
                       />
                     </Field>

@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { WebSocket } from 'ws';
 import type { AddressInfo } from 'node:net';
 import { createGateway, type GatewayRpc } from '../services/irc/gateway';
-import { mockBancho } from './helpers/mock-bancho';
+import { mockBancho, type MockBanchoOptions } from './helpers/mock-bancho';
 import { ircClientMessage, lobbyFromResponse, validateLobbyCommand } from '../src/lib/irc-protocol';
 import {
   signTicket,
@@ -13,7 +13,7 @@ import {
   verifyRpc,
   ircNickname,
 } from '../src/lib/irc-security';
-import type { IrcIdentity, IrcServerEvent } from '../src/lib/irc-types';
+import type { IrcIdentity, IrcServerEvent, IrcConnectionDiagnostic } from '../src/lib/irc-types';
 
 const secret = 'a'.repeat(64),
   origin = 'https://cup.example.com';
@@ -37,18 +37,20 @@ async function until(check: () => boolean, timeout = 3000) {
     await new Promise((r) => setTimeout(r, 10));
   }
 }
-async function fixture(rpc?: GatewayRpc, silentCreate = false) {
-  const mock = mockBancho({ silentCreate });
+async function fixture(rpc?: GatewayRpc, silentCreate = false, options: MockBanchoOptions = {}) {
+  const mock = mockBancho({ silentCreate, ...options });
   mock.server.listen(0, '127.0.0.1');
   await once(mock.server, 'listening');
   cleanup.push(mock.close);
   const recorded: { operation: string; extra?: Record<string, unknown> }[] = [];
+  const diagnostics: IrcConnectionDiagnostic[] = [];
   const gateway = createGateway({
     origin,
     secret,
     host: '127.0.0.1',
     port: (mock.server.address() as AddressInfo).port,
     outcomeMs: 120,
+    onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
     rpc:
       rpc ||
       (async (identity, operation, extra) => {
@@ -74,9 +76,160 @@ async function fixture(rpc?: GatewayRpc, silentCreate = false) {
     await until(() => events.some((e) => e.type === 'state'));
     return { socket, events, send: (input: object) => socket.send(JSON.stringify(input)) };
   }
-  return { mock, gateway, url, browser, recorded };
+  return { mock, gateway, url, browser, recorded, diagnostics };
 }
 describe('IRC security and protocol', () => {
+  it('uses legacy registration without CAP and preserves the exact supplied password', async () => {
+    const password = ':Mixed+%2F/\\"=&?Z' + 'x'.repeat(80);
+    const f = await fixture(undefined, false, { strictRegistration: true, password });
+    const a = await f.browser();
+    a.send({ type: 'connect', acknowledged: true, password });
+    await until(() =>
+      a.events.some((event) => event.type === 'state' && event.channels.includes('#osu')),
+    );
+    expect(f.mock.registrations).toEqual([
+      { nickname: 'Ref_A', commands: ['PASS', 'NICK', 'USER'], passwordMatches: true },
+    ]);
+    expect(f.mock.lines).toContain('USER Ref_A 0 * :Ref_A');
+    expect(JSON.stringify(a.events)).not.toContain(password);
+    expect(f.diagnostics).toEqual([
+      { nickname: 'Ref_A', stage: 'connecting', source: 'gateway', code: 'CONNECTING' },
+      { nickname: 'Ref_A', stage: 'registration', source: 'transport', code: 'TCP_CONNECTED' },
+      { nickname: 'Ref_A', stage: 'connected', source: 'bancho', code: '001' },
+    ]);
+    expect(JSON.stringify(f.diagnostics)).not.toContain(password);
+    expect(JSON.stringify(f.recorded)).not.toContain(password);
+  });
+  it('preserves a 200-character password and keeps different users credentials separate', async () => {
+    const passwords: Record<string, string> = { Ref_A: 'a'.repeat(200), Ref_B: ':B+%2F=Secret' };
+    const f = await fixture(undefined, false, {
+      strictRegistration: true,
+      password: (nick) => passwords[nick],
+    });
+    const a = await f.browser();
+    const b = await f.browser(claims('ref-b'));
+    a.send({ type: 'connect', acknowledged: true, password: passwords.Ref_A });
+    b.send({ type: 'connect', acknowledged: true, password: passwords.Ref_B });
+    await until(
+      () =>
+        a.events.some((e) => e.type === 'state' && e.channels.includes('#osu')) &&
+        b.events.some((e) => e.type === 'state' && e.channels.includes('#osu')),
+    );
+    expect(
+      f.mock.registrations.map((r) => ({
+        nickname: r.nickname,
+        passwordMatches: r.passwordMatches,
+      })),
+    ).toEqual(
+      expect.arrayContaining([
+        { nickname: 'Ref_A', passwordMatches: true },
+        { nickname: 'Ref_B', passwordMatches: true },
+      ]),
+    );
+    for (const password of Object.values(passwords)) {
+      expect(JSON.stringify([...a.events, ...b.events])).not.toContain(password);
+      expect(JSON.stringify(f.diagnostics)).not.toContain(password);
+      expect(JSON.stringify(f.mock.lines)).not.toContain(password);
+    }
+  });
+  it('rejects invalid passwords locally without trimming, truncating or contacting Bancho', async () => {
+    const f = await fixture(undefined, false, { strictRegistration: true });
+    const a = await f.browser();
+    const invalid = ['', 'x'.repeat(201), ' correct ', 'secret\r\nNICK Other', 'secret\0'];
+    for (const [index, password] of invalid.entries()) {
+      a.send({ type: 'connect', acknowledged: true, password });
+      await until(() => f.diagnostics.length > index);
+      expect(f.diagnostics.at(-1)).toEqual({
+        nickname: 'Ref_A',
+        stage: 'validation',
+        source: 'gateway',
+        code: 'INVALID_CONNECT_REQUEST',
+      });
+    }
+    expect(f.mock.registrations).toHaveLength(0);
+    expect(a.events.filter((e) => e.type === 'error')).toHaveLength(invalid.length);
+    expect(JSON.stringify(a.events)).not.toContain('secret');
+  });
+  it('reports a transport failure without claiming Bancho rejected the password', async () => {
+    const f = await fixture();
+    const a = await f.browser();
+    await f.mock.close();
+    a.send({ type: 'connect', acknowledged: true, password: 'separate-test-irc-password' });
+    await until(() =>
+      a.events.some((e) => e.type === 'error' && e.diagnostic?.source === 'transport'),
+    );
+    expect(f.diagnostics.at(-1)).toMatchObject({
+      nickname: 'Ref_A',
+      stage: 'connecting',
+      source: 'transport',
+    });
+    expect(['SOCKET_ERROR', 'SOCKET_CLOSED']).toContain(f.diagnostics.at(-1)?.code);
+    expect(f.gateway.sessions.get('ref-a')?.state).toBe('disconnected');
+    expect(a.events.some((e) => e.type === 'error' && e.error.includes('Bancho rejected'))).toBe(
+      false,
+    );
+  });
+  it('rechecks the authenticated current username and refuses stale identity claims', async () => {
+    let username = 'Ref A';
+    const f = await fixture(async () => ({ username }), false, { strictRegistration: true });
+    const old = await f.browser();
+    username = '[Renamed Ref]';
+    old.send({ type: 'connect', acknowledged: true, password: 'separate-test-irc-password' });
+    await until(() =>
+      old.events.some((e) => e.type === 'error' && e.error.includes('username changed')),
+    );
+    expect(f.mock.registrations).toHaveLength(0);
+    expect(f.diagnostics.at(-1)).toEqual({
+      nickname: '[Renamed_Ref]',
+      stage: 'identity',
+      source: 'gateway',
+      code: 'USERNAME_CHANGED',
+    });
+    const current = await f.browser({ ...claims(), username });
+    current.send({ type: 'connect', acknowledged: true, password: 'separate-test-irc-password' });
+    await until(() => f.gateway.sessions.get('ref-a')?.state === 'connected');
+    expect(f.mock.registrations[0]).toEqual({
+      nickname: '[Renamed_Ref]',
+      commands: ['PASS', 'NICK', 'USER'],
+      passwordMatches: true,
+    });
+    expect(f.gateway.sessions.get('ref-a')?.username).toBe('[Renamed_Ref]');
+  });
+  it.each(['464', 'ERROR', '432', '433', '461'] as const)(
+    'identifies upstream %s without exposing server reply text or reviving a failed login',
+    async (code) => {
+      const password = 'private-test-token-%2F+Secret';
+      const f = await fixture(undefined, false, {
+        strictRegistration: true,
+        password,
+        registrationError: {
+          code,
+          reason: `Bad authentication: PASS ${password}`,
+          lateWelcome: true,
+        },
+      });
+      const a = await f.browser();
+      a.send({ type: 'connect', acknowledged: true, password });
+      await until(() => a.events.some((e) => e.type === 'error' && e.diagnostic?.code === code));
+      const errors = a.events.filter((e) => e.type === 'error');
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({
+        diagnostic: { nickname: 'Ref_A', stage: 'registration', source: 'bancho', code },
+      });
+      expect(f.gateway.sessions.get('ref-a')?.state).toBe('disconnected');
+      expect(a.events.some((e) => e.type === 'state' && e.state === 'connected')).toBe(false);
+      expect(f.mock.lines.some((line) => line.startsWith('JOIN '))).toBe(false);
+      expect(JSON.stringify(a.events)).not.toContain(password);
+      expect(JSON.stringify(f.diagnostics)).not.toContain(password);
+      expect(JSON.stringify(f.diagnostics)).not.toContain('PASS');
+      expect(f.diagnostics.at(-1)).toEqual({
+        nickname: 'Ref_A',
+        stage: 'registration',
+        source: 'bancho',
+        code,
+      });
+    },
+  );
   it('rejects forged/expired tickets and RPC replays with altered content', () => {
     const identity = claims();
     expect(readTicket(signTicket(identity, secret), secret)).toEqual(identity);

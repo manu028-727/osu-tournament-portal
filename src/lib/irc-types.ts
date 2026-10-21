@@ -28,6 +28,12 @@ export type IrcLobby = {
   url: string;
   channel: string;
 };
+export type IrcConnectionDiagnostic = {
+  nickname: string;
+  stage: 'validation' | 'identity' | 'connecting' | 'registration' | 'connected';
+  source: 'gateway' | 'bancho' | 'transport';
+  code: string;
+};
 export type IrcServerEvent =
   | { type: 'resolved'; requestId: string }
   | {
@@ -42,4 +48,4 @@ export type IrcServerEvent =
   | { type: 'message'; message: IrcChatMessage }
   | { type: 'delivery'; delivery: IrcDelivery }
   | { type: 'lobby'; lobby: IrcLobby }
-  | { type: 'error'; error: string };
+  | { type: 'error'; error: string; diagnostic?: IrcConnectionDiagnostic };

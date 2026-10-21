@@ -39,6 +39,81 @@ Buffers, sessions, message lengths, queues and rates are bounded. Chat/receipts 
 ephemeral; linked URLs, creation guards and recorded referee history persist. One
 gateway instance is supported; horizontal sharding is not implemented.
 
+## Registration and Safe Diagnostics
+
+The gateway reauthorizes the signed-in referee's identity before connecting. It
+uses the current username returned by the website, replacing spaces with
+underscores for both nickname and username. Stale identity tickets require a
+refresh; the gateway never substitutes an organizer account or configured bot.
+If the osu! account was renamed since the last OAuth login, sign in again to
+refresh the website profile first.
+
+The Bancho-specific `irc-framework` subclass sends `PASS`, then `NICK`, then
+`USER <nickname> 0 * :<nickname>`, using CRLF framing. It does not send the generic
+client's initial `CAP LS 302` or negotiate SASL/NickServ. The original generic
+registration plus the gateway's catch-all login-error handler reproduced a false
+password failure when a strict mock rejected CAP with 421. The previous mock
+accepted CAP, so it did not exercise this compatibility failure.
+This establishes a reproducible gateway bug, not the exact response from a
+particular live deployment: the no-credential Bancho capability probe from this
+development host timed out. No real user password was requested or tested.
+Use the new safe upstream code to diagnose any remaining live rejection.
+
+Passwords are passed verbatim through JSON/WebSocket and the IRC parameter
+encoder, without trimming, hashing, URL decoding or Base64 encoding. Validation
+requires 1-200 printable ASCII characters without spaces or control characters.
+Invalid input is rejected explicitly; it is never silently shortened to fit the
+limit. A single IRC trailing-parameter colon, when needed, is framing and is not
+part of the password. Password fields disable autocapitalization/correction and
+are cleared after submission.
+
+The match panel shows a connection error with nickname, stage, source and code.
+Gateway stdout emits structured `irc.connection` events containing only those
+same fields. It never prints raw IRC traffic, server error reasons, passwords,
+authentication commands, tickets or website session hashes. Pre-registration
+notices are not forwarded into the chat history.
+
+Interpret `source` before assuming the password is wrong:
+
+- `gateway`, `validation`, `INVALID_CONNECT_REQUEST`: local validation rejected
+  the request; no IRC connection was attempted.
+- `gateway`, `identity`, `USERNAME_CHANGED` or `NICKNAME_MISMATCH`: the identity
+  must be refreshed or did not match the server welcome; no alternate nickname
+  is tried.
+- `transport`, `connecting` or `registration`: socket failure or timeout, not a
+  confirmed password rejection.
+- `bancho`, `registration`, `464`: the upstream IRC server rejected authentication.
+- `bancho`, `registration`, `432`/`433`: nickname rejection/collision.
+- `bancho`, `registration`, `421`/`461`: command/registration compatibility failure.
+- `bancho`, `ERROR`: the upstream server ended the connection. This alone does
+  not prove a wrong password; the raw reason is deliberately not retained.
+- `bancho`, `connected`, `001`: successful registration, followed by joining `#osu`.
+
+Inspect safe diagnostics using `./portal compose logs --tail=100 irc-gateway`.
+Rebuild/recreate the gateway after updating its source, and rebuild web for the
+password-input change; starting an existing image alone does not apply the fix:
+
+```bash
+./portal compose build web irc-gateway
+./portal compose up -d web irc-gateway
+```
+
+Mock TCP tests verify the exact command order/USER format, special-character and
+200-character password fidelity, stale usernames, user isolation, local rejection,
+upstream numerics/ERROR, transport failures, and secret-free diagnostics. An opt-in
+browser test in `tests/e2e/referee.spec.ts` exercises real website ticket issuance,
+signed authorization RPC and WebSocket delivery to the strict mock. Run it with
+`IRC_ENABLED=true` and a temporary, test-only `IRC_GATEWAY_SECRET` of at least 64
+characters in the isolated E2E environment. Never use real IRC passwords in tests.
+
+Verification for this fix: the strict registration test failed against the old
+gateway and passed after the change. All **163 unit tests** (including **19 IRC
+tests**), **63 database integration tests**, and **7 referee browser tests** passed.
+The production Next.js build, gateway esbuild bundle, TypeScript, lint, formatting
+and changed-source secret scan also passed. The browser test uses loopback HTTP/WS
+and mock Bancho, not real user credentials or the live tournament database. No
+Docker networks, production services or database migrations were changed.
+
 Automated tests use mock TCP Bancho and the actual HTTPS/WSS transport. Live Bancho
 credentials/rooms are not verified. Real tests require explicit disposable-room
 authorization; never test disruptive commands against active tournament matches.
