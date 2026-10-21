@@ -657,7 +657,13 @@ function EditCompetitionNode({
   const base = { id: bracket.id, baseVersion: bracket.version, nodeId: node.id, side };
   return (
     <Modal
-      title={node.match?.code || node.key}
+      title={
+        node.match
+          ? `Match ${node.match.matchNumber}`
+          : node.matchNumber
+            ? `Match ${node.matchNumber}`
+            : node.key
+      }
       open
       onOpenChange={(open) => {
         if (!open) close();
@@ -762,7 +768,12 @@ function EditCompetitionNode({
                         .filter((n) => n.id !== node.id)
                         .map((n) => (
                           <option key={n.id} value={n.id}>
-                            {b.name} / {n.match?.code || n.key}
+                            {b.name} /{' '}
+                            {n.match
+                              ? `Match ${n.match.matchNumber}`
+                              : n.matchNumber
+                                ? `Match ${n.matchNumber}`
+                                : n.key}
                           </option>
                         )),
                     )}

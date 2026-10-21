@@ -14,6 +14,9 @@ import { matchDiscordResult } from '../src/lib/discord-result';
 import type { MatchView } from '../src/lib/matches-types';
 import { type Actor, type PermissionKey } from '../src/lib/permissions';
 const prefix = `ref-${Date.now()}`;
+const testOffset = Date.now() % 1_000_000;
+const accountOsuIds = [941000001, 941000002, 941000003, 941000004].map((id) => id + testOffset);
+const participantOsuIds = [951000001, 951000002, 951000003, 951000004].map((id) => id + testOffset);
 let owner: Actor,
   referee: Actor,
   outsider: Actor,
@@ -23,9 +26,11 @@ let owner: Actor,
   revisionId: string,
   matchId: string,
   teamAId: string,
-  teamBId: string;
+  teamBId: string,
+  teamCId: string;
 const userIds: string[] = [];
 const qualifierStageIds: string[] = [];
+const allocatedMatchIds: string[] = [];
 const act = (actor: Actor | null, input: unknown) =>
   executeAction(actor, actionSchema.parse(input));
 async function account(osuId: number, systemKey: string): Promise<Actor> {
@@ -56,11 +61,11 @@ async function change(actor: Actor, type: string, fields: object = {}) {
 beforeAll(async () => {
   if (new URL(process.env.DATABASE_URL!).pathname !== '/tournament_platform_test')
     throw Error('Test database only.');
-  owner = await account(941000001, 'Owner');
-  referee = await account(941000002, 'Referee');
-  outsider = await account(941000003, 'Referee');
-  guest = await account(941000004, 'Guest');
-  for (const osuId of [951000001, 951000002, 951000003])
+  owner = await account(accountOsuIds[0], 'Owner');
+  referee = await account(accountOsuIds[1], 'Referee');
+  outsider = await account(accountOsuIds[2], 'Referee');
+  guest = await account(accountOsuIds[3], 'Guest');
+  for (const osuId of participantOsuIds)
     await db.participant.create({
       data: { osuId, username: `${prefix}-${osuId}`, avatarUrl: 'https://a.ppy.sh/1' },
     });
@@ -75,8 +80,9 @@ beforeAll(async () => {
         },
       })
     ).id;
-  teamAId = await createTeam('A', 951000001);
-  teamBId = await createTeam('B', 951000002);
+  teamAId = await createTeam('A', participantOsuIds[0]);
+  teamBId = await createTeam('B', participantOsuIds[1]);
+  teamCId = await createTeam('C', participantOsuIds[2]);
   const stage = await db.tournamentStage.create({
     data: { name: prefix, slug: prefix, mappool: { create: {} } },
     include: { mappool: true },
@@ -142,15 +148,70 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await db.qualifierLobby.deleteMany({ where: { code: { startsWith: prefix } } });
-  await db.match.deleteMany({ where: { code: { startsWith: prefix } } });
+  await db.match.deleteMany({
+    where: { OR: [{ code: { startsWith: prefix } }, { id: { in: allocatedMatchIds } }] },
+  });
   if (stageId)
     await db.tournamentStage.deleteMany({ where: { id: { in: [stageId, ...qualifierStageIds] } } });
-  await db.team.deleteMany({ where: { id: { in: [teamAId, teamBId].filter(Boolean) } } });
-  await db.participant.deleteMany({ where: { osuId: { in: [951000001, 951000002, 951000003] } } });
+  await db.team.deleteMany({
+    where: { id: { in: [teamAId, teamBId, teamCId].filter(Boolean) } },
+  });
+  await db.participant.deleteMany({ where: { osuId: { in: participantOsuIds } } });
   await db.user.deleteMany({ where: { id: { in: userIds } } });
   await db.$disconnect();
 });
 describe.sequential('assigned referee and persistent match workflows', () => {
+  it('assigns stable tournament numbers to numeric and concurrent manual matches', async () => {
+    const sequence = (
+      await db.tournament.findUniqueOrThrow({
+        where: { id: owner.tournamentId || 'main' },
+        select: { matchNumberSequence: true },
+      })
+    ).matchNumberSequence;
+    const numericCode = String(sequence + 1);
+    const first = (await act(owner, {
+      type: 'match.create',
+      code: numericCode,
+      stageId,
+      teamAId,
+      teamBId,
+      refereeIds: [],
+    })) as { id: string; matchNumber: number };
+    allocatedMatchIds.push(first.id);
+    expect(first.matchNumber).toBe(sequence + 1);
+
+    const created = await Promise.all(
+      [
+        { code: `${prefix}-parallel-a`, teamAId, teamBId: teamCId },
+        { code: `${prefix}-parallel-b`, teamAId: teamBId, teamBId: teamCId },
+        { code: `${prefix}-parallel-c`, teamAId: teamCId, teamBId: teamAId },
+      ].map(
+        async ({ code, teamAId: sideA, teamBId: sideB }, index) =>
+          (await act(owner, {
+            type: 'match.create',
+            code,
+            stageId,
+            teamAId: sideA,
+            teamBId: sideB,
+            refereeIds: [],
+            scheduledAt: new Date(Date.UTC(2099, 0, index + 1)).toISOString(),
+          })) as { id: string; matchNumber: number },
+      ),
+    );
+    const numbers = [first.matchNumber, ...created.map((match) => match.matchNumber)];
+    allocatedMatchIds.push(...created.map((match) => match.id));
+    expect([...numbers].sort((a, b) => a - b)).toEqual([
+      sequence + 1,
+      sequence + 2,
+      sequence + 3,
+      sequence + 4,
+    ]);
+    expect(new Set(numbers).size).toBe(numbers.length);
+    await expect(
+      db.match.update({ where: { id: first.id }, data: { matchNumber: sequence + 100 } }),
+    ).rejects.toThrow(/cannot be changed/i);
+  });
+
   it('permanently removes an explicitly confirmed match and cascades history while preserving its audit record', async () => {
     const code = `${prefix}-delete`;
     const created = (await act(owner, {
@@ -248,8 +309,8 @@ describe.sequential('assigned referee and persistent match workflows', () => {
       scoreB: 50,
       reason: 'Test score entry',
       players: [
-        { osuId: 951000001, side: 'A', score: 100, mods: ['NF'] },
-        { osuId: 951000002, side: 'B', score: 50, mods: ['NF'] },
+        { osuId: participantOsuIds[0], side: 'A', score: 100, mods: ['NF'] },
+        { osuId: participantOsuIds[1], side: 'B', score: 50, mods: ['NF'] },
       ],
     });
     await db.multiplayerGame.create({
@@ -280,7 +341,9 @@ describe.sequential('assigned referee and persistent match workflows', () => {
     ])
       expect(await count).toBe(0);
     expect(
-      await db.matchPlayerScore.count({ where: { osuId: { in: [951000001, 951000002] } } }),
+      await db.matchPlayerScore.count({
+        where: { osuId: { in: [participantOsuIds[0], participantOsuIds[1]] } },
+      }),
     ).toBe(0);
     expect(
       await db.auditLog.findFirst({ where: { entityId: m.id, action: 'match.delete' } }),
@@ -569,7 +632,7 @@ describe.sequential('assigned referee and persistent match workflows', () => {
     ).rejects.toThrow('scores');
     await expect(
       update(referee, 'qualifier.score', {
-        osuId: 951000003,
+        osuId: participantOsuIds[2],
         slotName: 'NM1',
         raw: 1,
         mods: ['NF'],
@@ -578,7 +641,7 @@ describe.sequential('assigned referee and persistent match workflows', () => {
     ).rejects.toThrow('snapshotted');
     const slots = await db.mappoolSlot.findMany({ where: { revisionId } });
     for (const slot of slots)
-      for (const [i, osuId] of [951000001, 951000002].entries())
+      for (const [i, osuId] of participantOsuIds.slice(0, 2).entries())
         await update(referee, 'qualifier.score', {
           osuId,
           slotName: slot.name,
@@ -587,7 +650,7 @@ describe.sequential('assigned referee and persistent match workflows', () => {
           reason: 'Recorded multiplayer score',
         });
     const first = await db.qualifierScore.findFirstOrThrow({
-      where: { lobbyId: lobby.id, osuId: 951000001, slotName: 'NM1' },
+      where: { lobbyId: lobby.id, osuId: participantOsuIds[0], slotName: 'NM1' },
     });
     expect(first.adjusted).toBe(1000 / 1.06);
     expect(first.adjusted).not.toBe(Math.round(first.adjusted));
@@ -596,7 +659,7 @@ describe.sequential('assigned referee and persistent match workflows', () => {
       reason: 'Incorrect player entry',
     });
     await update(referee, 'qualifier.score', {
-      osuId: 951000001,
+      osuId: participantOsuIds[0],
       slotName: 'NM1',
       raw: 1200,
       mods: ['NF'],
@@ -791,7 +854,7 @@ describe.sequential('assigned referee and persistent match workflows', () => {
       baseVersion: team.version,
       name: 'Changed current team',
       slug: team.slug,
-      members: [{ osuId: 951000003, captain: true, substitute: false }],
+      members: [{ osuId: participantOsuIds[3], captain: true, substitute: false }],
     });
     const stage = await db.tournamentStage.findUniqueOrThrow({ where: { id: stageId } });
     await act(owner, {
@@ -811,7 +874,7 @@ describe.sequential('assigned referee and persistent match workflows', () => {
     expect(saved.poolRevisionId).toBe(revisionId);
     expect(saved.rules).toMatchObject({ timeoutSeconds: 120 });
     expect(saved.participants).toMatchObject({
-      A: { name: prefix + '-A', members: [{ osuId: 951000001 }] },
+      A: { name: prefix + '-A', members: [{ osuId: participantOsuIds[0] }] },
     });
     await expect(
       act(owner, { type: 'team.delete', id: team.id, baseVersion: team.version + 1 }),

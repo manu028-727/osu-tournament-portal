@@ -26,7 +26,7 @@ export function PublicCompetition({ brackets }: { brackets: CompetitionBracketDa
         bracket={bracket}
         onOpenMatch={(id) => {
           const match = bracket.nodes.find((n) => n.matchId === id)?.match;
-          if (match) router.push(`${scope.publicBase}/matches/${encodeURIComponent(match.code)}`);
+          if (match) router.push(`${scope.publicBase}/matches/${match.matchNumber}`);
         }}
       />
     </div>

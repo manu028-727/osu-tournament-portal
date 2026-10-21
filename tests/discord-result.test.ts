@@ -26,6 +26,7 @@ describe('Template AB3 golden output', () => {
   it('generates a confirmed manual-only result without inventing an MP link', () => {
     const m = {
       code: 'manual',
+      matchNumber: 42,
       stage: { name: 'Finals' },
       status: 'COMPLETED',
       rules: matchRulesSchema.parse({ bestOf: 1, bansPerTeam: 0 }),
@@ -38,12 +39,13 @@ describe('Template AB3 golden output', () => {
       results: [],
     } as unknown as MatchView;
     expect(matchDiscordResult(m)).toBe(
-      '# __**Finals: Match**__ `manual`\r:first_place: **:red_circle: Red | 1** - 0 | Blue :blue_circle:',
+      '# __**Finals: Match**__ `42`\r:first_place: **:red_circle: Red | 1** - 0 | Blue :blue_circle:',
     );
   });
   it('retains the distinct TB Ban wording in native action history', () => {
     const match = {
       code: base.id,
+      matchNumber: Number(base.id),
       stage: { name: base.stage },
       status: 'COMPLETED',
       rules: matchRulesSchema.parse({ bestOf: 1, bansPerTeam: 0, draftSequence: ['TB_BAN'] }),
@@ -68,6 +70,7 @@ describe('Template AB3 golden output', () => {
     expect(
       matchDiscordResult({
         code: '1',
+        matchNumber: 1,
         status: 'AWAITING_CONFIRMATION',
         forfeitSide: null,
         lobbyUrl: base.mp,

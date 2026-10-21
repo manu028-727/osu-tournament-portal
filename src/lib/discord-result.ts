@@ -59,7 +59,7 @@ export function matchResultData(m: MatchView): SpreadsheetResult {
   const team = (side: Side) => (side === 'A' ? 'Red' : 'Blue');
   const sequence = m.rules.draftSequence.flatMap((kind) => [kind, kind]);
   return {
-    id: m.code,
+    id: String(m.matchNumber),
     stage: m.stage.name,
     red: m.participants.A.name,
     blue: m.participants.B.name,
@@ -91,7 +91,7 @@ export function matchResultData(m: MatchView): SpreadsheetResult {
   };
 }
 export function matchDiscordResult(m: MatchView) {
-  if (!m.code) return 'No Match ID';
+  if (!m.matchNumber) return 'No Match ID';
   if (m.status !== 'COMPLETED')
     return !m.forfeitSide && !m.lobbyUrl ? 'No MP Link' : 'Match in Progress';
   return spreadsheetDiscordResult(matchResultData(m), { allowMissingMp: true });

@@ -12,6 +12,7 @@ export type CompetitionSlot = {
 export type CompetitionMatch = {
   id: string;
   code: string;
+  matchNumber?: number;
   status: string;
   teamAId: string | null;
   teamBId: string | null;
@@ -28,6 +29,7 @@ export type CompetitionNode = {
   roundId: string;
   key: string;
   position: number;
+  matchNumber: number | null;
   state: string;
   matchId: string | null;
   match: CompetitionMatch | null;

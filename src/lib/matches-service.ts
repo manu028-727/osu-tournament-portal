@@ -33,6 +33,7 @@ import {
 import { matchActionSchema, type MatchAction } from './matches-validation';
 import { matchAccess } from './match-access';
 import type { MultiplayerProposal } from './multiplayer';
+import { allocateMatchNumber, numericMatchIdentifier } from './match-numbering';
 
 const profileSelect = { id: true, username: true, osuId: true, avatarUrl: true };
 export function eligibleRefereeFor(tournamentId: string): Prisma.UserWhereInput {
@@ -441,12 +442,15 @@ export async function matchData(actor: Actor, url: URL, section: string) {
       some: { userId: assigned === 'me' ? actor.id : z.string().max(100).parse(assigned) },
     };
   const q = (url.searchParams.get('q') || '').slice(0, 100);
-  if (q)
+  if (q) {
+    const matchNumber = numericMatchIdentifier(q);
     filters.OR = [
       { code: { contains: q, mode: 'insensitive' } },
+      ...(matchNumber ? [{ matchNumber }] : []),
       { teamA: { name: { contains: q, mode: 'insensitive' } } },
       { teamB: { name: { contains: q, mode: 'insensitive' } } },
     ];
+  }
   const from = url.searchParams.get('from'),
     to = url.searchParams.get('to');
   if (from || to)
@@ -462,6 +466,7 @@ export async function matchData(actor: Actor, url: URL, section: string) {
       select: {
         id: true,
         code: true,
+        matchNumber: true,
         status: true,
         notes: true,
         lobbyUrl: true,
@@ -485,19 +490,15 @@ export async function matchData(actor: Actor, url: URL, section: string) {
     select: { id: true, name: true },
     orderBy: { position: 'asc' },
   });
-  const allCodes = can(actor, 'matches.manage')
-    ? await db.match.findMany({ select: { code: true } })
-    : [];
+  const numbering = can(actor, 'matches.manage')
+    ? await db.tournament.findUniqueOrThrow({
+        where: { id: tournamentId },
+        select: { matchNumberSequence: true },
+      })
+    : null;
   return {
     matches,
-    nextCode: can(actor, 'matches.manage')
-      ? (() => {
-          const codes = new Set(allCodes.map((m) => m.code));
-          let n = 1;
-          while (codes.has(String(n))) n++;
-          return String(n);
-        })()
-      : undefined,
+    nextCode: can(actor, 'matches.manage') ? String(numbering!.matchNumberSequence + 1) : undefined,
     counts: Object.fromEntries(counts.map((c) => [c.status, c._count._all])),
     stages,
     options:
@@ -637,7 +638,7 @@ export async function applyMatchAction(
   tx: Prisma.TransactionClient,
   actor: Actor,
   a: MatchAction,
-): Promise<{ id: string; version?: number }> {
+): Promise<{ id: string; version?: number; matchNumber?: number }> {
   const tournamentId = actor.tournamentId || 'main';
   tx = scopedDb(tx, tournamentId);
   assertMatchActionPermission(actor, a);
@@ -766,6 +767,7 @@ export async function applyMatchAction(
     await validateAssignments(tx, a.refereeIds, date, undefined, tournamentId);
     const match = await tx.match.create({
       data: {
+        matchNumber: await allocateMatchNumber(tx, tournamentId, numericMatchIdentifier(a.code)),
         code: a.code,
         ...(bracketId || a.allowIneligible
           ? {
@@ -792,7 +794,7 @@ export async function applyMatchAction(
         events: { create: { version: 1, actorId: actor.id, kind: a.type, data: json(a) } },
       },
     });
-    return { id: match.id, version: match.version };
+    return { id: match.id, matchNumber: match.matchNumber, version: match.version };
   }
   const match = await tx.match.findUniqueOrThrow({ where: { id: a.id }, include: matchInclude });
   if (a.type === 'match.delete') {

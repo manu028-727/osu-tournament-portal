@@ -266,6 +266,31 @@ test('a fresh organizer configures, publishes and operates one tournament throug
   expect(match.rules).toMatchObject({ bestOf: 1, teamSize: 1, bansPerTeam: 0 });
   expect(match.lobbyUrl).toContain('/123456');
   expect(match.poolRevisionId).not.toBeNull();
+  await page.getByRole('button', { name: 'New match', exact: true }).click();
+  dialog = page.getByRole('dialog');
+  await expect(dialog.getByLabel('Match code')).toHaveValue('2');
+  await dialog.getByLabel('Team A / red').selectOption({ label: 'UX Team 2' });
+  await dialog.getByLabel('Team B / blue').selectOption({ label: 'UX Team 3' });
+  await dialog.getByRole('button', { name: 'Save match' }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole('checkbox', { name: 'Select match 1' }).check();
+  await page.getByRole('checkbox', { name: 'Select match 2' }).check();
+  await page.getByRole('button', { name: 'Bulk schedule / assign', exact: true }).click();
+  dialog = page.getByRole('dialog');
+  await dialog.getByRole('checkbox', { name: new RegExp(prefix + '-1') }).check();
+  await dialog.getByRole('button', { name: 'Apply to 2 matches', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  const bulkMatches = await db.match.findMany({
+    where: { tournamentId: id, code: { in: ['1', '2'] } },
+    select: { id: true, version: true, matchNumber: true },
+  });
+  expect(bulkMatches.map((item) => item.matchNumber).sort((a, b) => a - b)).toEqual([1, 2]);
+  expect(
+    await db.matchAssignment.count({
+      where: { matchId: { in: bulkMatches.map((item) => item.id) }, userId: refId },
+    }),
+  ).toBe(2);
+  expect(bulkMatches.every((item) => item.version > 1)).toBe(true);
   await page
     .getByRole('navigation', { name: 'Administration' })
     .getByRole('link', { name: 'Overview', exact: true })

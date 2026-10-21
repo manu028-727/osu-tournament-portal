@@ -32,11 +32,13 @@ import type {
   CompetitionOptions,
   CompetitionRound,
 } from './competition-types';
+import { allocateMatchNumber, reserveBracketMatchNumbers } from './match-numbering';
 
 const json = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value));
 const matchSelect = {
   id: true,
   code: true,
+  matchNumber: true,
   status: true,
   teamAId: true,
   teamBId: true,
@@ -283,6 +285,7 @@ function archiveCompetition(witness: CompetitionArchiveWitness) {
         scoreB: z.number().int(),
         winnerSide: z.enum(['A', 'B']).nullable(),
         version: z.number().int(),
+        matchNumber: z.number().int().positive().optional(),
       })
       .parse(row),
   );
@@ -297,6 +300,7 @@ function archiveCompetition(witness: CompetitionArchiveWitness) {
           position: z.number().int(),
           state: z.string(),
           matchId: id.nullable(),
+          matchNumber: z.number().int().positive().nullable().optional(),
         })
         .parse(row);
       const match = matches.find((match) => match.id === node.matchId) || null,
@@ -311,7 +315,7 @@ function archiveCompetition(witness: CompetitionArchiveWitness) {
         throw new AppError(
           'Archived bracket participants do not match their native match snapshots.',
         );
-      return { ...node, slots: assigned, match };
+      return { ...node, matchNumber: node.matchNumber ?? null, slots: assigned, match };
     }),
   );
   const brackets = witness.brackets.map((row) => {
@@ -665,6 +669,7 @@ export async function publicCompetitionData(
         roundId: n.roundId,
         key: n.key,
         position: n.position,
+        matchNumber: n.matchNumber,
         state: n.state,
         matchId: n.match?.published ? n.matchId : null,
         slots: n.slots.map((s) => ({
@@ -881,9 +886,18 @@ async function persistRecalculation(
         ...inheritedRules(round.stage.matchRules || settings.matchRules, settings.gameplayScoring),
         gameMode: tournament.gameMode,
       });
+      const matchNumber = node.matchNumber ?? (await allocateMatchNumber(tx, tournamentId));
+      if (node.matchNumber == null) {
+        await tx.bracketNode.updateMany({
+          where: { id: node.id, tournamentId, matchNumber: null },
+          data: { matchNumber },
+        });
+        node.matchNumber = matchNumber;
+      }
       const match = await tx.match.create({
         data: {
           tournamentId,
+          matchNumber,
           code: `B-${node.id}`,
           stageId: round.stageId,
           teamAId: a.teamId,
@@ -1000,14 +1014,21 @@ export async function applyCompetitionAction(
           },
         });
     const before = await allNodes(tx, tournamentId);
-    await persistRecalculation(
+    const after = recalculateCompetition(before);
+    const newBracketNodes = after.filter((node) => node.bracketId === bracket.id);
+    const numberingRounds = await tx.bracketRound.findMany({
+      where: { tournamentId, bracketId: bracket.id },
+      select: { id: true, key: true, position: true, lane: true },
+    });
+    const allocated = await reserveBracketMatchNumbers(
       tx,
       tournamentId,
-      before,
-      recalculateCompetition(before),
-      actor.id,
-      true,
+      newBracketNodes,
+      numberingRounds,
     );
+    for (const node of newBracketNodes)
+      node.matchNumber = allocated.get(node.id) ?? node.matchNumber ?? null;
+    await persistRecalculation(tx, tournamentId, before, after, actor.id, true);
     await audit(tx, tournamentId, actor.id, a.type, bracket.id, a);
     return tx.bracket.findFirstOrThrow({
       where: { id: bracket.id, tournamentId },

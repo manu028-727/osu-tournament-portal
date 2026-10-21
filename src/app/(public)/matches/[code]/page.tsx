@@ -7,7 +7,9 @@ import { MatchStatusBadge } from '@/components/ui/badge';
 export async function generateMetadata({ params }: { params: Promise<{ code: string }> }) {
   const m = (await publicMatches({ code: (await params).code }))[0];
   return {
-    title: m ? `#${m.code} · ${m.participants.A.name} vs ${m.participants.B.name}` : 'Incontro',
+    title: m
+      ? `Match ${m.matchNumber} · ${m.participants.A.name} vs ${m.participants.B.name}`
+      : 'Incontro',
   };
 }
 export default async function Match({ params }: { params: Promise<{ code: string }> }) {
@@ -22,7 +24,8 @@ export default async function Match({ params }: { params: Promise<{ code: string
       <header className="public-scoreboard mt-6 border-b pb-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <p className="text-muted">
-            Incontro #{m.code} · {m.stage.name} · {m.bracket}
+            Incontro {m.matchNumber} · {m.stage.name} · {m.bracket}
+            {m.code !== String(m.matchNumber) ? ` · Ref ${m.code}` : ''}
           </p>
           <MatchStatusBadge status={m.status}>{PUBLIC_MATCH_STATUS[m.status]}</MatchStatusBadge>
         </div>

@@ -207,7 +207,8 @@ export function RefereePanel({
       <header className="referee-scoreboard border-b pb-3" aria-label="Match scoreboard">
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
           <p>
-            {tournamentName} / {m.stage.name} / Match {m.code}
+            {tournamentName} / {m.stage.name} / Match {m.matchNumber}
+            {m.code !== String(m.matchNumber) ? ` · Ref ${m.code}` : ''}
           </p>
           <MatchStatusBadge status={m.status}>{MATCH_STATUS_LABELS[m.status]}</MatchStatusBadge>
           <span>
@@ -601,7 +602,9 @@ export function RefereePanel({
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => copy(matchPing(m.stage.name, m.code, data.discordIds))}
+                    onClick={() =>
+                      copy(matchPing(m.stage.name, String(m.matchNumber), data.discordIds))
+                    }
                   >
                     <Copy size={16} />
                     Copy Match Ping

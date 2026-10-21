@@ -7,6 +7,7 @@ export type MatchStatus =
   'SCHEDULED' | 'IN_PROGRESS' | 'AWAITING_CONFIRMATION' | 'COMPLETED' | 'DISPUTED' | 'CANCELLED';
 export type MatchSummary = {
   id: string;
+  matchNumber: number;
   code: string;
   status: MatchStatus;
   notes: string;

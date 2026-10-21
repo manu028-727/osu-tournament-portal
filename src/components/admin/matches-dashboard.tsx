@@ -63,6 +63,12 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
     filters.date ? filters.time : '',
   ].filter(Boolean).length;
   const [deleting, setDeleting] = useState<DeleteMatchSelection | null>(null);
+  const [selectedMatches, setSelectedMatches] = useState<Set<string>>(() => new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkMode, setBulkMode] = useState<'referees' | 'set-time' | 'shift-time'>('referees');
+  const [bulkReferees, setBulkReferees] = useState<string[]>([]);
+  const [bulkTime, setBulkTime] = useState('');
+  const [bulkShift, setBulkShift] = useState(60);
   const params = new URLSearchParams();
   for (const key of ['stage', 'status', 'assigned', 'q'] as const)
     if (filters[key]) params.set(key, filters[key]);
@@ -74,9 +80,10 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
     params.set('from', from.toISOString());
     params.set('to', to.toISOString());
   }
+  const filterKey = params.toString();
   const matchTime = useTournamentTime();
   const { timezone } = useTournamentScope();
-  const { data, error, reload } = useResource<MatchListData>(`matches&${params}`, true);
+  const { data, error, reload } = useResource<MatchListData>(`matches&${filterKey}`, true);
   const { run, busy } = useTask();
   const [lobby, setLobby] = useState<{
     id: string;
@@ -108,6 +115,9 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
   useUnsaved(dirty);
   usePolling(reload, 10000, !create && !ruleEditor && !edit && !lobby);
   const options = data?.options;
+  useEffect(() => {
+    setSelectedMatches(new Set());
+  }, [filterKey]);
   useEffect(() => {
     if (
       options &&
@@ -159,6 +169,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
     setDirty(false);
   };
   if (!data) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
+  const bulkRows = data.matches.filter((match) => selectedMatches.has(match.id));
   const paths = options?.paths?.filter((p) => p.stageIds.includes(stageId)) || [];
   const path = paths.find((p) => p.id === pathId) || (paths.length === 1 ? paths[0] : null);
   const eligibleTeams =
@@ -413,17 +424,87 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
           </select>
         </Field>
       </div>
+      {can(actor, 'matches.manage') && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border bg-card px-3 py-2">
+          <label className="flex min-h-10 items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              aria-label="Select all visible matches"
+              checked={
+                data.matches.length > 0 &&
+                data.matches.every((match) => selectedMatches.has(match.id))
+              }
+              onChange={(event) =>
+                setSelectedMatches(
+                  event.target.checked ? new Set(data.matches.map((match) => match.id)) : new Set(),
+                )
+              }
+            />
+            Select visible
+          </label>
+          <span className="text-sm text-muted">{selectedMatches.size} selected</span>
+          {selectedMatches.size > 0 && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={
+                  bulkRows.length !== selectedMatches.size ||
+                  bulkRows.some((match) => match.status !== 'SCHEDULED')
+                }
+                onClick={() => {
+                  setBulkMode('referees');
+                  setBulkReferees([]);
+                  setBulkTime('');
+                  setBulkShift(60);
+                  setBulkOpen(true);
+                }}
+              >
+                Bulk schedule / assign
+              </Button>
+              {(bulkRows.length !== selectedMatches.size ||
+                bulkRows.some((match) => match.status !== 'SCHEDULED')) && (
+                <span role="status" className="text-xs text-amber-200">
+                  Bulk changes require only visible scheduled matches.
+                </span>
+              )}
+              <Button size="sm" variant="ghost" onClick={() => setSelectedMatches(new Set())}>
+                Clear selection
+              </Button>
+            </>
+          )}
+        </div>
+      )}
       {data.matches.length ? (
         <>
           <div className="border-t md:hidden">
             {data.matches.map((m) => (
               <article key={m.id} className="border-b py-4" aria-label={`Match ${m.code}`}>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  {can(actor, 'matches.manage') && (
+                    <label className="flex min-h-11 items-center gap-2 pr-2">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select match ${m.matchNumber}`}
+                        checked={selectedMatches.has(m.id)}
+                        onChange={(event) =>
+                          setSelectedMatches((current) => {
+                            const next = new Set(current);
+                            if (event.target.checked) next.add(m.id);
+                            else next.delete(m.id);
+                            return next;
+                          })
+                        }
+                      />
+                      Select
+                    </label>
+                  )}
                   <Link
                     href={`/admin/referee/${m.id}`}
                     className="min-w-0 max-w-full break-words font-mono text-primary"
                   >
-                    #{m.code} · {m.stage.name}
+                    Match {m.matchNumber} · {m.stage.name}
+                    {m.code !== String(m.matchNumber) ? ` · Ref ${m.code}` : ''}
                   </Link>
                   <MatchStatusBadge status={m.status}>
                     {MATCH_STATUS_LABELS[m.status]}
@@ -458,6 +539,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
             <table className="admin-table">
               <thead>
                 <tr>
+                  {can(actor, 'matches.manage') && <th>Select</th>}
                   <th>Match</th>
                   <th>Stage / date</th>
                   <th>Teams</th>
@@ -470,7 +552,29 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
               <tbody>
                 {data.matches.map((m) => (
                   <tr key={m.id}>
-                    <td className="font-semibold">{m.code}</td>
+                    {can(actor, 'matches.manage') && (
+                      <td>
+                        <input
+                          type="checkbox"
+                          aria-label={`Select match ${m.matchNumber}`}
+                          checked={selectedMatches.has(m.id)}
+                          onChange={(event) =>
+                            setSelectedMatches((current) => {
+                              const next = new Set(current);
+                              if (event.target.checked) next.add(m.id);
+                              else next.delete(m.id);
+                              return next;
+                            })
+                          }
+                        />
+                      </td>
+                    )}
+                    <td className="font-semibold">
+                      Match {m.matchNumber}
+                      {m.code !== String(m.matchNumber) && (
+                        <span className="ml-2 text-xs text-muted">Ref {m.code}</span>
+                      )}
+                    </td>
                     <td>
                       <p>
                         {m.stage.name}
@@ -529,6 +633,121 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
           No matches found.
         </div>
       )}
+      <Modal
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        title={`Bulk edit ${bulkRows.length} matches`}
+        description="Only scheduled matches are editable here. Changes apply atomically; stale rows or scheduling conflicts reject the whole operation."
+      >
+        <div className="space-y-4">
+          <Field label="Operation">
+            <select
+              value={bulkMode}
+              onChange={(event) => setBulkMode(event.target.value as typeof bulkMode)}
+            >
+              <option value="referees">Assign referees</option>
+              <option value="set-time">Set the same scheduled time</option>
+              <option value="shift-time">Shift each scheduled time</option>
+            </select>
+          </Field>
+          {bulkMode === 'referees' && options && (
+            <fieldset className="max-h-56 space-y-2 overflow-auto rounded-lg border p-3">
+              <legend className="px-1 text-sm font-semibold">Replace referee assignments</legend>
+              {options.referees.map((referee) => (
+                <label key={referee.id} className="flex min-h-10 items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={bulkReferees.includes(referee.id)}
+                    onChange={(event) =>
+                      setBulkReferees((current) =>
+                        event.target.checked
+                          ? [...current, referee.id]
+                          : current.filter((id) => id !== referee.id),
+                      )
+                    }
+                  />
+                  {referee.username}
+                </label>
+              ))}
+              <p className="text-xs text-muted">Leaving all unchecked clears assignments.</p>
+            </fieldset>
+          )}
+          {bulkMode === 'set-time' && (
+            <Field label="Scheduled time (your timezone; blank clears it)">
+              <input
+                type="datetime-local"
+                value={bulkTime}
+                onChange={(event) => setBulkTime(event.target.value)}
+              />
+            </Field>
+          )}
+          {bulkMode === 'shift-time' && (
+            <Field label="Shift minutes (negative moves earlier)">
+              <input
+                type="number"
+                min={-10080}
+                max={10080}
+                step={15}
+                value={bulkShift}
+                onChange={(event) => setBulkShift(Number(event.target.value))}
+              />
+            </Field>
+          )}
+          {bulkMode === 'shift-time' && bulkRows.some((match) => !match.scheduledAt) && (
+            <p role="alert" className="text-sm text-amber-200">
+              Every selected match needs a scheduled time before it can be shifted.
+            </p>
+          )}
+          <div className="max-h-40 overflow-auto border-y py-2 text-sm">
+            {bulkRows.slice(0, 12).map((match) => (
+              <p key={match.id} className="py-1">
+                <span className="font-semibold">Match {match.matchNumber}</span> ·{' '}
+                {match.participants.A.name} vs {match.participants.B.name} ·{' '}
+                {matchTime(match.scheduledAt)}
+              </p>
+            ))}
+            {bulkRows.length > 12 && (
+              <p className="pt-1 text-xs text-muted">and {bulkRows.length - 12} more matches</p>
+            )}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setBulkOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                busy ||
+                !bulkRows.length ||
+                bulkRows.some(
+                  (match) =>
+                    match.status !== 'SCHEDULED' ||
+                    (bulkMode === 'shift-time' && !match.scheduledAt),
+                )
+              }
+              onClick={() =>
+                void run(async () => {
+                  await action({
+                    type: 'matches.bulk.schedule',
+                    matches: bulkRows.map(({ id, version }) => ({ id, baseVersion: version })),
+                    ...(bulkMode === 'referees'
+                      ? { refereeIds: bulkReferees }
+                      : bulkMode === 'set-time'
+                        ? {
+                            scheduledAt: bulkTime ? new Date(bulkTime).toISOString() : null,
+                          }
+                        : { shiftMinutes: bulkShift }),
+                  });
+                  setBulkOpen(false);
+                  setSelectedMatches(new Set());
+                  await reload();
+                }, 'Bulk match changes saved.')
+              }
+            >
+              Apply to {bulkRows.length} matches
+            </Button>
+          </div>
+        </div>
+      </Modal>
       <DeleteMatchDialog match={deleting} onClose={() => setDeleting(null)} onDeleted={reload} />
       <Modal
         open={create}

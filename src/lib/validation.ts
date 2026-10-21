@@ -59,6 +59,30 @@ export const actionSchema = z.discriminatedUnion('type', [
   stageReconciliationActionSchema,
   ...teamActionOptions,
   ...matchActionOptions,
+  base
+    .extend({
+      type: z.literal('matches.bulk.schedule'),
+      matches: z
+        .array(z.object({ id, baseVersion: z.number().int().positive() }))
+        .min(1)
+        .max(100)
+        .refine((matches) => new Set(matches.map((match) => match.id)).size === matches.length),
+      scheduledAt: z.iso.datetime().nullable().optional(),
+      shiftMinutes: z.number().int().min(-10080).max(10080).optional(),
+      refereeIds: z
+        .array(id)
+        .max(10)
+        .refine((ids) => new Set(ids).size === ids.length)
+        .optional(),
+    })
+    .refine(
+      (action) =>
+        !(action.scheduledAt !== undefined && action.shiftMinutes !== undefined) &&
+        (action.scheduledAt !== undefined ||
+          action.shiftMinutes !== undefined ||
+          action.refereeIds !== undefined),
+      'Choose a time change or referee assignment.',
+    ),
   ...qualifierActionOptions,
   base.extend({
     type: z.literal('page.save'),
@@ -186,13 +210,20 @@ export function parseImport(
     .filter(Boolean);
   if (lines.length > 100) throw new Error('Import at most 100 beatmaps at once.');
   return lines.map((line, i) => {
-    const match = line.match(/^(?:([A-Za-z0-9_-]+)\s*[:=,\s]\s*)?(\d+)$/);
-    if (!match) throw new Error(`Line ${i + 1}: use a beatmap ID or SLOT: ID.`);
-    const name = match[1] || `${defaultCategory}${i + 1}`;
+    const split = /^https?:\/\//i.test(line)
+      ? null
+      : line.match(/^([A-Za-z0-9_-]+)\s*[:=,\t ]\s*(.+)$/);
+    const explicitName = split?.[1];
+    const value = (split?.[2] || line).trim();
+    const urlId = value.match(/(?:\/beatmaps\/|\/b\/|#(?:osu|taiko|fruits|mania)\/)(\d+)/i)?.[1];
+    const rawId = urlId || (/^\d+$/.test(value) ? value : null);
+    if (!rawId)
+      throw new Error(`Line ${i + 1}: use a beatmap ID, beatmap URL, or SLOT followed by an ID.`);
+    const name = explicitName || `${defaultCategory}${i + 1}`;
     return slotSchema.parse({
       name,
-      category: match[1]?.replace(/[0-9]+$/, '') || defaultCategory,
-      beatmapId: Number(match[2]),
+      category: explicitName?.replace(/[0-9]+$/, '') || defaultCategory,
+      beatmapId: Number(rawId),
     });
   });
 }

@@ -9,6 +9,11 @@ import {
 } from '../src/lib/competition-engine';
 import { competitionActionSchema } from '../src/lib/competition-validation';
 import { remapCompetitionConfig, remapCompetitionSeedOrder } from '../src/lib/competition-archive';
+import {
+  bracketNumberingOrder,
+  numberBracketNodes,
+  numericMatchIdentifier,
+} from '../src/lib/match-numbering';
 import type { CompetitionNode, CompetitionRound } from '../src/lib/competition-types';
 
 async function make(
@@ -33,6 +38,7 @@ async function make(
     bracketId: 'main',
     roundId: n.roundKey,
     position: n.position,
+    matchNumber: null,
     state: 'WAITING',
     matchId: null,
     match: null,
@@ -45,6 +51,7 @@ function complete(node: CompetitionNode, winnerSide: 'A' | 'B' = 'A', status = '
   node.match = {
     id: node.id,
     code: node.id,
+    matchNumber: node.matchNumber || 1,
     teamAId: node.slots.find((s) => s.side === 'A')!.teamId,
     teamBId: node.slots.find((s) => s.side === 'B')!.teamId,
     scoreA: winnerSide === 'A' ? 4 : 1,
@@ -54,6 +61,73 @@ function complete(node: CompetitionNode, winnerSide: 'A' | 'B' = 'A', status = '
     version: 1,
   };
 }
+
+describe('stable tournament match numbering', () => {
+  it('parses only positive signed-database integers and keeps source formatting separate', () => {
+    expect(numericMatchIdentifier('001')).toBe(1);
+    expect(numericMatchIdentifier('2147483647')).toBe(2147483647);
+    for (const invalid of ['', '0', '-1', '1.5', '2a', '2147483648'])
+      expect(numericMatchIdentifier(invalid)).toBeNull();
+  });
+
+  it('orders 32 matches by configured round and top-to-bottom bracket position', () => {
+    const rounds = Array.from({ length: 5 }, (_, position) => ({
+      id: `round-${position + 1}`,
+      key: `round-${position + 1}`,
+      lane: position === 4 ? 'FINALS' : 'WINNERS',
+      position,
+    }));
+    const counts = [16, 8, 4, 2, 2];
+    const nodes = rounds.flatMap((round, roundIndex) =>
+      Array.from({ length: counts[roundIndex] }, (_, index) => ({
+        id: `${round.id}-match-${index + 1}`,
+        bracketId: 'bracket',
+        roundId: round.id,
+        key: `${round.key}-m${index + 1}`,
+        position: index + 1,
+        state: 'READY',
+        matchId: null,
+      })),
+    );
+    const ordered = bracketNumberingOrder(nodes.reverse(), rounds),
+      numbers = numberBracketNodes(nodes, rounds, 1);
+    expect([...numbers.values()].sort((a, b) => a - b)).toEqual(
+      Array.from({ length: 32 }, (_, index) => index + 1),
+    );
+    expect(ordered.map((node, index) => [node.key, index + 1])).toEqual(
+      counts.flatMap((count, roundIndex) =>
+        Array.from({ length: count }, (_, index) => [
+          `round-${roundIndex + 1}-m${index + 1}`,
+          counts.slice(0, roundIndex).reduce((sum, value) => sum + value, 0) + index + 1,
+        ]),
+      ),
+    );
+    expect(ordered.map((node) => numbers.get(node.id))).toEqual(
+      Array.from({ length: 32 }, (_, index) => index + 1),
+    );
+  });
+
+  it('retains round order across single- and double-elimination generation plans', async () => {
+    for (const format of ['SINGLE_ELIMINATION', 'DOUBLE_ELIMINATION'] as const) {
+      const { nodes, rounds } = await make(8, format);
+      const ordered = bracketNumberingOrder(nodes, rounds);
+      expect(ordered.map((node) => node.key)).toEqual(
+        [...ordered]
+          .sort((a, b) => {
+            const roundA = rounds.find((round) => round.id === a.roundId)!;
+            const roundB = rounds.find((round) => round.id === b.roundId)!;
+            return (
+              roundA.position - roundB.position ||
+              roundA.lane.localeCompare(roundB.lane) ||
+              a.position - b.position ||
+              a.key.localeCompare(b.key)
+            );
+          })
+          .map((node) => node.key),
+      );
+    }
+  });
+});
 function simulate(
   initial: CompetitionNode[],
   winner: (node: CompetitionNode) => 'A' | 'B' = () => 'A',

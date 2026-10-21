@@ -110,35 +110,36 @@ model RolePermission {
 }
 
 model Tournament {
-  slug            String              @unique
-  published       Boolean             @default(false)
-  timezone        String              @default("UTC")
-  format          String              @default("CUSTOM")
-  archivedAt      DateTime?
-  startsAt        DateTime?
-  endsAt          DateTime?
-  version         Int                 @default(1)
-  roles           Role[]
-  media           MediaAsset[]
-  staffMembers    StaffMember[]
-  audits          AuditLog[]
-  featuredBy      PlatformSettings[]
-  id              String              @id @default("main")
-  name            String
-  acronym         String
-  description     String
-  status          String              @default("REGISTRATIONS_OPEN")
-  gameMode        String              @default("osu")
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  settings        TournamentSettings?
-  pages           Page[]
-  stages          TournamentStage[]
-  categories      ModCategory[]
-  staffCategories StaffCategory[]
-  teams           Team[]
-  refereeImports  RefereeImport[]
-  brackets        Bracket[]
+  slug                String              @unique
+  published           Boolean             @default(false)
+  timezone            String              @default("UTC")
+  format              String              @default("CUSTOM")
+  archivedAt          DateTime?
+  startsAt            DateTime?
+  endsAt              DateTime?
+  version             Int                 @default(1)
+  matchNumberSequence Int                 @default(0)
+  roles               Role[]
+  media               MediaAsset[]
+  staffMembers        StaffMember[]
+  audits              AuditLog[]
+  featuredBy          PlatformSettings[]
+  id                  String              @id @default("main")
+  name                String
+  acronym             String
+  description         String
+  status              String              @default("REGISTRATIONS_OPEN")
+  gameMode            String              @default("osu")
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  settings            TournamentSettings?
+  pages               Page[]
+  stages              TournamentStage[]
+  categories          ModCategory[]
+  staffCategories     StaffCategory[]
+  teams               Team[]
+  refereeImports      RefereeImport[]
+  brackets            Bracket[]
 }
 
 model TournamentSettings {
@@ -626,6 +627,7 @@ model BracketNode {
   round        BracketRound  @relation(fields: [roundId, bracketId, tournamentId], references: [id, bracketId, tournamentId], onDelete: Restrict, map: "BracketNode_round_fkey")
   key          String
   position     Int
+  matchNumber  Int?
   matchId      String?       @unique
   match        Match?        @relation(fields: [matchId, tournamentId], references: [id, tournamentId], onDelete: Restrict, map: "BracketNode_match_fkey")
   state        String        @default("WAITING")
@@ -634,6 +636,7 @@ model BracketNode {
 
   @@unique([id, tournamentId])
   @@unique([bracketId, key])
+  @@unique([tournamentId, matchNumber])
   @@unique([matchId, tournamentId])
 }
 
@@ -686,6 +689,7 @@ model QualifierEvent {
 model Match {
   tournamentId          String                @default("main")
   id                    String                @id @default(cuid())
+  matchNumber           Int                   @default(0)
   code                  String
   stageId               String
   stage                 TournamentStage       @relation(fields: [stageId, tournamentId], references: [id, tournamentId], onDelete: Restrict)
@@ -739,6 +743,7 @@ model Match {
 
   @@unique([stageId, teamAId, teamBId, scheduledAt])
   @@unique([tournamentId, code])
+  @@unique([tournamentId, matchNumber])
   @@unique([id, tournamentId])
   @@index([status, scheduledAt])
 }

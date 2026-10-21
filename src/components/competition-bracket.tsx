@@ -96,7 +96,16 @@ export function CompetitionBracket({
   const nodeContent = (node: CompetitionNode) => (
     <>
       <div className="flex h-6 items-center justify-between gap-2 border-b border-border px-2 text-[11px] text-muted">
-        <span className="truncate">{node.match?.code || node.key}</span>
+        <span className="truncate">
+          {node.match
+            ? `Match ${node.match.matchNumber}`
+            : node.matchNumber
+              ? `Match ${node.matchNumber}`
+              : node.key}
+          {node.match && node.match.code !== String(node.match.matchNumber)
+            ? ` · ${node.match.code}`
+            : ''}
+        </span>
         <span className="shrink-0">
           {node.state === 'BYE'
             ? 'Bye'

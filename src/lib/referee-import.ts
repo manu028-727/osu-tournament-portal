@@ -20,6 +20,7 @@ import {
   type RefereeRecord,
 } from './referee-workbook';
 import { z } from 'zod';
+import { allocateMatchNumber, numericMatchIdentifier } from './match-numbering';
 import { sameTimeline, storedTimeline } from './referee-timeline';
 import {
   assertCompetitionResultCorrection,
@@ -106,7 +107,7 @@ export async function importPreview(actor: Actor, id: string) {
     preview = await db.refereeImport.findUnique({ where: { id } });
   if (!preview || preview.expiresAt < new Date())
     throw new AppError('Import preview expired or not found. Upload the workbook again.', 404);
-  const [matches, stages, teams, importEvents, settings] = await Promise.all([
+  const [matches, stages, teams, importEvents, settings, tournamentState] = await Promise.all([
     db.match.findMany({
       include: {
         stage: { select: { name: true, id: true } },
@@ -132,15 +133,20 @@ export async function importPreview(actor: Actor, id: string) {
     db.tournamentSettings.findUniqueOrThrow({
       where: { tournamentId: actor.tournamentId || 'main' },
     }),
+    db.tournament.findUniqueOrThrow({
+      where: { id: actor.tournamentId || 'main' },
+      select: { id: true, slug: true, name: true, matchNumberSequence: true },
+    }),
   ]);
   const scoring = tournamentScoring(settings.gameplayScoring);
   return {
     id: preview.id,
     filename: preview.filename,
-    tournament: await db.tournament.findUniqueOrThrow({
-      where: { id: actor.tournamentId || 'main' },
-      select: { id: true, slug: true, name: true },
-    }),
+    tournament: {
+      id: tournamentState.id,
+      slug: tournamentState.slug,
+      name: tournamentState.name,
+    },
     canConfirm: can(actor, 'matches.manage'),
     gameplayScoring: scoring,
     records: (preview.records as unknown as RefereeRecord[])
@@ -208,6 +214,15 @@ export async function importPreview(actor: Actor, id: string) {
             'Match not found. Select existing stage and approved teams for historical creation.',
           );
         }
+        if (
+          !match &&
+          createSuggestion &&
+          numericMatchIdentifier(record.code) !== null &&
+          numericMatchIdentifier(record.code)! <= tournamentState.matchNumberSequence
+        )
+          errors.push(
+            `Source match number ${numericMatchIdentifier(record.code)} is already allocated or reserved. Resolve the number conflict before importing this match.`,
+          );
         if (stageMapping.ambiguous)
           warnings.push(
             'Stage mapping is ambiguous. Explicitly select one of the existing matching stages.',
@@ -421,8 +436,14 @@ export async function applyWorkbook(original: Actor, input: z.infer<typeof impor
           ),
           stage.mappool.publishedRevision.slots,
         );
+        const matchNumber = await allocateMatchNumber(
+          tx,
+          tournamentId,
+          numericMatchIdentifier(record.code),
+        );
         match = await tx.match.create({
           data: {
+            matchNumber,
             code: record.code,
             sourceKey: `referee:${tournamentId}:${record.code}`,
             bracket: stageMapping.bracket || '',
@@ -631,6 +652,7 @@ export async function applyWorkbook(original: Actor, input: z.infer<typeof impor
       if (completed) await advanceConfirmedCompetitionResult(tx, tournamentId, match.id, actor.id);
       return {
         id: match.id,
+        matchNumber: match.matchNumber,
         version: match.version + 1,
         alreadyApplied: false,
         actionsImported: valid.actions.length,
@@ -683,7 +705,7 @@ export async function applyWorkbookBatch(actor: Actor, input: z.infer<typeof imp
     error?: string;
     created?: boolean;
   }[] = [];
-  for (const row of input.matches) {
+  for (const row of [...input.matches].sort((a, b) => Number(a.sheet) - Number(b.sheet))) {
     try {
       const result = await applyWorkbook(
         actor,

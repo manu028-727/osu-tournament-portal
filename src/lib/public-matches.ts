@@ -4,6 +4,7 @@ import { requestScope } from './tournament-context';
 import { matchCredits } from './match-display';
 import type { MatchParticipants } from './matches-service';
 import type { Prisma } from '@/generated/prisma/client';
+import { numericMatchIdentifier } from './match-numbering';
 
 export async function publicMatches(
   filters: { code?: string; teamId?: string; stage?: string; status?: string } = {},
@@ -21,9 +22,22 @@ export async function publicMatches(
     AND: [
       { OR: [{ teamAId: null }, { teamA: { published: true, status: 'APPROVED' } }] },
       { OR: [{ teamBId: null }, { teamB: { published: true, status: 'APPROVED' } }] },
+      ...(filters.code
+        ? [
+            {
+              OR: [
+                { code: filters.code },
+                ...(numericMatchIdentifier(filters.code)
+                  ? [{ matchNumber: numericMatchIdentifier(filters.code)! }]
+                  : []),
+              ],
+            },
+          ]
+        : []),
+      ...(filters.teamId
+        ? [{ OR: [{ teamAId: filters.teamId }, { teamBId: filters.teamId }] }]
+        : []),
     ],
-    ...(filters.code ? { code: filters.code } : {}),
-    ...(filters.teamId ? { OR: [{ teamAId: filters.teamId }, { teamBId: filters.teamId }] } : {}),
     ...(filters.stage ? { stage: { slug: filters.stage } } : {}),
   };
   if (filters.status === 'completed') where.status = 'COMPLETED';
@@ -39,6 +53,7 @@ export async function publicMatches(
     select: {
       id: true,
       code: true,
+      matchNumber: true,
       stage: { select: { name: true, slug: true } },
       bracket: true,
       status: true,

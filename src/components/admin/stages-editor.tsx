@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTournamentScope } from '@/components/tournament-scope';
 import Link from '@/components/tournament-scope';
-import { Plus, Pencil, Disc3, Archive } from 'lucide-react';
+import { Plus, Disc3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { can, type Actor } from '@/lib/permissions';
 import { DEFAULT_MATCH_RULES, type MatchRules } from '@/lib/match-rules';
@@ -26,6 +26,7 @@ import {
   SaveButton,
   useUnsaved,
 } from './shared';
+import { StageOverviewRow, stageSavePayload, type StageOverviewRecord } from './stage-overview-row';
 type Stage = {
   id?: string;
   name: string;
@@ -58,8 +59,13 @@ export function StagesEditor({
   returnToPool?: boolean;
 }) {
   const { data, error, reload } = useResource<{ stages: Stage[]; defaults: MatchRules }>('stages');
+  const pools = useResource<{
+    stages: { id: string; mappool: { state: string } | null }[];
+    categories: unknown[];
+  }>('mappools');
   const [draft, setDraft] = useState<Stage | null>(null),
-    [dirty, setDirty] = useState(false);
+    [dirty, setDirty] = useState(false),
+    [duplicating, setDuplicating] = useState(false);
   const { busy, run } = useTask();
   const router = useRouter(),
     scope = useTournamentScope(),
@@ -80,8 +86,10 @@ export function StagesEditor({
   useEffect(() => {
     if (!data || opened.current) return;
     opened.current = true;
-    if (newStage && can(actor, 'mappools.create')) setDraft(emptyStage(data.stages.length));
-    else if (initialStageId && can(actor, 'mappools.edit'))
+    if (newStage && can(actor, 'mappools.create')) {
+      setDraft(emptyStage(data.stages.length));
+      setDuplicating(false);
+    } else if (initialStageId && can(actor, 'mappools.edit'))
       setDraft(data.stages.find((stage) => stage.id === initialStageId) || null);
   }, [data, newStage, initialStageId, actor]);
   useUnsaved(dirty);
@@ -93,6 +101,7 @@ export function StagesEditor({
     if (!dirty || window.confirm('Discard unsaved stage settings?')) {
       setDraft(null);
       setDirty(false);
+      setDuplicating(false);
       if (returnToPool)
         router.push(
           `${scope.adminBase}/mappools${initialStageId ? '?stage=' + encodeURIComponent(initialStageId) : ''}`,
@@ -114,6 +123,7 @@ export function StagesEditor({
             onClick={() => {
               setDraft(emptyStage(data.stages.length));
               setDirty(false);
+              setDuplicating(false);
             }}
           >
             <Plus size={17} />
@@ -129,48 +139,68 @@ export function StagesEditor({
               <th>Stage</th>
               <th>Type</th>
               <th>Best of</th>
-              <th>Next stage</th>
-              <th>Edit</th>
+              <th>Action sequence / policy</th>
+              <th>Mappool</th>
+              <th>Save / advanced</th>
             </tr>
           </thead>
           <tbody>
-            {data.stages.map((s) => (
-              <tr key={s.id}>
-                <td>{s.position + 1}</td>
-                <td>
-                  {s.name}
-                  {s.archivedAt && <Archive className="ml-2 inline" size={15} />}
-                  {can(actor, 'mappools.edit') && (
-                    <Link
-                      className="mt-1 block text-sm text-primary"
-                      href={`/admin/mappools?stage=${s.id}`}
-                    >
-                      Edit mappool
-                    </Link>
-                  )}
-                </td>
-                <td>{stageKinds[s.kind] || s.kind}</td>
-                <td>
-                  {s.kind === 'QUALIFIERS' ? '-' : s.matchRules?.bestOf || data.defaults.bestOf}
-                </td>
-                <td>{data.stages.find((n) => n.id === s.nextStageId)?.name || '-'}</td>
-                <td>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    title="Edit stage"
-                    aria-label={`Edit ${s.name}`}
-                    disabled={!can(actor, 'mappools.edit')}
-                    onClick={() => {
-                      setDraft(s);
-                      setDirty(false);
-                    }}
-                  >
-                    <Pencil size={17} />
-                  </Button>
-                </td>
-              </tr>
-            ))}
+            {data.stages.map((stage) => {
+              const poolData = pools.data?.stages.find((item) => item.id === stage.id);
+              return (
+                <StageOverviewRow
+                  key={stage.id}
+                  stage={stage as StageOverviewRecord}
+                  defaults={data.defaults}
+                  pool={
+                    poolData
+                      ? { exists: !!poolData.mappool, state: poolData.mappool?.state || null }
+                      : pools.data
+                        ? { exists: false, state: null }
+                        : undefined
+                  }
+                  canEdit={can(actor, 'mappools.edit')}
+                  canManageRules={can(actor, 'matches.manage')}
+                  canDuplicate={can(actor, 'mappools.create') && can(actor, 'matches.manage')}
+                  busy={busy}
+                  onSave={(changedStage) =>
+                    void run(async () => {
+                      await action(stageSavePayload(changedStage, can(actor, 'matches.manage')));
+                      await reload();
+                      await pools.reload().catch(() => {});
+                    }, 'Stage changes saved.')
+                  }
+                  onAdvanced={() => {
+                    setDraft(stage);
+                    setDirty(false);
+                    setDuplicating(false);
+                  }}
+                  onDuplicate={() => {
+                    const name = `${stage.name} copy`.slice(0, 120);
+                    const usedSlugs = new Set(data.stages.map((item) => item.slug));
+                    const baseSlug = slugify(name).slice(0, 80) || 'stage-copy';
+                    let slug = baseSlug;
+                    let suffix = 2;
+                    while (usedSlugs.has(slug)) {
+                      const ending = `-${suffix++}`;
+                      slug = `${baseSlug.slice(0, 80 - ending.length)}${ending}`;
+                    }
+                    setDraft({
+                      ...stage,
+                      id: undefined,
+                      name,
+                      slug,
+                      position: data.stages.length,
+                      nextStageId: null,
+                      archivedAt: null,
+                      startsAt: null,
+                    });
+                    setDirty(false);
+                    setDuplicating(true);
+                  }}
+                />
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -182,6 +212,12 @@ export function StagesEditor({
           if (!open) close();
         }}
       >
+        {duplicating && (
+          <p className="mb-5 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-muted">
+            Stage settings and rules are copied. The new stage gets an empty mappool; beatmaps and
+            published pool content are not copied.
+          </p>
+        )}
         {draft && (
           <form
             className="space-y-6"
@@ -204,6 +240,7 @@ export function StagesEditor({
                 });
                 setDraft(null);
                 setDirty(false);
+                setDuplicating(false);
                 await reload();
                 if (returnToPool)
                   router.push(`${scope.adminBase}/mappools?stage=${encodeURIComponent(result.id)}`);

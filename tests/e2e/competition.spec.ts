@@ -491,6 +491,14 @@ test('SE8 preview, native List/Bracket identity, confirmed advancement and publi
   const firstRound = initial.nodes.filter((n) => n.matchId);
   expect(firstRound).toHaveLength(4);
   expect(
+    initial.nodes
+      .flatMap((n) => (n.matchNumber == null ? [] : [n.matchNumber]))
+      .sort((a, b) => a - b),
+  ).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  expect(
+    firstRound.flatMap((n) => (n.matchNumber == null ? [] : [n.matchNumber])).sort((a, b) => a - b),
+  ).toEqual([1, 2, 3, 4]);
+  expect(
     firstRound.map((n) => n.slots.map((s) => f.entrants.findIndex((e) => e.id === s.teamId) + 1)),
   ).toEqual([
     [1, 8],
@@ -546,6 +554,11 @@ test('SE8 preview, native List/Bracket identity, confirmed advancement and publi
     expect(await finish(f, initial.id)).toBe(6);
     const finished = await bracket(initial.id);
     expect(finished.nodes.every((n) => n.state === 'COMPLETED')).toBe(true);
+    expect(
+      finished.nodes
+        .flatMap((n) => (n.matchNumber == null ? [] : [n.matchNumber]))
+        .sort((a, b) => a - b),
+    ).toEqual([1, 2, 3, 4, 5, 6, 7]);
     expect(new Set(finished.nodes.map((n) => n.matchId)).size).toBe(7);
     expect(await db.match.count({ where: { tournamentId: f.id } })).toBe(7);
     expect(
@@ -721,6 +734,11 @@ test('DE8 routes losers, preserves an independent division and plays the Grand F
   ).toBe(true);
   expect(await finish(f, created.id, 'RESET_FINAL')).toBe(14);
   const finished = await bracket(created.id);
+  expect(
+    finished.nodes
+      .flatMap((n) => (n.matchNumber == null ? [] : [n.matchNumber]))
+      .sort((a, b) => a - b),
+  ).toEqual(Array.from({ length: 15 }, (_, index) => index + 1));
   expect(finished.nodes.filter((n) => n.matchId)).toHaveLength(15);
   expect(finished.nodes.every((n) => ['COMPLETED', 'SKIPPED', 'BYE'].includes(n.state))).toBe(true);
   const losses = new Map<string, number>();

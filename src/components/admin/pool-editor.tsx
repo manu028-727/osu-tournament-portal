@@ -74,11 +74,23 @@ export function PoolEditor({
     [importing, setImporting] = useState(false),
     [bulk, setBulk] = useState(''),
     [defaultMod, setDefaultMod] = useState('NM'),
+    [copyOpen, setCopyOpen] = useState(false),
+    [copySource, setCopySource] = useState(''),
+    [copyMode, setCopyMode] = useState<'structure' | 'contents'>('structure'),
+    [distributionOpen, setDistributionOpen] = useState(false),
+    [distribution, setDistribution] = useState<Record<string, number>>({}),
     [preview, setPreview] = useState(false),
     [categoriesOpen, setCategoriesOpen] = useState(false),
     [categoryDraft, setCategoryDraft] = useState<Partial<Category>>({});
   const stage = data?.stages.find((s) => s.id === active),
     pool = stage?.mappool;
+  const populatedMaps = slots
+    .map((slot) => metadata[slot.beatmapId])
+    .filter((map): map is BeatmapMetadata => !!map);
+  const average = (key: 'stars' | 'bpm' | 'length') =>
+    populatedMaps.length
+      ? populatedMaps.reduce((sum, map) => sum + map[key], 0) / populatedMaps.length
+      : null;
   const editable = can(actor, 'mappools.edit'),
     publisher = can(actor, 'mappools.publish');
   useEffect(() => {
@@ -115,6 +127,51 @@ export function PoolEditor({
   const update = (editorId: string, change: Partial<Slot>) => {
     setSlots((s) => s.map((v) => (v.editorId === editorId ? { ...v, ...change } : v)));
     setDirty(true);
+  };
+  const applyDistribution = () => {
+    const generated: Slot[] = [];
+    for (const category of data!.categories) {
+      const count = distribution[category.acronym] || 0;
+      for (let index = 1; index <= count; index++)
+        generated.push({
+          name: `${category.acronym}${index}`,
+          category: category.acronym,
+          beatmapId: 0,
+          editorId: crypto.randomUUID(),
+        });
+    }
+    if (!generated.length) throw new Error('Enter at least one slot count.');
+    if (generated.length > 100) throw new Error('A mappool can contain at most 100 maps.');
+    setSlots(generated);
+    setMetadata({});
+    setErrors({});
+    setDirty(true);
+    setDistributionOpen(false);
+  };
+  const copyPool = () => {
+    const source = data!.stages.find((candidate) => candidate.id === copySource);
+    const revision = source?.mappool?.draftRevision || source?.mappool?.publishedRevision;
+    if (!source || !revision) throw new Error('Choose a stage with a saved mappool.');
+    const copied = sortPoolSlots(
+      revision.slots.map((slot) => ({
+        name: slot.name,
+        category: slot.category,
+        beatmapId: copyMode === 'contents' ? slot.beatmapId : 0,
+        editorId: crypto.randomUUID(),
+      })),
+      data!.categories,
+    );
+    if (copied.length > 100) throw new Error('A mappool can contain at most 100 maps.');
+    setSlots(copied);
+    setMetadata(
+      copyMode === 'contents'
+        ? Object.fromEntries(revision.slots.map((slot) => [slot.beatmapId, slot.metadata]))
+        : {},
+    );
+    setErrors({});
+    setNotes(copyMode === 'contents' ? revision.notes : '');
+    setDirty(true);
+    setCopyOpen(false);
   };
   const save = () =>
     run(async () => {
@@ -219,6 +276,45 @@ export function PoolEditor({
                   >
                     <Download size={13} />
                     Bulk import
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      busy ||
+                      dirty ||
+                      !data.stages.some(
+                        (candidate) => candidate.id !== stage.id && candidate.mappool,
+                      )
+                    }
+                    onClick={() => {
+                      setCopySource(
+                        data.stages.find(
+                          (candidate) => candidate.id !== stage.id && candidate.mappool,
+                        )?.id || '',
+                      );
+                      setCopyMode('structure');
+                      setCopyOpen(true);
+                    }}
+                  >
+                    Copy from stage
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => {
+                      if (dirty && !window.confirm('Replace the current unsaved pool edits?'))
+                        return;
+                      setDistribution(
+                        Object.fromEntries(
+                          data.categories.map((category) => [category.acronym, 0]),
+                        ),
+                      );
+                      setDistributionOpen(true);
+                    }}
+                  >
+                    Build slot plan
                   </Button>
                   <Button
                     size="sm"
@@ -362,6 +458,31 @@ export function PoolEditor({
                     await navigator.clipboard.writeText(text);
                   }, 'Beatmap ID copied.');
                 }}
+                onBulkRemove={(ids) => {
+                  const removed = new Set(ids);
+                  setSlots((current) => current.filter((slot) => !removed.has(slot.editorId)));
+                  setDirty(true);
+                }}
+                onBulkCategory={(ids, category) => {
+                  const selected = new Set(ids);
+                  const working = slots.map((slot) => ({ ...slot }));
+                  for (let index = 0; index < working.length; index++) {
+                    if (!selected.has(working[index].editorId)) continue;
+                    const current = working[index];
+                    const name = nextSlotName(
+                      working.filter((slot) => slot.editorId !== current.editorId),
+                      category,
+                    );
+                    working[index] = { ...current, category, name };
+                  }
+                  const problems = poolSlotErrors(working, data.categories);
+                  if (problems.length) {
+                    notify(problems[0], true);
+                    return;
+                  }
+                  setSlots(sortPoolSlots(working, data.categories));
+                  setDirty(true);
+                }}
               />
             ) : (
               <EmptyState title="No beatmaps" description="This stage has no draft slots." />
@@ -384,7 +505,16 @@ export function PoolEditor({
           </div>
           <div className="mt-8 flex items-center justify-between border-t pt-5">
             <span className="text-xs text-muted">
-              {slots.length} slots · Saving creates an independent draft revision
+              {slots.length} slots · {populatedMaps.length} filled
+              {average('stars') !== null && (
+                <>
+                  {' · '}Avg {average('stars')!.toFixed(2)}★{' · '}Avg {average('bpm')!.toFixed(0)}{' '}
+                  BPM
+                  {' · '}Avg {Math.floor(average('length')! / 60)}:
+                  {String(Math.round(average('length')!) % 60).padStart(2, '0')} drain
+                </>
+              )}
+              {' · '}Saving creates an independent draft revision
             </span>
             {can(actor, 'mappools.delete') && (
               <ConfirmButton
@@ -428,7 +558,9 @@ export function PoolEditor({
               imported.forEach((slot, i) =>
                 next.push({
                   ...slot,
-                  name: /^\d+$/.test(lines[i].trim()) ? nextSlotName(next, defaultMod) : slot.name,
+                  name: /^(?:\d+|https?:\/\/)/i.test(lines[i].trim())
+                    ? nextSlotName(next, defaultMod)
+                    : slot.name,
                   editorId: crypto.randomUUID(),
                 }),
               );
@@ -466,6 +598,106 @@ export function PoolEditor({
           </Field>
           <SaveButton busy={busy}>Import & fetch metadata</SaveButton>
         </form>
+      </Modal>
+      <Modal
+        open={copyOpen}
+        onOpenChange={setCopyOpen}
+        title="Copy mappool from another stage"
+        description="This creates an independent draft. The source pool and its publication state are unchanged."
+      >
+        <div className="space-y-4">
+          <Field label="Source stage">
+            <select value={copySource} onChange={(event) => setCopySource(event.target.value)}>
+              {data.stages
+                .filter((candidate) => candidate.id !== stage?.id && candidate.mappool)
+                .map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.name}
+                  </option>
+                ))}
+            </select>
+          </Field>
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-semibold">What to copy</legend>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="radio"
+                name="pool-copy-mode"
+                checked={copyMode === 'structure'}
+                onChange={() => setCopyMode('structure')}
+              />
+              <span>
+                <strong>Structure only</strong>
+                <span className="block text-muted">
+                  Copy slot names and mod categories, leaving every beatmap empty.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="radio"
+                name="pool-copy-mode"
+                checked={copyMode === 'contents'}
+                onChange={() => setCopyMode('contents')}
+              />
+              <span>
+                <strong>Pool contents</strong>
+                <span className="block text-muted">
+                  Copy slots, beatmaps, and pool notes into a new independent draft.
+                </span>
+              </span>
+            </label>
+          </fieldset>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setCopyOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!copySource || busy}
+              onClick={() => void run(async () => copyPool(), 'Pool copied to this draft.')}
+            >
+              Copy to draft
+            </Button>
+          </div>
+        </div>
+      </Modal>
+      <Modal
+        open={distributionOpen}
+        onOpenChange={setDistributionOpen}
+        title="Build mappool slot plan"
+        description="Choose how many slots to prepare for each mod. Generated slots start without a beatmap."
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {data.categories.map((category) => (
+              <Field key={category.id} label={`${category.acronym} · ${category.name}`}>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={distribution[category.acronym] || 0}
+                  onChange={(event) =>
+                    setDistribution((current) => ({
+                      ...current,
+                      [category.acronym]: Number(event.target.value),
+                    }))
+                  }
+                />
+              </Field>
+            ))}
+          </div>
+          <p className="text-xs text-muted">
+            Fill every slot with a beatmap before saving the draft.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setDistributionOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => void run(async () => applyDistribution(), 'Slot plan created.')}>
+              Create slots
+            </Button>
+          </div>
+        </div>
       </Modal>
       <Modal
         open={categoriesOpen}

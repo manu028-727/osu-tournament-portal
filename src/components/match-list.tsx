@@ -11,14 +11,16 @@ export function MatchList({ matches }: { matches: PublicMatch[] }) {
         {matches.map((m) => (
           <Link
             key={m.id}
-            href={`/matches/${encodeURIComponent(m.code)}`}
+            href={`/matches/${m.matchNumber}`}
             className="block border-b py-4"
             data-match-status={m.status}
             aria-label={`Apri incontro ${m.code}`}
           >
             <div className="mb-3 flex items-start justify-between gap-3">
               <p className="min-w-0 text-xs text-muted">
-                <span className="font-semibold text-primary">#{m.code}</span> · {m.stage.name}
+                <span className="font-semibold text-primary">Match {m.matchNumber}</span> ·{' '}
+                {m.stage.name}
+                {m.code !== String(m.matchNumber) && <span className="ml-1">· Ref {m.code}</span>}
                 <span className="mt-1 block">{m.bracket}</span>
               </p>
               <MatchStatusBadge status={m.status}>{PUBLIC_MATCH_STATUS[m.status]}</MatchStatusBadge>
@@ -70,9 +72,12 @@ export function MatchList({ matches }: { matches: PublicMatch[] }) {
                 <td className="min-w-32">
                   <Link
                     className="font-semibold text-primary"
-                    href={`/matches/${encodeURIComponent(m.code)}`}
+                    href={`/matches/${m.matchNumber}`}
                   >
-                    #{m.code}
+                    Match {m.matchNumber}
+                    {m.code !== String(m.matchNumber) && (
+                      <span className="ml-2 text-xs text-muted">Ref {m.code}</span>
+                    )}
                   </Link>
                   <p className="mt-1 text-xs text-muted">
                     {m.stage.name} · {m.bracket}
@@ -98,7 +103,7 @@ export function MatchList({ matches }: { matches: PublicMatch[] }) {
                 <td>
                   <Link
                     className="inline-flex size-10 items-center justify-center rounded-md hover:bg-[var(--surface-hover)]"
-                    href={`/matches/${encodeURIComponent(m.code)}`}
+                    href={`/matches/${m.matchNumber}`}
                     aria-label={`Apri incontro ${m.code}`}
                     title="Dettagli incontro"
                   >

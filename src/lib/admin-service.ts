@@ -18,6 +18,7 @@ import { teamPermission, prepareTeamAction, applyTeamAction } from './teams-serv
 import type { TeamAction } from './teams-validation';
 import type { MatchAction } from './matches-validation';
 import { applyMatchAction, matchPermission, assertMatchActionPermission } from './matches-service';
+import { applyBulkScheduleAction } from './matches-bulk-service';
 import { poolSlotErrors, sortPoolSlots } from './mappool-order';
 import {
   qualifierPermission,
@@ -36,6 +37,7 @@ import {
 } from './qualifier-standings-service';
 import { applyStageReconciliation } from './stage-reconciliation-service';
 export function actionPermission(a: AdminAction): PermissionKey {
+  if (a.type === 'matches.bulk.schedule') return 'matches.manage';
   if (
     a.type.startsWith('competition.') ||
     a.type.startsWith('qualifier.standings.') ||
@@ -116,6 +118,10 @@ export async function executeAction(
       let result: unknown = { ok: true };
       let entityId = tournamentId;
       switch (a.type) {
+        case 'matches.bulk.schedule':
+          result = await applyBulkScheduleAction(tx, actor, tournamentId, a);
+          entityId = 'bulk';
+          break;
         case 'competition.create':
         case 'competition.preview':
         case 'competition.publish':

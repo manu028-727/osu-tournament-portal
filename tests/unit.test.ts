@@ -59,11 +59,46 @@ describe('validation', () => {
       { name: 'EZ2', category: 'EZ', beatmapId: 99 },
       { name: 'TB', category: 'TB', beatmapId: 100 },
     ]);
+    expect(parseImport('https://osu.ppy.sh/beatmaps/4724670\nHD2\t12345', 'NM')).toEqual([
+      { name: 'NM1', category: 'NM', beatmapId: 4724670 },
+      { name: 'HD2', category: 'HD', beatmapId: 12345 },
+    ]);
   });
   it('reports malformed IDs and bounds imports', () => {
     expect(() => parseImport('123\nwrong', 'NM')).toThrow('Line 2');
     expect(() => parseImport(Array(101).fill('1').join('\n'), 'NM')).toThrow('100');
     expect(() => parseImport('99999999999999', 'NM')).toThrow();
+  });
+  it('validates bulk schedule patches without accepting ambiguous or duplicate selections', () => {
+    expect(
+      actionSchema.safeParse({
+        type: 'matches.bulk.schedule',
+        matches: [
+          { id: 'one', baseVersion: 1 },
+          { id: 'two', baseVersion: 4 },
+        ],
+        shiftMinutes: -60,
+        refereeIds: ['ref'],
+      }).success,
+    ).toBe(true);
+    expect(
+      actionSchema.safeParse({
+        type: 'matches.bulk.schedule',
+        matches: [
+          { id: 'one', baseVersion: 1 },
+          { id: 'one', baseVersion: 1 },
+        ],
+        refereeIds: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      actionSchema.safeParse({
+        type: 'matches.bulk.schedule',
+        matches: [{ id: 'one', baseVersion: 1 }],
+        shiftMinutes: 30,
+        scheduledAt: null,
+      }).success,
+    ).toBe(false);
   });
   it('rejects unsafe links, unknown operations, arbitrary permissions and invalid branding', () => {
     for (const url of ['javascript:alert(1)', '//evil.test', 'data:text/html,bad', '/\\evil.test'])
