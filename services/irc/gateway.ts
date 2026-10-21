@@ -2,7 +2,6 @@ import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import type { Client } from 'irc-framework';
 import { BanchoClient } from './bancho-client';
-import { commandAcknowledgement } from './command-response';
 import { WebSocketServer, WebSocket } from 'ws';
 import {
   ircClientMessage,
@@ -225,11 +224,9 @@ export function createGateway(options: {
       throw new Error('This channel is not linked to the selected website match.');
     return !!known || target === `#mp_${createdId}`;
   }
-  function begin(s: Session, v: Viewer, d: IrcDelivery, requestId?: string) {
+  function beginCreate(s: Session, v: Viewer, d: IrcDelivery, requestId: string) {
     if (s.pending.has(d.target))
-      throw new Error(
-        'Wait for the previous command outcome before sending another command to this destination.',
-      );
+      throw new Error('Wait for the lobby creation outcome before creating another lobby.');
     delivery(s, { ...d, state: 'sending' });
     s.pending.set(d.target, {
       identity: v.identity,
@@ -241,7 +238,7 @@ export function createGateway(options: {
             s,
             d.target,
             'unknown',
-            'No verifiable acknowledgement. Check lobby messages before manually retrying.',
+            'No lobby URL received. Inspect BanchoBot before resolving this creation request.',
           ),
         options.outcomeMs || 15000,
       ),
@@ -350,10 +347,6 @@ export function createGateway(options: {
           )
         )
           void finish(s, target, 'failed', text.slice(0, 200));
-        else {
-          const note = commandAcknowledgement(pending.delivery.command, text);
-          if (note) void finish(s, target, 'confirmed', note);
-        }
       };
       client.on('message', incoming);
       client.on('notice', incoming);
@@ -475,7 +468,7 @@ export function createGateway(options: {
         await options.rpc(v.identity, 'complete', { requestId, status: 'FAILED' });
         throw new Error('Disconnected before dispatch. No create command was sent.');
       }
-      begin(
+      beginCreate(
         s,
         v,
         { id: input.id, target: 'BanchoBot', command: `!mp make ${input.name}`, state: 'sending' },
@@ -505,7 +498,9 @@ export function createGateway(options: {
     const creator = await checkRoom(v, s, input.target, kind);
     validateLobbyCommand(input.command, input.confirmed, creator);
     if (!s.channels.has(input.target)) throw new Error('Join this lobby before sending commands.');
-    begin(s, v, { id: input.id, target: input.target, command: input.command, state: 'sending' });
+    connected(s).say(input.target, input.command);
+    message(s, input.target, s.username, input.command);
+    delivery(s, { id: input.id, target: input.target, command: input.command, state: 'sent' });
   }
   server.on('upgrade', (request, socket, head) => {
     const ip = request.socket.remoteAddress || '';

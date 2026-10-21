@@ -155,7 +155,7 @@ test.afterAll(async () => {
   await db.$disconnect();
 });
 
-test('IRC browser preserves credentials through the signed gateway and rejects overlong input locally', async ({
+test('IRC browser preserves credentials and sends commands without waiting for bot verification', async ({
   page,
   context,
 }) => {
@@ -183,8 +183,23 @@ test('IRC browser preserves credentials through the signed gateway and rejects o
   });
   expect(created.ok()).toBe(true);
   const match = await created.json();
+  const linked = await context.request.post('/api/admin/action?tournament=test-cup', {
+    headers: { Origin: 'http://localhost:3001' },
+    data: {
+      type: 'match.lobby',
+      id: match.id,
+      baseVersion: match.version,
+      lobbyUrl: 'https://osu.ppy.sh/community/matches/101',
+      multiplayerId: 101,
+    },
+  });
+  expect(linked.ok()).toBe(true);
   const password = ':Browser+%2F/\\"=Token'.padEnd(200, 'z');
-  const mock = mockBancho({ strictRegistration: true, password });
+  const mock = mockBancho({
+    strictRegistration: true,
+    password,
+    commandReplies: (command) => (command.startsWith('!mp invite ') ? ['User not found'] : []),
+  });
   mock.server.listen(0, '127.0.0.1');
   await once(mock.server, 'listening');
   const gateway = createGateway({
@@ -192,6 +207,7 @@ test('IRC browser preserves credentials through the signed gateway and rejects o
     secret,
     host: '127.0.0.1',
     port: (mock.server.address() as AddressInfo).port,
+    outcomeMs: 120,
     async rpc(identity, operation, extra) {
       const body = JSON.stringify({ identity, operation, ...extra });
       const result = await fetch('http://localhost:3001/api/internal/irc', {
@@ -247,6 +263,32 @@ test('IRC browser preserves credentials through the signed gateway and rejects o
     ]);
     expect(gateway.sessions.get(accounts[0].id)?.irc?.options.password).toBeUndefined();
     await expect(panel.getByRole('alert')).toHaveCount(0);
+    await panel.getByRole('button', { name: 'Join lobby', exact: true }).click();
+    const lock = panel.getByRole('button', { name: 'Lock', exact: true });
+    await expect(lock).toBeEnabled();
+    await lock.click();
+    const confirm = page.getByRole('dialog', { name: 'Confirm lobby command' });
+    await expect(confirm).toBeVisible();
+    expect(mock.lines.some((line) => line === 'PRIVMSG #mp_101 :!mp lock')).toBe(false);
+    await confirm.getByRole('button', { name: 'Confirm', exact: true }).click();
+    const history = panel.getByLabel('Command delivery history');
+    await expect(history.locator('p').filter({ hasText: '!mp lock' })).toContainText('Sent');
+    await panel.getByRole('button', { name: 'Unlock', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Confirm', exact: true }).click();
+    await expect(history.locator('p').filter({ hasText: '!mp unlock' })).toContainText('Sent');
+    const chat = panel.getByLabel('Message #mp_101', { exact: true });
+    await chat.fill('!mp invite Manu028');
+    await panel.getByRole('button', { name: 'Send message', exact: true }).click();
+    await expect(panel.getByRole('log', { name: '#mp_101 messages' })).toContainText(
+      'User not found',
+    );
+    await expect(history.locator('p').filter({ hasText: '!mp invite Manu028' })).toContainText(
+      'Sent',
+    );
+    await page.waitForTimeout(200);
+    await expect(history).not.toContainText(/unknown|awaiting|confirmed/i);
+    await expect(lock).toBeEnabled();
+    expect(gateway.sessions.get(accounts[0].id)?.pending.size).toBe(0);
   } finally {
     await page.close();
     await gateway.close();

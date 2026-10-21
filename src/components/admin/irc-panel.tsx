@@ -183,10 +183,7 @@ export function IrcPanel({
   }
   const target = match.multiplayerId ? `#mp_${match.multiplayerId}` : proposal?.channel || '';
   const connected = ready && state === 'connected';
-  const pending = deliveries.some(
-    (d) => d.target === target && ['sending', 'awaiting'].includes(d.state),
-  );
-  const canSend = connected && editable && !!target && channels.includes(target) && !pending;
+  const canSend = connected && editable && !!target && channels.includes(target);
   const copy = (value: string) =>
     void navigator.clipboard
       .writeText(value)
@@ -484,7 +481,7 @@ export function IrcPanel({
                           ) {
                             if (active !== target || !canSend) {
                               setError(
-                                'Join the selected match lobby and wait for pending commands. Use Create lobby for !mp make.',
+                                'Join the selected match lobby first. Use Create lobby for !mp make.',
                               );
                               return;
                             }
@@ -706,7 +703,7 @@ export function IrcPanel({
                           <span
                             className={`ml-2 ${d.state === 'confirmed' ? 'text-emerald-200' : d.state === 'failed' ? 'text-red-200' : 'text-muted'}`}
                           >
-                            {d.state}
+                            {d.state === 'sent' ? 'Sent' : d.state}
                             {d.note ? `: ${d.note}` : ''}
                           </span>
                           <button

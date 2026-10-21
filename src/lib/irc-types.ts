@@ -18,7 +18,7 @@ export type IrcDelivery = {
   id: string;
   command: string;
   target: string;
-  state: 'sending' | 'awaiting' | 'confirmed' | 'failed' | 'unknown';
+  state: 'sending' | 'sent' | 'awaiting' | 'confirmed' | 'failed' | 'unknown';
   note?: string;
 };
 export type IrcLobby = {
