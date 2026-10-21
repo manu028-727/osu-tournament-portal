@@ -238,6 +238,7 @@ test('guided BO9 completes protects, Blue-first ABBA, corrections, refresh and a
   });
   await page.goto('/t/test-cup/admin/stages');
   await page.getByRole('button', { name: `Edit ${stage.name}`, exact: true }).click();
+  await page.getByText('Advanced stage settings', { exact: true }).click();
   for (const order of ['AB', 'ABAB', 'ABBA']) {
     await page.getByLabel('Ban order', { exact: true }).selectOption(order);
     await expect(
@@ -543,7 +544,7 @@ test('Owner schedules a match; assigned referees collaborate, submit and review 
   page.on('pageerror', (e) => errors.push(e.message));
   await login(context, 0);
   await page.goto('/t/test-cup/admin/matches');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Match management');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Matches');
   await page.getByRole('button', { name: 'New match', exact: true }).click();
   await page.getByLabel('Match code', { exact: true }).fill(prefix);
   await page.getByLabel('Tournament stage', { exact: true }).selectOption(stageId);
@@ -568,7 +569,7 @@ test('Owner schedules a match; assigned referees collaborate, submit and review 
       403,
     );
     expect((await refContext.request.get('/api/admin/data?section=users')).status()).toBe(403);
-    expect((await refContext.request.get('/api/admin/data?section=matches')).status()).toBe(403);
+    expect((await refContext.request.get('/api/admin/data?section=matches')).status()).toBe(200);
     const ref = await refContext.newPage(),
       observer = await refTwo.newPage();
     ref.on('pageerror', (e) => errors.push(e.message));

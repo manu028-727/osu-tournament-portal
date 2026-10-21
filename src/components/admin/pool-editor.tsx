@@ -20,8 +20,6 @@ import { can, type Actor } from '@/lib/permissions';
 import type { PoolContent } from '@/lib/types';
 import type { BeatmapMetadata } from '@/lib/osu';
 import { parseImport } from '@/lib/validation';
-import { slugify } from '@/lib/utils';
-import { MediaField } from './media';
 import {
   action,
   api,
@@ -57,10 +55,16 @@ type Stage = {
 };
 type Data = { stages: Stage[]; categories: Category[] };
 type Slot = EditorSlot;
-export function PoolEditor({ actor }: { actor: Actor }) {
+export function PoolEditor({
+  actor,
+  initialStageId = '',
+}: {
+  actor: Actor;
+  initialStageId?: string;
+}) {
   const { data, error, reload } = useResource<Data>('mappools');
   const { busy, run, notify } = useTask();
-  const [active, setActive] = useState(''),
+  const [active, setActive] = useState(initialStageId),
     [slots, setSlots] = useState<Slot[]>([]),
     [notes, setNotes] = useState(''),
     [base, setBase] = useState<string | null>(null),
@@ -71,8 +75,6 @@ export function PoolEditor({ actor }: { actor: Actor }) {
     [bulk, setBulk] = useState(''),
     [defaultMod, setDefaultMod] = useState('NM'),
     [preview, setPreview] = useState(false),
-    [stageModal, setStageModal] = useState(false),
-    [stageDraft, setStageDraft] = useState<Partial<Stage>>({}),
     [categoriesOpen, setCategoriesOpen] = useState(false),
     [categoryDraft, setCategoryDraft] = useState<Partial<Category>>({});
   const stage = data?.stages.find((s) => s.id === active),
@@ -149,21 +151,11 @@ export function PoolEditor({ actor }: { actor: Actor }) {
             </Button>
           )}
           {can(actor, 'mappools.create') && (
-            <Button
-              size="sm"
-              onClick={() => {
-                setStageDraft({
-                  name: '',
-                  slug: '',
-                  description: '',
-                  position: data.stages.length,
-                  startsAt: null,
-                });
-                setStageModal(true);
-              }}
-            >
-              <Plus size={14} />
-              New stage
+            <Button asChild size="sm">
+              <Link href="/admin/mappools?view=stages&new=1&return=pool">
+                <Plus size={14} />
+                New stage
+              </Link>
             </Button>
           )}
         </div>
@@ -199,16 +191,10 @@ export function PoolEditor({ actor }: { actor: Actor }) {
             </div>
             <div className="flex gap-2">
               {editable && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={dirty}
-                  onClick={() => {
-                    setStageDraft(stage);
-                    setStageModal(true);
-                  }}
-                >
-                  Stage settings
+                <Button asChild size="sm" variant="ghost" disabled={dirty}>
+                  <Link href={`/admin/mappools?view=stages&stage=${stage.id}&return=pool`}>
+                    Stage settings
+                  </Link>
                 </Button>
               )}
               {pool.state === 'PUBLISHED' && (
@@ -479,102 +465,6 @@ export function PoolEditor({ actor }: { actor: Actor }) {
             />
           </Field>
           <SaveButton busy={busy}>Import & fetch metadata</SaveButton>
-        </form>
-      </Modal>
-      <Modal
-        open={stageModal}
-        onOpenChange={setStageModal}
-        title={stageDraft.id ? 'Stage settings' : 'Create tournament stage'}
-      >
-        <form
-          className="space-y-5"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void run(async () => {
-              const result = await action<{ id: string }>({
-                type: 'stage.save',
-                ...stageDraft,
-                startsAt: stageDraft.startsAt ? new Date(stageDraft.startsAt).toISOString() : null,
-              });
-              await reload();
-              setActive(result.id);
-              setStageModal(false);
-            }, 'Stage saved.');
-          }}
-        >
-          <Field label="Stage name">
-            <input
-              required
-              value={stageDraft.name || ''}
-              onChange={(e) =>
-                setStageDraft({
-                  ...stageDraft,
-                  name: e.target.value,
-                  ...(!stageDraft.id ? { slug: slugify(e.target.value) } : {}),
-                })
-              }
-            />
-          </Field>
-          <Field label="URL slug">
-            <input
-              required
-              pattern="[a-z0-9]+(-[a-z0-9]+)*"
-              value={stageDraft.slug || ''}
-              onChange={(e) => setStageDraft({ ...stageDraft, slug: e.target.value })}
-            />
-          </Field>
-          <Field label="Description">
-            <textarea
-              value={stageDraft.description || ''}
-              onChange={(e) => setStageDraft({ ...stageDraft, description: e.target.value })}
-            />
-          </Field>
-          <div className="grid-fields">
-            <Field label="Display order">
-              <input
-                type="number"
-                min={0}
-                value={stageDraft.position ?? 0}
-                onChange={(e) => setStageDraft({ ...stageDraft, position: Number(e.target.value) })}
-              />
-            </Field>
-            <Field label="Starts at (UTC)">
-              <input
-                type="datetime-local"
-                value={stageDraft.startsAt?.slice(0, 16) || ''}
-                onChange={(e) =>
-                  setStageDraft({
-                    ...stageDraft,
-                    startsAt: e.target.value ? `${e.target.value}:00Z` : null,
-                  })
-                }
-              />
-            </Field>
-          </div>
-          <MediaField
-            label="Stage banner"
-            value={stageDraft.bannerImageId ? `/api/media/${stageDraft.bannerImageId}` : ''}
-            canUpload={can(actor, 'media.upload')}
-            onChange={(url) => {
-              const match = /^\/api\/media\/([a-zA-Z0-9_-]+)$/.exec(url);
-              if (url && !match) {
-                notify('Select an image from the media library.', true);
-                return;
-              }
-              setStageDraft({ ...stageDraft, bannerImageId: match?.[1] || null });
-            }}
-          />
-          {stageDraft.bannerImageId && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setStageDraft({ ...stageDraft, bannerImageId: null })}
-            >
-              <Trash2 size={16} />
-              Remove banner
-            </Button>
-          )}
-          <SaveButton busy={busy}>Save stage</SaveButton>
         </form>
       </Modal>
       <Modal

@@ -93,6 +93,15 @@ export function PageEditor({
           {dirty && <span className="text-xs text-amber-200">Unsaved changes</span>}
         </div>
       </SectionTitle>
+      <p role="status" className="mb-4 text-sm text-muted">
+        {dirty
+          ? 'Unsaved changes'
+          : !data.draftRevisionId
+            ? 'No saved draft yet'
+            : data.draftRevisionId !== data.publishedRevisionId
+              ? 'Saved draft · Unpublished changes'
+              : 'Published · No unpublished changes'}
+      </p>
       <div className="editor-actionbar mb-6 flex flex-wrap items-center justify-between gap-3 border-b bg-background pb-4">
         <div className="flex flex-wrap gap-2">
           <Button

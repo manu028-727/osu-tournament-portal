@@ -17,6 +17,14 @@ type Audit = {
   actor: { username: string } | null;
 };
 type Overview = {
+  setup: {
+    homeSaved: boolean;
+    rulesSaved: boolean;
+    homePublished: boolean;
+    pendingPages: number;
+    teams: number;
+    matches: number;
+  };
   tournament: TournamentView & {
     id: string;
     published: boolean;
@@ -32,6 +40,7 @@ type Overview = {
     id: string;
     name: string;
     slug: string;
+    kind: string;
     mappool: { state: string; updatedAt: string } | null;
   }[];
 };
@@ -40,6 +49,72 @@ export function Overview({ actor }: { actor: Actor }) {
   const { busy, run } = useTask();
   if (!data) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
   const t = data.tournament;
+  const tasks = [
+    {
+      label: 'Add tournament information (optional)',
+      href: '/admin/website?view=info',
+      missing: !t.description,
+      allowed: can(actor, 'settings.manage'),
+    },
+    {
+      label: 'Add website artwork (optional)',
+      href: '/admin/website?view=branding',
+      missing: !t.settings.banner,
+      allowed: can(actor, 'settings.manage'),
+    },
+    {
+      label: 'Create a homepage draft',
+      href: '/admin/website',
+      missing: !data.setup.homeSaved,
+      allowed: can(actor, 'homepage.edit'),
+    },
+    {
+      label: 'Publish the saved homepage',
+      href: '/admin/website',
+      missing: data.setup.homeSaved && !data.setup.homePublished,
+      allowed: can(actor, 'homepage.publish'),
+    },
+    {
+      label: 'Add tournament rules (optional)',
+      href: '/admin/website?view=rules',
+      missing: !data.setup.rulesSaved,
+      allowed: can(actor, 'rules.edit'),
+    },
+    {
+      label: 'Create your first stage',
+      href: '/admin/mappools?view=stages&new=1&return=pool',
+      missing: !data.stages.length,
+      allowed: can(actor, 'mappools.create'),
+    },
+    {
+      label: 'Prepare a stage mappool',
+      href: '/admin/mappools',
+      missing: !!data.stages.length && !data.published,
+      allowed: can(actor, 'mappools.edit'),
+    },
+    {
+      label: 'Add teams or solo entrants',
+      href: '/admin/teams',
+      missing: !data.setup.teams,
+      allowed: can(actor, 'teams.create'),
+    },
+    {
+      label: data.stages.every((stage) => stage.kind === 'QUALIFIERS')
+        ? 'Schedule a qualifier lobby'
+        : 'Create the first match',
+      href: data.stages.every((stage) => stage.kind === 'QUALIFIERS')
+        ? '/admin/referee/qualifiers'
+        : '/admin/matches',
+      missing: !!data.published && data.setup.teams >= 2 && !data.setup.matches,
+      allowed: can(actor, 'matches.manage'),
+    },
+    {
+      label: 'Add public staff (optional)',
+      href: '/admin/staff',
+      missing: !data.staff,
+      allowed: can(actor, 'staff.edit'),
+    },
+  ].filter((task) => task.allowed && task.missing);
   const destinations = [
     {
       title: 'Mappools',
@@ -49,7 +124,7 @@ export function Overview({ actor }: { actor: Actor }) {
     },
     {
       title: 'Stages',
-      href: '/admin/stages',
+      href: '/admin/mappools?view=stages',
       permission: 'mappools.create' as const,
       detail: data.stages.length
         ? data.stages
@@ -65,7 +140,12 @@ export function Overview({ actor }: { actor: Actor }) {
       permission: 'teams.view' as const,
       detail: '',
     },
-    { title: 'Rules', href: '/admin/rules', permission: 'rules.edit' as const, detail: '' },
+    {
+      title: 'Rules',
+      href: '/admin/website?view=rules',
+      permission: 'rules.edit' as const,
+      detail: '',
+    },
   ].filter((destination) => can(actor, destination.permission));
   return (
     <div className={styles.overview}>
@@ -80,7 +160,7 @@ export function Overview({ actor }: { actor: Actor }) {
           <div className={styles.actions}>
             {can(actor, 'homepage.edit') && (
               <Button asChild>
-                <Link href="/admin/homepage">
+                <Link href="/admin/website">
                   <Pencil size={16} />
                   Edit homepage
                 </Link>
@@ -135,6 +215,32 @@ export function Overview({ actor }: { actor: Actor }) {
           </section>
         )}
       </div>
+      {data.setup.pendingPages > 0 && (can(actor, 'homepage.edit') || can(actor, 'rules.edit')) && (
+        <p className="mt-6 text-sm text-muted">
+          Saved page drafts have unpublished changes.{' '}
+          <Link className="text-primary" href="/admin/website">
+            Review website
+          </Link>
+        </p>
+      )}
+      {!!tasks.length && (
+        <details open={!t.published} className="mt-6 border-y py-3">
+          <summary className="min-h-11 cursor-pointer py-2 font-semibold">Getting started</summary>
+          <ul className="divide-y">
+            {tasks.map((task) => (
+              <li key={task.href}>
+                <Link
+                  className="flex min-h-11 items-center justify-between gap-3 py-3 text-sm"
+                  href={task.href}
+                >
+                  {task.label}
+                  <ArrowRight size={16} aria-hidden="true" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {destinations.length > 0 && (
         <nav className={styles.destinations} aria-label="Tournament management">
           {destinations.map((destination) => (

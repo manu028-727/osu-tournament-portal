@@ -484,10 +484,15 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                 ))}
               </div>
             </section>
-            <SaveButton busy={busy}>
-              <Save size={17} />
-              Save team
-            </SaveButton>
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="outline" disabled={busy} onClick={close}>
+                Cancel
+              </Button>
+              <SaveButton busy={busy}>
+                <Save size={17} />
+                Save team
+              </SaveButton>
+            </div>
           </form>
         )}
       </Modal>

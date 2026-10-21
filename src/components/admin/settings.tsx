@@ -1,17 +1,22 @@
 'use client';
-import { ExportTournamentButton } from './tournament-export-button';
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, Save } from 'lucide-react';
-import { Tabs } from 'radix-ui';
+import { useRouter } from 'next/navigation';
+import { Plus, Trash2, Save, Eye, X } from 'lucide-react';
+import Link from '@/components/tournament-scope';
 import { Button } from '../ui/button';
-import type { TournamentView } from '@/lib/types';
+import { TournamentProfileHeader } from '../home-content';
+import { TournamentTabs } from '../tournament-tabs';
+import { themeStyle } from '@/lib/theme';
+import type { PageContent, TournamentView } from '@/lib/types';
 import { MediaField } from './media';
+import { ExportTournamentButton } from './tournament-export-button';
 import { can, type Actor } from '@/lib/permissions';
 import { DEFAULT_COPY, siteCopy } from '@/lib/copy';
 import {
   action,
   Field,
   LoadingState,
+  Modal,
   ReorderList,
   SaveButton,
   SectionTitle,
@@ -21,11 +26,29 @@ import {
 } from './shared';
 type SettingsData = TournamentView & { settings: TournamentView['settings'] & { favicon: string } };
 type Form = Omit<SettingsData, 'settings'> & SettingsData['settings'];
-export function SettingsEditor({ actor }: { actor: Actor }) {
+export type SettingsArea = 'info' | 'branding' | 'navigation' | 'advanced';
+const titles = {
+  info: 'Tournament info',
+  branding: 'Appearance',
+  navigation: 'Navigation & text',
+  advanced: 'Tournament settings',
+};
+
+export function SettingsEditor({
+  actor,
+  area = 'advanced',
+  home = null,
+}: {
+  actor: Actor;
+  area?: SettingsArea;
+  home?: PageContent | null;
+}) {
   const { data, error, reload } = useResource<SettingsData>('settings');
   const [form, setForm] = useState<Form | null>(null),
-    [dirty, setDirty] = useState(false);
+    [dirty, setDirty] = useState(false),
+    [preview, setPreview] = useState(false);
   const { busy, run } = useTask();
+  const router = useRouter();
   useUnsaved(dirty);
   useEffect(() => {
     if (data) {
@@ -38,301 +61,146 @@ export function SettingsEditor({ actor }: { actor: Actor }) {
     setForm((f) => (f ? { ...f, [key]: value } : f));
     setDirty(true);
   };
-  if (!form) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
+  if (!form || !data)
+    return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
+  const text = (
+    key: 'name' | 'acronym' | 'description' | 'registrationUrl' | 'timezone' | 'footer',
+    label: string,
+    multiline = false,
+  ) => (
+    <Field label={label}>
+      {multiline ? (
+        <textarea
+          value={form[key]}
+          maxLength={key === 'footer' ? 1000 : 2000}
+          onChange={(e) => update(key, e.target.value)}
+        />
+      ) : (
+        <input
+          required={['name', 'acronym', 'timezone'].includes(key)}
+          value={form[key]}
+          maxLength={key === 'name' ? 120 : key === 'acronym' ? 20 : 2000}
+          onChange={(e) => update(key, e.target.value)}
+        />
+      )}
+    </Field>
+  );
+  const saveLabel = area === 'advanced' ? 'Save settings' : 'Save changes';
+  const identityOverride = home?.blocks.find((block) => block.visible && block.type === 'hero');
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        void run(async () => {
-          await action({ type: 'settings.save', ...form });
-          await reload();
-        }, 'Tournament settings saved. Refresh public pages to see the new branding.');
-      }}
-    >
-      <SectionTitle title="Tournament settings">
-        <SaveButton busy={busy} disabled={busy || !dirty}>
-          <Save size={14} />
-          Save settings
-        </SaveButton>
-      </SectionTitle>
-      <fieldset disabled={busy} className="space-y-7">
-        <Tabs.Root defaultValue="identity" className="space-y-6">
-          <Tabs.List
-            aria-label="Settings sections"
-            className="flex flex-wrap gap-x-4 gap-y-1 border-b"
-          >
-            {[
-              ['identity', 'Identity'],
-              ['branding', 'Branding'],
-              ['registration', 'Registration'],
-              ['navigation', 'Navigation'],
-              ['copy', 'Page labels & footer'],
-            ].map(([value, label]) => (
-              <Tabs.Trigger
-                key={value}
-                value={value}
-                className="min-h-11 border-b-2 border-transparent px-1 py-2 text-sm text-muted data-[state=active]:border-primary data-[state=active]:text-primary"
-              >
-                {label}
-              </Tabs.Trigger>
-            ))}
-          </Tabs.List>
-          <Tabs.Content value="identity" className="space-y-6">
-            <div className="form-section space-y-5">
-              <h2 className="text-lg font-semibold tracking-normal">Tournament identity</h2>
+    <>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void run(async () => {
+            await action({ type: 'settings.save', ...form });
+            await reload();
+            router.refresh();
+          }, 'Saved. Website settings take effect immediately; page and mappool drafts are unchanged.');
+        }}
+      >
+        <SectionTitle title={titles[area]}>
+          {area === 'branding' && (
+            <Button type="button" variant="outline" onClick={() => setPreview(true)}>
+              <Eye size={16} />
+              Preview appearance
+            </Button>
+          )}
+          <SaveButton busy={busy} disabled={busy || !dirty}>
+            <Save size={15} />
+            {saveLabel}
+          </SaveButton>
+        </SectionTitle>
+        <p role="status" className="mb-5 text-sm text-muted">
+          {dirty ? 'Unsaved changes' : 'All changes saved'} · Website settings take effect
+          immediately.
+        </p>
+        <fieldset disabled={busy} className="space-y-6">
+          {area === 'info' && (
+            <>
+              {identityOverride?.content.title && identityOverride.content.title !== form.name && (
+                <p className="text-sm text-muted">
+                  Homepage title override: {identityOverride.content.title}.{' '}
+                  <Link href="/admin/website?view=homepage" className="text-primary">
+                    Edit homepage
+                  </Link>
+                </p>
+              )}
               <div className="grid-fields">
-                <Field label="Tournament name">
-                  <input
-                    required
-                    maxLength={120}
-                    value={form.name}
-                    onChange={(e) => update('name', e.target.value)}
-                  />
-                </Field>
-                <Field label="Acronym">
-                  <input
-                    required
-                    maxLength={20}
-                    value={form.acronym}
-                    onChange={(e) => update('acronym', e.target.value)}
-                  />
-                </Field>
+                {text('name', 'Tournament name')}
+                {text('acronym', 'Acronym')}
               </div>
-              <Field label="Description">
-                <textarea
-                  value={form.description}
-                  onChange={(e) => update('description', e.target.value)}
-                  maxLength={2000}
-                />
-              </Field>
-              <div className="grid-fields">
-                <Field label="Tournament status">
-                  <select value={form.status} onChange={(e) => update('status', e.target.value)}>
-                    {['DRAFT', 'UPCOMING', 'REGISTRATIONS_OPEN', 'ONGOING', 'COMPLETED'].map(
-                      (s) => (
-                        <option key={s} value={s}>
-                          {s.replaceAll('_', ' ').toLowerCase()}
-                        </option>
-                      ),
-                    )}
-                  </select>
-                </Field>
-                <Field
-                  label="Game mode"
-                  hint="Unpublish existing pools before changing modes. Imported maps must match the selected mode."
-                >
-                  <select
-                    value={form.gameMode}
-                    onChange={(e) => update('gameMode', e.target.value)}
-                  >
-                    {['osu', 'taiko', 'fruits', 'mania'].map((m) => (
-                      <option key={m} value={m}>
-                        {m === 'osu' ? 'osu!standard' : `osu!${m}`}
+              {text('description', 'Description', true)}
+              <Field label="Tournament status">
+                <select value={form.status} onChange={(e) => update('status', e.target.value)}>
+                  {['DRAFT', 'UPCOMING', 'REGISTRATIONS_OPEN', 'ONGOING', 'COMPLETED'].map(
+                    (status) => (
+                      <option key={status} value={status}>
+                        {status.replaceAll('_', ' ').toLowerCase()}
                       </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
-            </div>
-            <div className="grid-fields">
-              <Field label="Timezone">
-                <input
-                  value={form.timezone || 'UTC'}
-                  onChange={(e) => update('timezone', e.target.value)}
-                  required
-                />
-              </Field>
-              <Field label="Format">
-                <select
-                  value={form.format || 'CUSTOM'}
-                  onChange={(e) => update('format', e.target.value)}
-                >
-                  <option value="SOLO">1v1</option>
-                  <option value="TEAMS">Teams</option>
-                  <option value="CUSTOM">Custom</option>
+                    ),
+                  )}
                 </select>
               </Field>
-              {(['startsAt', 'endsAt'] as const).map((key) => (
-                <Field key={key} label={key === 'startsAt' ? 'Start date' : 'End date'}>
-                  <input
-                    type="datetime-local"
-                    value={form[key]?.slice(0, 16) || ''}
-                    onChange={(e) =>
-                      update(key, e.target.value ? new Date(e.target.value).toISOString() : null)
-                    }
-                  />
-                </Field>
-              ))}
-            </div>
-          </Tabs.Content>
-          <Tabs.Content value="branding">
-            <div className="form-section space-y-5">
-              <h2 className="text-lg font-semibold tracking-normal">Visual identity</h2>
               <div className="grid-fields">
-                <MediaField
-                  canUpload={can(actor, 'media.upload')}
-                  label="Tournament logo"
-                  value={form.logo}
-                  onChange={(v) => update('logo', v)}
-                />
-                <MediaField
-                  canUpload={can(actor, 'media.upload')}
-                  label="Favicon"
-                  value={form.favicon}
-                  onChange={(v) => update('favicon', v)}
-                />
-              </div>
-              <MediaField
-                canUpload={can(actor, 'media.upload')}
-                label="Main banner"
-                value={form.banner}
-                onChange={(v) => update('banner', v)}
-              />
-              <div className="grid-fields">
-                <Field label="Primary color">
-                  <div className="flex items-center gap-3">
+                {(['startsAt', 'endsAt'] as const).map((key) => (
+                  <Field key={key} label={key === 'startsAt' ? 'Start date' : 'End date'}>
                     <input
-                      type="color"
-                      value={form.primaryColor}
-                      onChange={(e) => update('primaryColor', e.target.value)}
-                    />
-                    <span className="font-mono text-xs text-muted">{form.primaryColor}</span>
-                  </div>
-                </Field>
-                <Field label="Accent color">
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="color"
-                      value={form.accentColor}
-                      onChange={(e) => update('accentColor', e.target.value)}
-                    />
-                    <span className="font-mono text-xs text-muted">{form.accentColor}</span>
-                  </div>
-                </Field>
-              </div>
-            </div>
-          </Tabs.Content>
-          <Tabs.Content value="registration">
-            <div className="form-section space-y-5">
-              <h2 className="text-lg font-semibold tracking-normal">
-                Registration & important dates
-              </h2>
-              <Field label="Registration link">
-                <input
-                  value={form.registrationUrl}
-                  onChange={(e) => update('registrationUrl', e.target.value)}
-                  placeholder="https://…"
-                />
-              </Field>
-              <ReorderList
-                items={form.importantDates}
-                keyOf={(_, i) => String(i)}
-                onChange={(next) => update('importantDates', next)}
-                renderItem={(date, i) => (
-                  <div className="flex flex-wrap items-end gap-3">
-                    <div className="min-w-40 flex-1">
-                      <Field label="Date label">
-                        <input
-                          required
-                          value={date.label}
-                          onChange={(e) =>
-                            update(
-                              'importantDates',
-                              form.importantDates.map((v, j) =>
-                                i === j ? { ...v, label: e.target.value } : v,
-                              ),
+                      type="datetime-local"
+                      value={
+                        form[key]
+                          ? new Date(
+                              new Date(form[key]!).getTime() -
+                                new Date(form[key]!).getTimezoneOffset() * 60000,
                             )
-                          }
-                        />
-                      </Field>
-                    </div>
-                    <div className="min-w-40 flex-1">
-                      <Field label="Date (UTC)">
-                        <input
-                          type="date"
-                          required
-                          value={date.date}
-                          onChange={(e) =>
-                            update(
-                              'importantDates',
-                              form.importantDates.map((v, j) =>
-                                i === j ? { ...v, date: e.target.value } : v,
-                              ),
-                            )
-                          }
-                        />
-                      </Field>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Remove date"
-                      onClick={() =>
-                        update(
-                          'importantDates',
-                          form.importantDates.filter((_, j) => i !== j),
-                        )
+                              .toISOString()
+                              .slice(0, 16)
+                          : ''
                       }
-                    >
-                      <Trash2 size={14} />
-                    </Button>
-                  </div>
-                )}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  update('importantDates', [
-                    ...form.importantDates,
-                    { label: 'New milestone', date: new Date().toISOString().slice(0, 10) },
-                  ])
-                }
-              >
-                <Plus size={13} />
-                Add date
-              </Button>
-            </div>
-          </Tabs.Content>
-          <Tabs.Content value="navigation" className="space-y-6">
-            {(['navigation', 'socialLinks'] as const).map((key) => (
-              <div className="form-section space-y-5" key={key}>
-                <h2 className="text-lg font-semibold tracking-normal">
-                  {key === 'navigation' ? 'Website navigation' : 'Social links'}
-                </h2>
+                      onChange={(e) =>
+                        update(key, e.target.value ? new Date(e.target.value).toISOString() : null)
+                      }
+                    />
+                  </Field>
+                ))}
+              </div>
+              {text('registrationUrl', 'Registration link')}
+              <section className="form-section space-y-4">
+                <h2 className="text-lg font-semibold">Important dates</h2>
                 <ReorderList
-                  items={form[key]}
+                  compact
+                  items={form.importantDates}
                   keyOf={(_, i) => String(i)}
-                  onChange={(next) => update(key, next)}
-                  renderItem={(link, i) => (
+                  onChange={(items) => update('importantDates', items)}
+                  renderItem={(date, i) => (
                     <div className="flex flex-wrap items-end gap-3">
-                      <div className="min-w-32 flex-1">
-                        <Field label="Label">
+                      <div className="min-w-0 flex-1">
+                        <Field label="Date label">
                           <input
                             required
-                            value={link.label}
+                            value={date.label}
                             onChange={(e) =>
                               update(
-                                key,
-                                form[key].map((v, j) =>
-                                  i === j ? { ...v, label: e.target.value } : v,
+                                'importantDates',
+                                form.importantDates.map((value, j) =>
+                                  j === i ? { ...value, label: e.target.value } : value,
                                 ),
                               )
                             }
                           />
                         </Field>
                       </div>
-                      <div className="min-w-40 flex-[2]">
-                        <Field label="URL">
+                      <div className="min-w-0 flex-1">
+                        <Field label="Date (UTC)">
                           <input
-                            value={link.href}
+                            required
+                            type="date"
+                            value={date.date}
                             onChange={(e) =>
                               update(
-                                key,
-                                form[key].map((v, j) =>
-                                  i === j ? { ...v, href: e.target.value } : v,
+                                'importantDates',
+                                form.importantDates.map((value, j) =>
+                                  j === i ? { ...value, date: e.target.value } : value,
                                 ),
                               )
                             }
@@ -343,15 +211,15 @@ export function SettingsEditor({ actor }: { actor: Actor }) {
                         type="button"
                         variant="ghost"
                         size="icon"
-                        aria-label="Remove link"
+                        aria-label="Remove date"
                         onClick={() =>
                           update(
-                            key,
-                            form[key].filter((_, j) => i !== j),
+                            'importantDates',
+                            form.importantDates.filter((_, j) => i !== j),
                           )
                         }
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={16} />
                       </Button>
                     </div>
                   )}
@@ -359,61 +227,282 @@ export function SettingsEditor({ actor }: { actor: Actor }) {
                 <Button
                   type="button"
                   variant="outline"
-                  size="sm"
-                  onClick={() => update(key, [...form[key], { label: 'New link', href: '/' }])}
+                  onClick={() =>
+                    update('importantDates', [
+                      ...form.importantDates,
+                      { label: 'New milestone', date: new Date().toISOString().slice(0, 10) },
+                    ])
+                  }
                 >
-                  <Plus size={13} />
-                  Add link
+                  <Plus size={16} />
+                  Add date
                 </Button>
-              </div>
-            ))}
-          </Tabs.Content>
-          <Tabs.Content value="copy" className="space-y-6">
-            <div className="form-section space-y-5">
-              <h2 className="text-lg font-semibold tracking-normal">
-                Public page introductions & labels
-              </h2>
-              <p className="text-xs text-muted">
-                Customize page headings, introductions, and reusable labels without changing source
-                code.
-              </p>
+              </section>
+            </>
+          )}
+          {area === 'branding' && (
+            <>
+              {identityOverride?.content.image && (
+                <p className="text-sm text-muted">
+                  The homepage has its own banner override.{' '}
+                  <Link href="/admin/website?view=homepage" className="text-primary">
+                    Edit homepage artwork
+                  </Link>
+                </p>
+              )}
               <div className="grid-fields">
-                {Object.keys(DEFAULT_COPY).map((key) => (
+                {(['logo', 'favicon'] as const).map((key) => (
+                  <MediaField
+                    key={key}
+                    canUpload={can(actor, 'media.upload')}
+                    label={key === 'logo' ? 'Tournament logo' : 'Favicon'}
+                    value={form[key]}
+                    onChange={(url) => update(key, url)}
+                  />
+                ))}
+              </div>
+              <MediaField
+                canUpload={can(actor, 'media.upload')}
+                label="Main banner"
+                value={form.banner}
+                onChange={(url) => update('banner', url)}
+              />
+              <div className="grid-fields">
+                {(['primaryColor', 'accentColor'] as const).map((key) => (
                   <Field
                     key={key}
-                    label={key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase())}
+                    label={key === 'primaryColor' ? 'Primary color' : 'Accent color'}
                   >
-                    <textarea
-                      className="min-h-20"
-                      value={siteCopy(form.copy)[key as keyof typeof DEFAULT_COPY]}
-                      onChange={(e) =>
-                        update('copy', { ...siteCopy(form.copy), [key]: e.target.value })
-                      }
-                    />
+                    <div className="flex items-center gap-3">
+                      <input
+                        aria-label={key === 'primaryColor' ? 'Primary color' : 'Accent color'}
+                        type="color"
+                        value={form[key]}
+                        onChange={(e) => update(key, e.target.value)}
+                      />
+                      <span className="font-mono text-xs text-muted">{form[key]}</span>
+                    </div>
                   </Field>
                 ))}
               </div>
-            </div>
-            <div className="form-section space-y-5">
-              <h2 className="text-lg font-semibold tracking-normal">Footer & credits</h2>
-              <Field label="Footer content">
-                <textarea
-                  value={form.footer}
-                  onChange={(e) => update('footer', e.target.value)}
-                  maxLength={1000}
-                />
-              </Field>
-            </div>
-          </Tabs.Content>
-        </Tabs.Root>
-        <div className="flex items-center justify-end gap-4">
-          {can(actor, 'users.manage') && can(actor, 'roles.manage') && <ExportTournamentButton />}
-          {dirty && <span className="text-xs text-amber-200">Unsaved changes</span>}
-          <SaveButton busy={busy} disabled={busy || !dirty}>
-            Save settings
-          </SaveButton>
+              <Link
+                href="/admin/mappools?view=stages"
+                className="inline-flex min-h-11 items-center text-sm text-primary"
+              >
+                Stage-specific banners
+              </Link>
+            </>
+          )}
+          {area === 'navigation' && (
+            <>
+              <section aria-label="Navigation preview" className="min-w-0 overflow-hidden">
+                <h2 className="mb-2 text-lg font-semibold">Navigation labels</h2>
+                <div inert>
+                  <TournamentTabs links={form.navigation} />
+                </div>
+              </section>
+              {(['navigation', 'socialLinks'] as const).map((key) => (
+                <section className="form-section space-y-4" key={key}>
+                  <h2 className="text-lg font-semibold">
+                    {key === 'navigation' ? 'Website navigation' : 'Social links'}
+                  </h2>
+                  <ReorderList
+                    compact
+                    items={form[key]}
+                    keyOf={(_, i) => String(i)}
+                    onChange={(items) => update(key, items)}
+                    renderItem={(link, i) => (
+                      <div className="grid grid-cols-[minmax(0,1fr)_44px] items-end gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_44px]">
+                        <div className="min-w-0 flex-1">
+                          <Field label={key === 'navigation' ? 'Navigation label' : 'Link label'}>
+                            <input
+                              required
+                              value={link.label}
+                              onChange={(e) =>
+                                update(
+                                  key,
+                                  form[key].map((item, j) =>
+                                    j === i ? { ...item, label: e.target.value } : item,
+                                  ),
+                                )
+                              }
+                            />
+                          </Field>
+                        </div>
+                        <div className="col-span-2 min-w-0 sm:col-span-1">
+                          <Field label="URL">
+                            <input
+                              value={link.href}
+                              onChange={(e) =>
+                                update(
+                                  key,
+                                  form[key].map((item, j) =>
+                                    j === i ? { ...item, href: e.target.value } : item,
+                                  ),
+                                )
+                              }
+                            />
+                          </Field>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Remove link"
+                          className="col-start-2 row-start-1 sm:col-auto sm:row-auto"
+                          onClick={() =>
+                            update(
+                              key,
+                              form[key].filter((_, j) => j !== i),
+                            )
+                          }
+                        >
+                          <Trash2 size={16} />
+                        </Button>
+                      </div>
+                    )}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => update(key, [...form[key], { label: 'New link', href: '/' }])}
+                  >
+                    <Plus size={16} />
+                    Add link
+                  </Button>
+                </section>
+              ))}
+              <section className="form-section space-y-5">
+                <h2 className="text-lg font-semibold">Public page text</h2>
+                {[
+                  {
+                    label: 'Mappools page',
+                    keys: ['mappoolsEyebrow', 'mappoolsTitle', 'mappoolsDescription'],
+                  },
+                  { label: 'Staff page', keys: ['staffEyebrow', 'staffTitle', 'staffDescription'] },
+                  { label: 'Rules page', keys: ['rulesEyebrow', 'rulesDescription'] },
+                  {
+                    label: 'Homepage labels & timeline',
+                    keys: [
+                      'communityLabel',
+                      'competitionLabel',
+                      'formatLabel',
+                      'finalsLabel',
+                      'timelineNote',
+                    ],
+                  },
+                  { label: 'Footer tagline', keys: ['footerTagline'] },
+                  {
+                    label: 'Legacy text values',
+                    keys: [
+                      'artworkCaption',
+                      'announcementLabel',
+                      'announcementAside',
+                      'artworkTagline',
+                    ],
+                  },
+                ].map((group) => (
+                  <details key={group.label} className="border-b pb-3">
+                    <summary className="min-h-11 cursor-pointer py-2">{group.label}</summary>
+                    <div className="grid-fields mt-3">
+                      {group.keys.map((key) => (
+                        <Field
+                          key={key}
+                          label={key
+                            .replace(/([A-Z])/g, ' $1')
+                            .replace(/^./, (c) => c.toUpperCase())}
+                        >
+                          <textarea
+                            className="min-h-20"
+                            maxLength={2000}
+                            value={siteCopy(form.copy)[key as keyof typeof DEFAULT_COPY]}
+                            onChange={(e) =>
+                              update('copy', { ...siteCopy(form.copy), [key]: e.target.value })
+                            }
+                          />
+                        </Field>
+                      ))}
+                    </div>
+                  </details>
+                ))}
+              </section>
+              {text('footer', 'Footer content', true)}
+            </>
+          )}
+          {area === 'advanced' && (
+            <>
+              <div className="grid-fields">
+                <Field label="Game mode" hint="Unpublish mappools before changing the game mode.">
+                  <select
+                    value={form.gameMode}
+                    onChange={(e) => update('gameMode', e.target.value)}
+                  >
+                    {['osu', 'taiko', 'fruits', 'mania'].map((mode) => (
+                      <option key={mode} value={mode}>
+                        {mode === 'osu' ? 'osu!standard' : `osu!${mode}`}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {text('timezone', 'Timezone')}
+                <Field label="Format">
+                  <select
+                    value={form.format || 'CUSTOM'}
+                    onChange={(e) => update('format', e.target.value)}
+                  >
+                    <option value="SOLO">1v1</option>
+                    <option value="TEAMS">Teams</option>
+                    <option value="CUSTOM">Custom</option>
+                  </select>
+                </Field>
+              </div>
+              {can(actor, 'matches.manage') && (
+                <Link
+                  href="/admin/matches?rules=1"
+                  className="inline-flex min-h-11 items-center text-sm text-primary"
+                >
+                  Default match rules & stage overrides
+                </Link>
+              )}
+              <section className="form-section space-y-4">
+                <h2 className="text-lg font-semibold">Tournament archive</h2>
+                {can(actor, 'users.manage') && can(actor, 'roles.manage') && (
+                  <ExportTournamentButton />
+                )}
+              </section>
+            </>
+          )}
+          <div className="flex flex-wrap items-center justify-end gap-3 border-t pt-4">
+            {dirty && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  if (window.confirm('Discard unsaved changes?')) {
+                    const { settings, ...t } = data;
+                    setForm({ ...t, ...settings, copy: siteCopy(settings.copy) });
+                    setDirty(false);
+                  }
+                }}
+              >
+                <X size={16} />
+                Discard changes
+              </Button>
+            )}
+            <SaveButton busy={busy} disabled={busy || !dirty}>
+              {saveLabel}
+            </SaveButton>
+          </div>
+        </fieldset>
+      </form>
+      <Modal open={preview} onOpenChange={setPreview} title="Appearance preview" wide>
+        <div inert style={themeStyle(form.primaryColor, form.accentColor) as React.CSSProperties}>
+          <TournamentProfileHeader
+            page={home}
+            tournament={{ ...data, ...form, settings: { ...data.settings, ...form } }}
+          />
         </div>
-      </fieldset>
-    </form>
+      </Modal>
+    </>
   );
 }

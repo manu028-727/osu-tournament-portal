@@ -1,0 +1,341 @@
+import { test, expect, type Page } from '@playwright/test';
+import { PrismaClient } from '../../src/generated/prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
+import sharp from 'sharp';
+import { unlink } from 'node:fs/promises';
+import path from 'node:path';
+const db = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.TEST_DATABASE_URL }),
+});
+const prefix = `workspace-${Date.now()}`,
+  base = 985000000 + randomInt(100000),
+  raw = randomBytes(32).toString('base64url'),
+  refRaw = randomBytes(32).toString('base64url');
+let ownerId = '',
+  refId = '';
+test.beforeAll(async () => {
+  expect(new URL(process.env.TEST_DATABASE_URL!).pathname).toBe('/tournament_platform_test');
+  for (const [offset, token, admin] of [
+    [0, raw, true],
+    [1, refRaw, false],
+  ] as const) {
+    const user = await db.user.create({
+      data: {
+        osuId: base + offset,
+        username: `${prefix}-${offset}`,
+        avatarUrl: 'https://a.ppy.sh/1',
+        profileUrl: '',
+        platformAdmin: admin,
+        sessions: {
+          create: {
+            id: createHash('sha256').update(token).digest('hex'),
+            expiresAt: new Date(Date.now() + 3600000),
+          },
+        },
+      },
+    });
+    if (admin) ownerId = user.id;
+    else refId = user.id;
+  }
+  await db.participant.createMany({
+    data: [2, 3].map((n) => ({
+      osuId: base + n,
+      username: `${prefix}-player-${n}`,
+      avatarUrl: 'https://a.ppy.sh/1',
+    })),
+  });
+  await db.beatmap.createMany({
+    data: [10, 11, 12].map((n) => ({
+      id: base + n,
+      mode: 'osu',
+      metadata: {
+        id: base + n,
+        mode: 'osu',
+        title: `Synthetic UX map ${n}`,
+        artist: 'QA',
+        mapper: 'QA',
+        difficulty: 'Test',
+        stars: 4,
+        bpm: 180,
+        length: 120,
+        ar: 9,
+        cs: 4,
+        od: 8,
+        hp: 6,
+        cover: '',
+        url: `https://osu.ppy.sh/beatmaps/${base + n}`,
+      },
+    })),
+  });
+});
+test.afterAll(async () => {
+  for (const t of await db.tournament.findMany({ where: { slug: { startsWith: prefix } } })) {
+    const media = await db.mediaAsset.findMany({ where: { tournamentId: t.id } });
+    await db.page.updateMany({
+      where: { tournamentId: t.id },
+      data: { draftRevisionId: null, publishedRevisionId: null },
+    });
+    await db.mappool.updateMany({
+      where: { tournamentId: t.id },
+      data: { draftRevisionId: null, publishedRevisionId: null },
+    });
+    await db.auditLog.deleteMany({ where: { tournamentId: t.id } });
+    await db.match.deleteMany({ where: { tournamentId: t.id } });
+    await db.tournamentStage.deleteMany({ where: { tournamentId: t.id } });
+    await db.team.deleteMany({ where: { tournamentId: t.id } });
+    await db.mediaAsset.deleteMany({ where: { tournamentId: t.id } });
+    await db.role.deleteMany({ where: { tournamentId: t.id } });
+    await db.tournament.delete({ where: { id: t.id } });
+    for (const item of media)
+      await unlink(path.resolve('.data/test-uploads', item.key)).catch(() => {});
+  }
+  await db.user.deleteMany({ where: { id: { in: [ownerId, refId] } } });
+  await db.participant.deleteMany({ where: { osuId: { in: [base + 2, base + 3] } } });
+  await db.beatmap.deleteMany({ where: { id: { in: [base + 10, base + 11, base + 12] } } });
+  await db.$disconnect();
+});
+async function choose(page: Page, name: string) {
+  await page
+    .getByRole('navigation', { name: 'Website sections' })
+    .getByRole('link', { name, exact: true })
+    .click();
+}
+async function confirm(page: Page) {
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm', exact: true }).click();
+}
+test('a fresh organizer configures, publishes and operates one tournament through the canonical workspace', async ({
+  page,
+  context,
+  browser,
+}) => {
+  test.setTimeout(180000);
+  page.setDefaultTimeout(15000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await context.addCookies([
+    { name: 'tournament_session', value: raw, url: 'http://localhost:3001' },
+  ]);
+  const created = await context.request.post('/api/tournaments', {
+    headers: { Origin: 'http://localhost:3001' },
+    data: { type: 'create', name: prefix, slug: prefix, acronym: 'UX', gameMode: 'osu' },
+  });
+  expect(created.ok()).toBe(true);
+  const { id } = await created.json();
+  const root = `/t/${prefix}`,
+    admin = root + '/admin';
+  await page.goto(admin);
+  await expect(page.getByText('Getting started', { exact: true })).toBeVisible();
+  const nav = page.getByRole('navigation', { name: 'Administration' });
+  await expect(nav.getByRole('link', { name: 'Referee', exact: true })).toHaveCount(0);
+  await nav.getByRole('link', { name: 'Website', exact: true }).click();
+  await choose(page, 'Tournament info');
+  await page.getByLabel('Description', { exact: true }).fill('Saved UX tournament description');
+  await page.getByRole('button', { name: 'Save changes', exact: true }).first().click();
+  await expect(page.getByText('All changes saved', { exact: false }).first()).toBeVisible();
+  await choose(page, 'Appearance');
+  await page.getByLabel('Primary color', { exact: true }).fill('#277a63');
+  await page.getByRole('button', { name: 'Choose Main banner' }).click();
+  const image = await sharp({
+    create: { width: 160, height: 80, channels: 3, background: '#b56a84' },
+  })
+    .png()
+    .toBuffer();
+  await page
+    .getByRole('dialog')
+    .locator('input[type=file]')
+    .setInputFiles({ name: 'ux-banner.png', mimeType: 'image/png', buffer: image });
+  await page.getByRole('button', { name: 'Select ux-banner.png', exact: true }).click();
+  await page.getByRole('button', { name: 'Save changes', exact: true }).first().click();
+  await expect(page.getByText('All changes saved', { exact: false }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Preview appearance', exact: true }).click();
+  expect(
+    (await db.tournamentSettings.findUniqueOrThrow({ where: { tournamentId: id } })).primaryColor,
+  ).toBe('#277a63');
+  await expect(
+    page.getByRole('dialog').getByRole('img', { name: prefix + ' banner' }),
+  ).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: 'Close dialog' }).click();
+  await choose(page, 'Navigation & text');
+  await page.getByLabel('Navigation label', { exact: true }).first().fill('Start');
+  const preview = page.locator('section[aria-label="Navigation preview"]');
+  await expect(preview).toContainText('Start');
+  await page.getByText('Mappools page', { exact: true }).click();
+  await page.getByLabel('Mappools Title', { exact: true }).fill('Official maps');
+  await page.getByRole('button', { name: 'Save changes', exact: true }).first().click();
+  await expect(page.getByText('All changes saved', { exact: false }).first()).toBeVisible();
+  await choose(page, 'Homepage');
+  await page.getByLabel('Page title', { exact: true }).fill('UX homepage');
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByText('Saved draft · Unpublished changes', { exact: true })).toBeVisible();
+  expect((await db.tournament.findUniqueOrThrow({ where: { id } })).published).toBe(false);
+  await page.getByRole('button', { name: 'Publish', exact: true }).click();
+  await confirm(page);
+  await expect(page.getByText('Published · No unpublished changes', { exact: true })).toBeVisible();
+  await choose(page, 'Rules');
+  await page.getByLabel('Page title', { exact: true }).fill('UX rules');
+  await page.locator('.tiptap').fill('Rules saved through the actual editor');
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByText('Saved draft · Unpublished changes', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Publish', exact: true }).click();
+  await confirm(page);
+  await page
+    .getByRole('navigation', { name: 'Administration' })
+    .getByRole('link', { name: 'Stages & mappools', exact: true })
+    .click();
+  await page.getByRole('link', { name: 'New stage', exact: true }).click();
+  let dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Stage name', { exact: true }).fill('Finals');
+  await expect(dialog.getByLabel('URL slug')).toHaveValue('finals');
+  await dialog.getByText('Advanced stage settings', { exact: true }).click();
+  await dialog.getByLabel('Inherit tournament match rules').uncheck();
+  await dialog.getByLabel('Players per side', { exact: true }).fill('1');
+  await dialog.getByLabel('Best of', { exact: true }).fill('1');
+  await dialog.getByLabel('Bans per team', { exact: true }).fill('0');
+  await dialog.getByLabel('Use a tiebreaker at match point', { exact: true }).uncheck();
+  await dialog.getByRole('button', { name: 'Save stage', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Mappool manager', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Bulk import', exact: true }).click();
+  dialog = page.getByRole('dialog');
+  await dialog
+    .getByLabel('Beatmap IDs or slot mappings')
+    .fill(`NM3: ${base + 12}\nNM1: ${base + 10}\nNM2: ${base + 11}`);
+  await dialog.getByRole('button', { name: 'Import & fetch metadata' }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByText('Draft changes', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Publish', exact: true }).click();
+  await confirm(page);
+  for (const n of [2, 3]) {
+    await page
+      .getByRole('navigation', { name: 'Administration' })
+      .getByRole('link', { name: 'Teams & players', exact: true })
+      .click();
+    await page.getByRole('button', { name: 'New team', exact: true }).click();
+    dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Team name', { exact: true }).fill(`UX Team ${n}`);
+    await dialog.getByLabel('osu! ID or username').fill(String(base + n));
+    await dialog.getByRole('button', { name: 'Look up', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Add player', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Save team', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    const row = page.getByRole('row').filter({ hasText: `UX Team ${n}` });
+    await row.getByRole('button', { name: `Publication UX Team ${n}` }).click();
+    dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Registration status').selectOption('APPROVED');
+    await dialog.getByRole('button', { name: 'Save visibility' }).click();
+    await expect(dialog).toHaveCount(0);
+  }
+  await page
+    .getByRole('navigation', { name: 'Administration' })
+    .getByRole('link', { name: 'Staff', exact: true })
+    .click();
+  await page
+    .getByRole('navigation', { name: 'Staff sections' })
+    .getByRole('link', { name: 'Website access', exact: true })
+    .click();
+  await page.getByLabel('Search users').fill(prefix + '-1');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await page
+    .getByRole('row')
+    .filter({ hasText: prefix + '-1' })
+    .getByRole('button', { name: 'Manage', exact: true })
+    .click();
+  dialog = page.getByRole('dialog');
+  await dialog.getByLabel(/^Referee/).check();
+  await dialog.getByRole('button', { name: 'Save roles', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await page
+    .getByRole('navigation', { name: 'Administration' })
+    .getByRole('link', { name: 'Matches', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'New match', exact: true }).click();
+  dialog = page.getByRole('dialog');
+  await expect(dialog.getByLabel('Match code')).toHaveValue('1');
+  await dialog.getByLabel('Team A / red').selectOption({ label: 'UX Team 2' });
+  await dialog.getByLabel('Team B / blue').selectOption({ label: 'UX Team 3' });
+  await dialog.getByLabel(new RegExp(prefix + '-1')).check();
+  await dialog.getByRole('button', { name: 'Save match' }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole('button', { name: 'Multiplayer link for 1', exact: true }).click();
+  dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Multiplayer URL').fill('https://osu.ppy.sh/community/matches/123456');
+  await dialog.getByRole('button', { name: 'Save multiplayer link' }).click();
+  await expect(dialog).toHaveCount(0);
+  const match = await db.match.findFirstOrThrow({ where: { tournamentId: id, code: '1' } });
+  expect(match.rules).toMatchObject({ bestOf: 1, teamSize: 1, bansPerTeam: 0 });
+  expect(match.lobbyUrl).toContain('/123456');
+  expect(match.poolRevisionId).not.toBeNull();
+  await page
+    .getByRole('navigation', { name: 'Administration' })
+    .getByRole('link', { name: 'Overview', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Publish', exact: true }).click();
+  await confirm(page);
+  await expect(page.getByText('Published', { exact: true }).first()).toBeVisible();
+  const guest = await browser.newContext();
+  const publicPage = await guest.newPage();
+  await publicPage.goto(root);
+  await expect(
+    publicPage
+      .getByRole('navigation', { name: 'Tournament navigation' })
+      .getByRole('link', { name: 'Start', exact: true }),
+  ).toBeVisible();
+  await publicPage.goto(root + '/mappools');
+  await expect(
+    publicPage.getByRole('heading', { level: 1, name: 'Official maps', exact: true }),
+  ).toBeVisible();
+  await guest.close();
+  const referee = await browser.newContext();
+  await referee.addCookies([
+    { name: 'tournament_session', value: refRaw, url: 'http://localhost:3001' },
+  ]);
+  const ref = await referee.newPage();
+  await ref.goto(admin + '/referee');
+  await expect(ref).toHaveURL(new RegExp('/admin/matches$'));
+  await ref.getByRole('button', { name: 'My Matches', exact: true }).click();
+  await ref.getByRole('link', { name: 'Open match 1', exact: true }).click();
+  await expect(ref.getByText('Editing match · Assigned referee', { exact: true })).toBeVisible();
+  await ref.getByRole('link', { name: 'Back to matches', exact: true }).click();
+  await expect(ref).toHaveURL(new RegExp('/admin/matches$'));
+  await referee.close();
+  expect(errors).toEqual([]);
+});
+
+test('Website subsection links protect unsaved edits and mobile navigation stays within the viewport', async ({
+  page,
+  context,
+}) => {
+  await context.addCookies([
+    { name: 'tournament_session', value: raw, url: 'http://localhost:3001' },
+  ]);
+  const slug = prefix + '-unsaved';
+  expect(
+    (
+      await context.request.post('/api/tournaments', {
+        headers: { Origin: 'http://localhost:3001' },
+        data: { type: 'create', name: 'Unsaved QA', slug, acronym: 'UX', gameMode: 'osu' },
+      })
+    ).ok(),
+  ).toBe(true);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/t/${slug}/admin/website?view=info`);
+  await page.getByLabel('Description', { exact: true }).fill('Unsaved change');
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await page
+    .getByRole('navigation', { name: 'Website sections' })
+    .getByRole('link', { name: 'Rules', exact: true })
+    .click();
+  await expect(page.getByLabel('Description', { exact: true })).toHaveValue('Unsaved change');
+  expect(new URL(page.url()).searchParams.get('view')).toBe('info');
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Discard changes', exact: true }).click();
+  await expect(page.getByLabel('Description', { exact: true })).toHaveValue('');
+  await page
+    .getByRole('navigation', { name: 'Website sections' })
+    .getByRole('link', { name: 'Rules', exact: true })
+    .click();
+  await expect(page.getByRole('heading', { name: 'Rules editor' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: 'test-results/workspace-mobile.png', fullPage: true });
+});

@@ -141,7 +141,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
       ) : (
         <div className="card py-20 text-center">
           <Users className="mx-auto mb-4 text-primary" size={28} />
-          <h2 className="text-xl font-semibold">Every great tournament has a great team.</h2>
+          <h2 className="text-xl font-semibold">No public staff members yet</h2>
           <p className="mt-3 text-sm text-muted">
             Add the first staff member using their osu! user ID.
           </p>
@@ -266,7 +266,12 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                 <p className="text-xs text-muted">Create a staff category to organize your team.</p>
               )}
             </div>
-            <SaveButton busy={busy}>Save staff profile</SaveButton>
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="outline" disabled={busy} onClick={closeMember}>
+                Cancel
+              </Button>
+              <SaveButton busy={busy}>Save staff profile</SaveButton>
+            </div>
           </form>
         )}
       </Modal>

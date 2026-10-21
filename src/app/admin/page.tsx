@@ -14,7 +14,7 @@ export default async function Admin() {
       .filter((section) => !['referee', 'matches'].includes(section))
       .some((section) => canAccessSection(actor, section))
   )
-    redirect(`${scope.adminBase}/referee`);
+    redirect(`${scope.adminBase}/matches`);
   if (!actor.permissions.length)
     return (
       <div className="card max-w-2xl p-8">

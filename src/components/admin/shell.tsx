@@ -2,7 +2,7 @@
 import Link, { useTournamentScope } from '@/components/tournament-scope';
 import { usePathname } from 'next/navigation';
 import { DropdownMenu } from 'radix-ui';
-import { ArrowUpRight, ChevronDown, Settings } from 'lucide-react';
+import { ArrowUpRight, ChevronDown } from 'lucide-react';
 import type { Actor } from '@/lib/permissions';
 import { canAccessSection } from '@/lib/workspace';
 import { Notices, useWorkspacePortal } from './shared';
@@ -12,37 +12,13 @@ import styles from './workspace-pilot.module.css';
 
 const primary = [
   ['', 'Overview'],
-  ['homepage', 'Homepage'],
-  ['mappools', 'Mappools'],
+  ['website', 'Website'],
+  ['mappools', 'Stages & mappools'],
+  ['teams', 'Teams & players'],
   ['matches', 'Matches'],
-  ['referee', 'Referee'],
+  ['staff', 'Staff'],
+  ['settings', 'Settings'],
 ] as const;
-const groups = [
-  {
-    label: 'Website',
-    links: [
-      ['rules', 'Rules'],
-      ['staff', 'Staff'],
-      ['media', 'Media library'],
-    ],
-  },
-  {
-    label: 'Competition',
-    links: [
-      ['stages', 'Stages'],
-      ['teams', 'Teams & players'],
-      ['sheet-data', 'Sheet data'],
-    ],
-  },
-  {
-    label: 'Administration',
-    links: [
-      ['users', 'Users'],
-      ['roles', 'Roles & permissions'],
-      ['audit', 'Audit logs'],
-    ],
-  },
-];
 
 export function AdminShell({
   actor,
@@ -62,27 +38,9 @@ export function AdminShell({
   const pathname = usePathname();
   const localPath = scope.slug ? pathname.replace(scope.adminBase, '/admin') : pathname;
   const active = (slug: string) =>
+    (slug === 'matches' && localPath.startsWith('/admin/referee/')) ||
     localPath === `/admin${slug ? '/' + slug : ''}` ||
     (!!slug && localPath.startsWith(`/admin/${slug}/`));
-  const visibleGroups = groups
-    .map((group) => ({
-      ...group,
-      links: group.links.filter(([slug]) => canAccessSection(actor, slug)),
-    }))
-    .filter((group) => group.links.length);
-  const secondaryActive = visibleGroups.some((group) => group.links.some(([slug]) => active(slug)));
-  const menuItems = (items: string[][]) =>
-    items.map(([slug, label]) => (
-      <DropdownMenu.Item asChild key={slug}>
-        <Link
-          href={`/admin/${slug}`}
-          className={styles.menuItem}
-          aria-current={active(slug) ? 'page' : undefined}
-        >
-          {label}
-        </Link>
-      </DropdownMenu.Item>
-    ));
   return (
     <Notices>
       <div id="workspace" className={`workspace ${styles.workspace}`}>
@@ -123,17 +81,6 @@ export function AdminShell({
                 <span>View website</span>
                 <ArrowUpRight size={18} />
               </Link>
-              {!platform && canAccessSection(actor, 'settings') && (
-                <Link
-                  href="/admin/settings"
-                  className={styles.iconButton}
-                  aria-label="Tournament settings"
-                  title="Tournament settings"
-                  aria-current={active('settings') ? 'page' : undefined}
-                >
-                  <Settings size={18} />
-                </Link>
-              )}
               <span className={styles.username}>{actor.username}</span>
               <LogoutButton aria-label="Sign out" className={styles.iconButton} />
             </div>
@@ -146,7 +93,12 @@ export function AdminShell({
             ) : (
               <>
                 {primary
-                  .filter(([slug]) => !slug || canAccessSection(actor, slug))
+                  .filter(
+                    ([slug]) =>
+                      !slug ||
+                      canAccessSection(actor, slug) ||
+                      (slug === 'mappools' && canAccessSection(actor, 'stages')),
+                  )
                   .map(([slug, label]) => (
                     <Link
                       key={slug}
@@ -156,40 +108,13 @@ export function AdminShell({
                       {label}
                     </Link>
                   ))}
-                {visibleGroups.length > 0 && (
-                  <DropdownMenu.Root>
-                    <DropdownMenu.Trigger
-                      className={secondaryActive ? styles.activeMore : undefined}
-                    >
-                      More
-                      <ChevronDown size={14} aria-hidden="true" />
-                    </DropdownMenu.Trigger>
-                    <DropdownMenu.Portal container={portal}>
-                      <DropdownMenu.Content
-                        align="end"
-                        sideOffset={8}
-                        collisionPadding={16}
-                        className={styles.menu}
-                      >
-                        {visibleGroups.map((group) => (
-                          <DropdownMenu.Group key={group.label}>
-                            <DropdownMenu.Label className={styles.menuLabel}>
-                              {group.label}
-                            </DropdownMenu.Label>
-                            {menuItems(group.links)}
-                          </DropdownMenu.Group>
-                        ))}
-                      </DropdownMenu.Content>
-                    </DropdownMenu.Portal>
-                  </DropdownMenu.Root>
-                )}
               </>
             )}
           </nav>
         </header>
         <main
           id="main"
-          className={`workspace-main ${styles.main} ${active('homepage') ? styles.editor : ''}`}
+          className={`workspace-main ${styles.main} ${active('website') ? styles.editor : ''}`}
         >
           {children}
         </main>

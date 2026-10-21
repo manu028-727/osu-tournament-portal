@@ -3,6 +3,31 @@ import { safeReturnTo } from '../src/lib/return-url';
 import { canAccessSection, canAccessWorkspace } from '../src/lib/workspace';
 import { DEFAULT_ROLES, type Actor } from '../src/lib/permissions';
 describe('public sign-in and workspace policy', () => {
+  const staff = (permissions: Actor['permissions']): Actor => ({
+    id: 'workspace-test',
+    osuId: 1,
+    username: 'test',
+    avatarUrl: '',
+    permissions,
+    roles: [],
+  });
+  it('puts referees in Matches without granting unrelated editing access', () => {
+    expect(canAccessSection(staff(DEFAULT_ROLES.Referee), 'matches')).toBe(true);
+    expect(canAccessSection(staff(DEFAULT_ROLES.Referee), 'website')).toBe(false);
+    expect(canAccessSection(staff(DEFAULT_ROLES.Referee), 'settings')).toBe(false);
+    expect(canAccessSection(staff(['matches.view_all']), 'matches')).toBe(true);
+  });
+  it('groups website editors without granting configuration permissions', () => {
+    expect(canAccessSection(staff(['rules.publish']), 'website')).toBe(true);
+    expect(canAccessSection(staff(['rules.publish']), 'settings')).toBe(false);
+    expect(canAccessSection(staff(['media.upload']), 'website')).toBe(true);
+    expect(canAccessSection(staff(['users.manage']), 'staff')).toBe(true);
+    expect(canAccessSection(staff(['staff.edit']), 'users')).toBe(false);
+  });
+  it('rejects unknown and prototype section names', () => {
+    for (const name of ['constructor', 'toString', '__proto__', 'unknown'])
+      expect(canAccessSection(staff(DEFAULT_ROLES.Owner), name)).toBe(false);
+  });
   it.each(['/', '/rules', '/mappools/finals?view=maps', '/teams/example#roster'])(
     'preserves a public return path %s',
     (path) => expect(safeReturnTo(path)).toBe(path),

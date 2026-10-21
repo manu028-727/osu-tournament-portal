@@ -148,6 +148,17 @@ export function useUnsaved(dirty: boolean) {
     const click = (e: MouseEvent) => {
       const a = (e.target as HTMLElement).closest('a');
       if (
+        e.defaultPrevented ||
+        e.button !== 0 ||
+        e.metaKey ||
+        e.ctrlKey ||
+        e.shiftKey ||
+        e.altKey ||
+        a?.target === '_blank' ||
+        a?.hasAttribute('download')
+      )
+        return;
+      if (
         a &&
         a.href !== location.href &&
         !a.href.startsWith(location.href + '#') &&
@@ -332,11 +343,13 @@ export function ReorderList<T>({
   onChange,
   renderItem,
   keyOf,
+  compact = false,
 }: {
   items: T[];
   onChange: (items: T[]) => void;
   renderItem: (item: T, index: number) => ReactNode;
   keyOf: (item: T, index: number) => string;
+  compact?: boolean;
 }) {
   const drag = useRef<number | null>(null);
   const move = (from: number, to: number) => {
@@ -346,7 +359,7 @@ export function ReorderList<T>({
     onChange(next);
   };
   return (
-    <div className="space-y-3">
+    <div className={compact ? 'divide-y' : 'space-y-3'}>
       {items.map((item, i) => (
         <div
           key={keyOf(item, i)}
@@ -356,20 +369,26 @@ export function ReorderList<T>({
             if (drag.current !== null) move(drag.current, i);
             drag.current = null;
           }}
-          className="card p-4"
+          className={compact ? 'flex min-w-0 items-center gap-3 py-3' : 'card p-4'}
         >
-          <div className="mb-3 flex items-center justify-between">
+          <div
+            className={
+              compact
+                ? 'flex shrink-0 flex-col items-center sm:flex-row'
+                : 'mb-3 flex items-center justify-between'
+            }
+          >
             <span
               draggable
               onDragStart={() => {
                 drag.current = i;
               }}
-              className="cursor-grab p-1 text-muted"
+              className={`cursor-grab p-1 text-muted ${compact ? 'hidden sm:inline-flex' : ''}`}
               title="Drag to reorder"
             >
               <GripVertical size={16} />
             </span>
-            <div className="flex gap-1">
+            <div className={compact ? 'flex flex-col gap-1 sm:flex-row' : 'flex gap-1'}>
               <Button
                 type="button"
                 variant="ghost"
@@ -392,7 +411,11 @@ export function ReorderList<T>({
               </Button>
             </div>
           </div>
-          {renderItem(item, i)}
+          {compact ? (
+            <div className="min-w-0 flex-1">{renderItem(item, i)}</div>
+          ) : (
+            renderItem(item, i)
+          )}
         </div>
       ))}
     </div>

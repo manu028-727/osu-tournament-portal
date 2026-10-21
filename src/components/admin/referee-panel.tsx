@@ -177,11 +177,11 @@ export function RefereePanel({
         </p>
       )}
       <Link
-        href="/admin/referee"
+        href="/admin/matches"
         className="mb-2 inline-flex items-center gap-2 text-sm text-primary"
       >
         <ArrowLeft size={18} />
-        Referee dashboard
+        Back to matches
       </Link>
       <header className="referee-scoreboard border-b pb-3" aria-label="Match scoreboard">
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
@@ -352,9 +352,7 @@ export function RefereePanel({
         onDeleted={async () => {
           const slug = tournamentPath(window.location.pathname)?.slug;
           window.location.assign(
-            slug
-              ? `${tournamentAdminBase(slug)}/${manager ? 'matches' : 'referee'}`
-              : '/admin/tournaments',
+            slug ? `${tournamentAdminBase(slug)}/matches` : '/admin/tournaments',
           );
         }}
       />

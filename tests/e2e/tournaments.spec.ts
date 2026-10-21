@@ -124,9 +124,14 @@ test('creates private tournaments, switches scoped CMS contexts and publishes in
     for (const suffix of ['a', 'b']) {
       await page.goto('/admin/tournaments');
       await page.locator(`a[href="/t/${prefix}-${suffix}/admin"]`).click();
-      await page.getByRole('button', { name: 'More', exact: true }).click();
-      await page.getByRole('menuitem', { name: 'Rules', exact: true }).click();
-      await expect(page).toHaveURL(`http://localhost:3001/t/${prefix}-${suffix}/admin/rules`);
+      await page.getByRole('link', { name: 'Website', exact: true }).click();
+      await page
+        .getByRole('navigation', { name: 'Website sections' })
+        .getByRole('link', { name: 'Rules', exact: true })
+        .click();
+      await expect(page).toHaveURL(
+        `http://localhost:3001/t/${prefix}-${suffix}/admin/website?view=rules`,
+      );
       await expect(page.getByRole('heading', { level: 1 })).toContainText('Rules editor');
       const url = `/api/admin/data?section=rules&tournament=${prefix}-${suffix}`;
       const before = await (await context.request.get(url)).json();
@@ -180,13 +185,13 @@ test('creates private tournaments, switches scoped CMS contexts and publishes in
         page.getByRole('heading', { name: 'Tournament stages', exact: true }),
       ).toBeVisible();
       await page.getByRole('button', { name: 'New stage', exact: true }).click();
-      await page.getByRole('dialog').getByLabel('Name', { exact: true }).fill('Finals');
+      await page.getByRole('dialog').getByLabel('Stage name', { exact: true }).fill('Finals');
       await page.getByRole('dialog').getByLabel('URL slug').fill('finals');
       await page
         .getByRole('dialog')
         .getByRole('button', { name: 'Save stage', exact: true })
         .click();
-      await expect(page.getByRole('cell', { name: 'Finals', exact: true }).first()).toBeVisible();
+      await expect(page.getByRole('cell', { name: /Finals/ }).first()).toBeVisible();
     }
     const publicPage = await visitor.newPage();
     await publicPage.goto(`/t/${prefix}-a/rules`);
@@ -224,15 +229,17 @@ test('creates private tournaments, switches scoped CMS contexts and publishes in
     await expect(
       page
         .getByRole('navigation', { name: 'Administration' })
-        .getByRole('link', { name: 'Homepage', exact: true }),
+        .getByRole('link', { name: 'Website', exact: true }),
     ).toBeVisible();
-    await page.getByRole('button', { name: 'More', exact: true }).click();
+    await page.getByRole('button', { name: /^Switch tournament:/ }).click();
     const moreMenu = page.getByRole('menu');
-    await expect(moreMenu.getByRole('menuitem', { name: 'Rules', exact: true })).toBeVisible();
+    await expect(
+      moreMenu.getByRole('menuitem', { name: 'Switch tournament', exact: true }),
+    ).toBeVisible();
     const menuBox = await moreMenu.boundingBox();
     expect(menuBox && menuBox.x >= 0 && menuBox.x + menuBox.width <= 390).toBeTruthy();
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('button', { name: 'More', exact: true })).toBeFocused();
+    await expect(page.getByRole('button', { name: /^Switch tournament:/ })).toBeFocused();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );

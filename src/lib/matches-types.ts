@@ -10,6 +10,7 @@ export type MatchSummary = {
   code: string;
   status: MatchStatus;
   notes: string;
+  lobbyUrl?: string;
   scheduledAt: string | null;
   published: boolean;
   bracket: string;
@@ -129,6 +130,7 @@ export type MatchOptions = {
     id: string;
     name: string;
     published: boolean;
+    kind?: string;
     rules: MatchRules | null;
     rulesHash: string;
   }[];
@@ -136,6 +138,7 @@ export type MatchOptions = {
   referees: RefereeProfile[];
 };
 export type MatchListData = {
+  nextCode?: string;
   matches: MatchSummary[];
   counts: Partial<Record<MatchStatus, number>>;
   stages: { id: string; name: string }[];

@@ -177,7 +177,7 @@ test('organizer downloads, previews and imports a new private tournament with it
   await dialog.getByRole('link', { name: 'Review unpublished tournament' }).click();
   await expect(page).toHaveURL(`http://localhost:3001/t/${imported.slug}/admin`);
   await page.goto(`/t/${imported.slug}/admin/matches`);
-  await expect(page.getByRole('heading', { name: 'Match management', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Matches', exact: true })).toBeVisible();
   await page.reload();
   expect(await db.matchMapAction.count({ where: { match: { tournamentId: imported.id } } })).toBe(
     2,

@@ -203,6 +203,7 @@ export async function matchOptions(actor: Actor) {
     stages: stages.map((s) => ({
       id: s.id,
       name: s.name,
+      kind: s.kind,
       published: s.mappool?.state === 'PUBLISHED' && !!s.mappool.publishedRevisionId,
       rules: s.matchRules ? matchRulesSchema.parse(s.matchRules) : null,
       rulesHash: rulesHash(s.matchRules),
@@ -391,7 +392,6 @@ export async function matchData(actor: Actor, url: URL, section: string) {
       serverNow: new Date().toISOString(),
     };
   }
-  if (section === 'matches') assertPermission(actor, 'matches.manage');
   const filters: Prisma.MatchWhereInput = {};
   const status = url.searchParams.get('status');
   if (status)
@@ -437,6 +437,7 @@ export async function matchData(actor: Actor, url: URL, section: string) {
         code: true,
         status: true,
         notes: true,
+        lobbyUrl: true,
         scheduledAt: true,
         published: true,
         bracket: true,
@@ -457,8 +458,19 @@ export async function matchData(actor: Actor, url: URL, section: string) {
     select: { id: true, name: true },
     orderBy: { position: 'asc' },
   });
+  const allCodes = can(actor, 'matches.manage')
+    ? await db.match.findMany({ select: { code: true } })
+    : [];
   return {
     matches,
+    nextCode: can(actor, 'matches.manage')
+      ? (() => {
+          const codes = new Set(allCodes.map((m) => m.code));
+          let n = 1;
+          while (codes.has(String(n))) n++;
+          return String(n);
+        })()
+      : undefined,
     counts: Object.fromEntries(counts.map((c) => [c.status, c._count._all])),
     stages,
     options:

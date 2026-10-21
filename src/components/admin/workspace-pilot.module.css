@@ -82,6 +82,7 @@
   margin: 0 auto;
   align-items: stretch;
   padding-bottom: 16px;
+  overflow-x: auto;
 }
 .navigation > a,
 .navigation > button {
@@ -287,15 +288,15 @@
     display: none;
   }
   .navigation {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: flex;
     gap: 4px;
     padding-bottom: 12px;
   }
   .navigation > a,
   .navigation > button {
     justify-content: center;
-    padding-inline: 4px;
+    padding-inline: 12px;
+    flex-shrink: 0;
   }
   .main {
     width: calc(100% - 32px);

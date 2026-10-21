@@ -1,7 +1,17 @@
 'use client';
 import Link from '@/components/tournament-scope';
-import { useState } from 'react';
-import { Plus, SlidersHorizontal, Play, Users, Pencil, RefreshCw, Trash2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
+import {
+  Plus,
+  SlidersHorizontal,
+  Play,
+  Users,
+  Pencil,
+  RefreshCw,
+  Trash2,
+  Link2,
+} from 'lucide-react';
 import { DeleteMatchDialog, type DeleteMatchSelection } from './delete-match-dialog';
 import { Button } from '../ui/button';
 import { MatchStatusBadge } from '../ui/badge';
@@ -34,13 +44,7 @@ export const MATCH_STATUS_LABELS = {
   DISPUTED: 'Disputed',
   CANCELLED: 'Cancelled',
 };
-export function MatchesDashboard({
-  actor,
-  management = false,
-}: {
-  actor: Actor;
-  management?: boolean;
-}) {
+export function MatchesDashboard({ actor }: { actor: Actor }) {
   const [filters, setFilters] = useState({
     stage: '',
     status: '',
@@ -71,11 +75,16 @@ export function MatchesDashboard({
   }
   const matchTime = useTournamentTime();
   const { timezone } = useTournamentScope();
-  const { data, error, reload } = useResource<MatchListData>(
-    `${management ? 'matches' : 'referee'}&${params}`,
-    true,
-  );
+  const { data, error, reload } = useResource<MatchListData>(`matches&${params}`, true);
   const { run, busy } = useTask();
+  const [lobby, setLobby] = useState<{
+    id: string;
+    code: string;
+    version: number;
+    url: string;
+  } | null>(null);
+  const query = useSearchParams(),
+    rulesOpened = useRef(false);
   const [create, setCreate] = useState(false),
     [code, setCode] = useState(''),
     [stageId, setStageId] = useState(''),
@@ -93,8 +102,21 @@ export function MatchesDashboard({
     [baseHash, setBaseHash] = useState(''),
     [dirty, setDirty] = useState(false);
   useUnsaved(dirty);
-  usePolling(reload, 10000, !create && !ruleEditor && !edit);
+  usePolling(reload, 10000, !create && !ruleEditor && !edit && !lobby);
   const options = data?.options;
+  useEffect(() => {
+    if (
+      options &&
+      query.get('rules') === '1' &&
+      can(actor, 'matches.manage') &&
+      !rulesOpened.current
+    ) {
+      rulesOpened.current = true;
+      setRules(options.defaults);
+      setBaseHash(options.defaultsHash);
+      setRuleEditor(true);
+    }
+  }, [options, query, actor]);
   const chooseRules = (id: string) => {
     if (!options) return;
     const stage = options.stages.find((s) => s.id === id);
@@ -104,8 +126,9 @@ export function MatchesDashboard({
     setDirty(false);
   };
   const begin = (match?: MatchSummary) => {
-    setCode('');
-    setStageId('');
+    setCode(data?.nextCode || '');
+    const first = options?.stages.filter((stage) => stage.published && stage.kind !== 'QUALIFIERS');
+    setStageId(first?.length === 1 ? first[0].id : '');
     setTeamA(match?.participants.A.id || '');
     setTeamB(match?.participants.B.id || '');
     setScheduled(
@@ -121,7 +144,9 @@ export function MatchesDashboard({
     setReferees(match?.assignments.map((r) => r.userId) || []);
     setNotes(match?.notes || '');
     setPublished(match?.published || false);
-    setBestOf(options?.defaults.bestOf || 11);
+    setBestOf(
+      (first?.length === 1 ? first[0].rules?.bestOf : undefined) || options?.defaults.bestOf || 11,
+    );
     setEdit(match || null);
     setCreate(true);
     setDirty(false);
@@ -135,15 +160,33 @@ export function MatchesDashboard({
   ] as const;
   const matchActions = (m: MatchSummary) => (
     <div className="flex gap-1">
-      <Button asChild size="icon" variant="outline">
+      <Button asChild size="sm" variant="outline">
         <Link
           href={`/admin/referee/${m.id}`}
           aria-label={`Open match ${m.code}`}
-          title="Open referee panel"
+          title={
+            matchAccess(actor, m).editable
+              ? 'Referee this match'
+              : 'View match history and live state'
+          }
         >
           <Play size={17} />
+          {matchAccess(actor, m).editable ? 'Referee' : 'View'}
         </Link>
       </Button>
+      {matchAccess(actor, m).operate && !['COMPLETED', 'CANCELLED'].includes(m.status) && (
+        <Button
+          size="icon"
+          variant="ghost"
+          title="Multiplayer link"
+          aria-label={`Multiplayer link for ${m.code}`}
+          onClick={() =>
+            setLobby({ id: m.id, code: m.code, version: m.version, url: m.lobbyUrl || '' })
+          }
+        >
+          <Link2 size={17} />
+        </Button>
+      )}
       {matchAccess(actor, m).schedule && !['COMPLETED', 'CANCELLED'].includes(m.status) && (
         <Button
           size="icon"
@@ -171,7 +214,7 @@ export function MatchesDashboard({
   return (
     <>
       <SectionTitle
-        title={management ? 'Match management' : 'Referee workspace'}
+        title="Matches"
         description={
           can(actor, 'matches.manage') || can(actor, 'matches.view_all')
             ? `Tournament matches · ${timezone || 'UTC'}`
@@ -179,7 +222,6 @@ export function MatchesDashboard({
         }
       >
         <div className="flex flex-wrap gap-2">
-          {can(actor, 'matches.import') && <RefereeSheetImporter onChanged={reload} />}
           <Button asChild size="sm" variant="outline">
             <Link href="/admin/referee/qualifiers">Qualifier lobbies</Link>
           </Button>
@@ -194,6 +236,22 @@ export function MatchesDashboard({
           </Button>
           {can(actor, 'matches.manage') && (
             <>
+              <Button size="sm" onClick={() => begin()}>
+                <Plus size={17} />
+                New match
+              </Button>
+            </>
+          )}
+        </div>
+      </SectionTitle>
+      {(can(actor, 'matches.import') || can(actor, 'matches.manage')) && (
+        <details className="mb-4 border-b pb-2">
+          <summary className="min-h-11 cursor-pointer py-2 text-sm text-muted">
+            Import & rule presets
+          </summary>
+          <div className="flex flex-wrap gap-2 pb-3">
+            {can(actor, 'matches.import') && <RefereeSheetImporter onChanged={reload} />}{' '}
+            {can(actor, 'matches.manage') && (
               <Button
                 variant="outline"
                 size="sm"
@@ -205,24 +263,48 @@ export function MatchesDashboard({
                 <SlidersHorizontal size={17} />
                 Match rules
               </Button>
-              <Button size="sm" onClick={() => begin()}>
-                <Plus size={17} />
-                New match
-              </Button>
-            </>
-          )}
-        </div>
-      </SectionTitle>
+            )}
+          </div>
+        </details>
+      )}
       <p className="mb-3 text-sm text-muted">
         {Object.values(data.counts).reduce((sum, n) => sum + (n || 0), 0)} matches ·{' '}
         {data.counts.IN_PROGRESS || 0} in progress · {data.matches.length} shown
       </p>
-      <div className="match-counts mb-6 grid grid-cols-2 gap-3 border-b pb-4 lg:grid-cols-4">
-        {stats.map(([key, label]) => (
-          <div className="py-2" key={key}>
-            <p className="text-sm text-muted">{label}</p>
-            <p className="mt-1 font-mono text-xl tabular-nums">{data.counts[key] || 0}</p>
-          </div>
+      <div
+        role="group"
+        aria-label="Match views"
+        className="mb-5 flex flex-wrap gap-2 border-b pb-4"
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          aria-pressed={!filters.status && !filters.assigned}
+          className="aria-pressed:border-primary/40 aria-pressed:bg-primary/10 aria-pressed:text-primary"
+          onClick={() => setFilters({ ...filters, status: '', assigned: '' })}
+        >
+          All Matches
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          aria-pressed={filters.assigned === 'me'}
+          className="aria-pressed:border-primary/40 aria-pressed:bg-primary/10 aria-pressed:text-primary"
+          onClick={() => setFilters({ ...filters, status: '', assigned: 'me' })}
+        >
+          My Matches
+        </Button>
+        {stats.map(([status, label]) => (
+          <Button
+            key={status}
+            variant="outline"
+            size="sm"
+            aria-pressed={filters.status === status}
+            className="aria-pressed:border-primary/40 aria-pressed:bg-primary/10 aria-pressed:text-primary"
+            onClick={() => setFilters({ ...filters, status, assigned: '' })}
+          >
+            {label} · {data.counts[status] || 0}
+          </Button>
         ))}
       </div>
       <Button
@@ -337,8 +419,8 @@ export function MatchesDashboard({
                   {matchTime(m.scheduledAt)}
                   {m.bracket ? ' · ' + m.bracket : ''}
                 </p>
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <p className="min-w-0 text-xs text-muted">
+                <div className="mt-3 flex flex-col items-start gap-3">
+                  <p className="min-w-0 break-words text-xs text-muted">
                     {m.assignments.map((r) => r.user.username).join(', ') ||
                       matchCredits(m.source).referee ||
                       'Unassigned'}
@@ -374,6 +456,16 @@ export function MatchesDashboard({
                       <p className="whitespace-nowrap text-xs text-muted">
                         {matchTime(m.scheduledAt)}
                       </p>
+                      {m.lobbyUrl && (
+                        <a
+                          href={m.lobbyUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-primary"
+                        >
+                          MP link
+                        </a>
+                      )}
                     </td>
                     <td className="min-w-40">
                       <p className="text-red-200">{m.participants.A.name}</p>
@@ -494,7 +586,7 @@ export function MatchesDashboard({
                     >
                       <option value="">Select stage</option>
                       {options.stages
-                        .filter((s) => s.published)
+                        .filter((s) => s.published && s.kind !== 'QUALIFIERS')
                         .map((s) => (
                           <option value={s.id} key={s.id}>
                             {s.name}
@@ -524,18 +616,9 @@ export function MatchesDashboard({
                         ))}
                     </select>
                   </Field>
-                  <Field label="Best of (stage rules)">
-                    <input
-                      type="number"
-                      required
-                      disabled
-                      min={1}
-                      max={31}
-                      step={2}
-                      value={bestOf}
-                      onChange={(e) => setBestOf(Number(e.target.value))}
-                    />
-                  </Field>
+                  <p className="self-end py-3 text-sm text-muted">
+                    Best of {bestOf} · Inherited from stage rules
+                  </p>
                 </>
               )}
               <Field label="Scheduled time (your timezone)">
@@ -608,7 +691,82 @@ export function MatchesDashboard({
             <Field label="Match notes">
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
             </Field>
-            <SaveButton busy={busy}>Save match</SaveButton>
+            {!edit && !options.stages.some((s) => s.published) && (
+              <p className="text-sm text-muted">
+                A published mappool is required.{' '}
+                <Link className="text-primary" href="/admin/mappools">
+                  Stages & mappools
+                </Link>
+              </p>
+            )}
+            {!edit && options.teams.length < 2 && (
+              <p className="text-sm text-muted">
+                Two approved entries are required.{' '}
+                <Link className="text-primary" href="/admin/teams">
+                  Teams & players
+                </Link>
+              </p>
+            )}
+            <div className="flex justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  if (!dirty || window.confirm('Discard unsaved match changes?')) {
+                    setCreate(false);
+                    setEdit(null);
+                    setDirty(false);
+                  }
+                }}
+              >
+                Cancel
+              </Button>
+              <SaveButton busy={busy}>Save match</SaveButton>
+            </div>
+          </form>
+        )}
+      </Modal>
+      <Modal
+        title={`Multiplayer link · ${lobby?.code || ''}`}
+        open={!!lobby}
+        onOpenChange={(open) => {
+          if (!open && !busy && (!dirty || window.confirm('Discard unsaved multiplayer link?'))) {
+            setLobby(null);
+            setDirty(false);
+          }
+        }}
+      >
+        {lobby && (
+          <form
+            className="space-y-5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void run(async () => {
+                await action({
+                  type: 'match.lobby',
+                  id: lobby.id,
+                  baseVersion: lobby.version,
+                  lobbyUrl: lobby.url,
+                });
+                setDirty(false);
+                setLobby(null);
+                await reload();
+              }, 'Multiplayer link saved.');
+            }}
+          >
+            <Field label="Multiplayer URL">
+              <input
+                disabled={busy}
+                type="url"
+                value={lobby.url}
+                onChange={(e) => {
+                  setLobby({ ...lobby, url: e.target.value });
+                  setDirty(true);
+                }}
+                placeholder="https://osu.ppy.sh/community/matches/123456"
+              />
+            </Field>
+            <SaveButton busy={busy}>Save multiplayer link</SaveButton>
           </form>
         )}
       </Modal>

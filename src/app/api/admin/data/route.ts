@@ -190,7 +190,25 @@ export async function GET(request: Request) {
       case 'overview': {
         if (!actor.permissions.length)
           throw new AppError('No administration permissions assigned.', 403);
+        const pages = await db.page.findMany({
+          where: { slug: { in: ['home', 'rules'] } },
+          select: { slug: true, draftRevisionId: true, publishedRevisionId: true },
+        });
         data = {
+          setup: {
+            homeSaved: pages.some(
+              (p) => p.slug === 'home' && !!(p.draftRevisionId || p.publishedRevisionId),
+            ),
+            rulesSaved: pages.some(
+              (p) => p.slug === 'rules' && !!(p.draftRevisionId || p.publishedRevisionId),
+            ),
+            homePublished: pages.some((p) => p.slug === 'home' && !!p.publishedRevisionId),
+            pendingPages: pages.filter(
+              (p) => p.draftRevisionId && p.draftRevisionId !== p.publishedRevisionId,
+            ).length,
+            teams: await db.team.count(),
+            matches: (await db.match.count()) + (await db.qualifierLobby.count()),
+          },
           tournament: await getTournament(),
           users: can(actor, 'users.manage')
             ? await db.user.count({ where: { roles: { some: { tournamentId } } } })
