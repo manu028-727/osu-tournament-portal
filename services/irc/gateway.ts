@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import type { Client } from 'irc-framework';
 import { BanchoClient } from './bancho-client';
+import { commandAcknowledgement } from './command-response';
 import { WebSocketServer, WebSocket } from 'ws';
 import {
   ircClientMessage,
@@ -349,15 +350,9 @@ export function createGateway(options: {
           )
         )
           void finish(s, target, 'failed', text.slice(0, 200));
-        else if (pending.delivery.command === '!mp settings' && /^Room name:/i.test(text))
-          void finish(s, target, 'confirmed', 'Lobby settings received.');
-        else if (pending.delivery.command.startsWith('!mp map ')) {
-          const id = pending.delivery.command.split(' ')[2];
-          if (
-            /^Beatmap changed to:/i.test(text) &&
-            new RegExp(`/(?:b|beatmaps)/${id}(?:\\D|$)`).test(text)
-          )
-            void finish(s, target, 'confirmed', 'Beatmap ID acknowledged by BanchoBot.');
+        else {
+          const note = commandAcknowledgement(pending.delivery.command, text);
+          if (note) void finish(s, target, 'confirmed', note);
         }
       };
       client.on('message', incoming);

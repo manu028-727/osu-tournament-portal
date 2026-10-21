@@ -31,9 +31,35 @@ explicitly resolving a request. Creation/linking never creates a website match.
 Map/mods/rules/invite/timer/start/settings and other approved commands use the
 existing referee configuration. Start/abort/close and other disruptive operations
 require confirmation. Creator-only addref needs persisted creation proof. A sent
-command is not a confirmed execution: only creation, settings and beatmap responses
-currently have positive acknowledgement parsers. Other outcomes may stay unknown.
+command is not a confirmed execution: creation, settings, beatmap changes, mod
+settings, timers and referee lists have positive acknowledgement parsers. Other
+outcomes may stay unknown.
 No IRC command automatically confirms a recorded map winner.
+
+### Command Acknowledgements
+
+The gateway accepts receipts only from BanchoBot in the pending command's own
+destination. Beatmap replies support both `Changed beatmap to` and the older
+`Beatmap changed to:` wording, and must contain the exact requested beatmap ID on
+osu.ppy.sh. Mod replies must match the requested mod combination (short names such
+as NF/HD are matched against NoFail/Hidden) and FreeMod state. Timer replies must
+report the requested duration, including minutes and seconds; later countdown
+reminders are not generic success receipts. `Match referees:` acknowledges
+`!mp listrefs`; all following names still appear in chat.
+
+A recognized reply confirms the receipt immediately, cancels the outcome timer
+and releases the per-lobby command lock across the user's tabs. Explicit rejection
+replies fail immediately. Unknown responses still time out honestly, without
+resending commands or treating arbitrary bot chatter as success. Bancho does not
+include request IDs: identical commands issued concurrently by other clients in
+the same lobby cannot be distinguished. This gateway permits only one outstanding
+command per destination and never retries automatically.
+
+Regression tests replay the reported settings, timer, listrefs, map and mods chat
+sequence against a mock TCP server, checking immediate release, cross-tab receipts,
+exactly-once sends, timer cancellation, explicit failures and negative cases for
+wrong IDs/mods/durations, spoofed senders and cross-lobby/private replies. These are
+mock-server tests; no commands are executed against live tournament rooms.
 
 Buffers, sessions, message lengths, queues and rates are bounded. Chat/receipts are
 ephemeral; linked URLs, creation guards and recorded referee history persist. One

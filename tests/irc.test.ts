@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { WebSocket } from 'ws';
 import type { AddressInfo } from 'node:net';
 import { createGateway, type GatewayRpc } from '../services/irc/gateway';
+import { commandAcknowledgement } from '../services/irc/command-response';
 import { mockBancho, type MockBanchoOptions } from './helpers/mock-bancho';
 import { ircClientMessage, lobbyFromResponse, validateLobbyCommand } from '../src/lib/irc-protocol';
 import {
@@ -79,6 +80,149 @@ async function fixture(rpc?: GatewayRpc, silentCreate = false, options: MockBanc
   return { mock, gateway, url, browser, recorded, diagnostics };
 }
 describe('IRC security and protocol', () => {
+  it.each([
+    ['!mp map 4724670 0', 'Changed beatmap to https://osu.ppy.sh/b/4724670 II-L - PIONEER-5'],
+    ['!mp map 4724670', 'Beatmap changed to: II-L - PIONEER-5 (https://osu.ppy.sh/b/4724670)'],
+    ['!MP MAP 4724670 3', 'Changed beatmap to https://osu.ppy.sh/beatmaps/4724670 Test'],
+    ['!mp mods NF', 'Enabled NoFail, disabled FreeMod'],
+    ['!mp mods NF HD', 'Enabled Hidden, NoFail, disabled FreeMod'],
+    ['!mp mods HR DT', 'Enabled HardRock, DoubleTime, disabled FreeMod'],
+    ['!mp mods NF Freemod', 'Enabled NoFail, enabled FreeMod'],
+    ['!mp mods None', 'Enabled None, disabled FreeMod'],
+    ['!mp timer 90', 'Countdown ends in 1 minute and 30 seconds'],
+    ['!mp timer 60', 'Countdown ends in 1 minute'],
+    ['!mp timer 5', 'Countdown ends in 5 seconds'],
+    ['!mp timer', 'Countdown ends in 30 seconds'],
+    ['!mp timer 3600', 'Countdown ends in 1 hour'],
+    ['!mp listrefs', 'Match referees:'],
+    ['!MP SETTINGS', 'Room name: OIDC2026: A vs B, History: https://osu.ppy.sh/mp/122045832'],
+  ])('matches a command-specific acknowledgement for %s: %s', (command, reply) => {
+    expect(commandAcknowledgement(command, reply)).toBeTypeOf('string');
+  });
+  it.each([
+    ['!mp map 4724670 0', 'Changed beatmap to https://osu.ppy.sh/b/47246701 Wrong ID'],
+    ['!mp map 4724670 0', 'Changed beatmap to https://osu.ppy.sh/b/472467 Wrong ID'],
+    ['!mp map 4724670 0', 'Changed beatmap to https://evil.example/b/4724670 Spoof'],
+    ['!mp map 4724670 0', 'Changed beatmap to https://osu.ppy.sh.evil.example/b/4724670 Spoof'],
+    ['!mp map 4724670 0', 'Changed match mode to Osu'],
+    ['!mp map [invalid', 'Changed beatmap to https://osu.ppy.sh/b/4724670 Test'],
+    ['!mp mods NF', 'Enabled NoFail, enabled FreeMod'],
+    ['!mp mods NF', 'Enabled NoFail, Hidden, disabled FreeMod'],
+    ['!mp mods NF HD', 'Enabled NoFail, disabled FreeMod'],
+    ['!mp mods NF Freemod', 'Enabled NoFail, disabled FreeMod'],
+    ['!mp mods NF', 'Enabled UnrecognisedMod, disabled FreeMod'],
+    ['!mp mods Unknown', 'Enabled Unknown, disabled FreeMod'],
+    ['!mp timer 90', 'Countdown ends in 1 minute'],
+    ['!mp timer 90', 'Countdown finished'],
+    ['!mp timer 90', 'Match starts in 1 minute and 30 seconds'],
+    ['!mp timer 90', 'Countdown ends in some time'],
+    ['!mp listrefs', 'Manu028'],
+    ['!mp listrefs', 'Players: 0'],
+    ['!mp settings', 'Enabled NoFail, disabled FreeMod'],
+    ['!mp close', 'Room name: Still open'],
+  ])('does not mistake unrelated or mismatched replies for %s: %s', (command, reply) => {
+    expect(commandAcknowledgement(command, reply)).toBeNull();
+  });
+  it('acknowledges the reported live replies and unblocks the next command without retries', async () => {
+    const commands = [
+      [
+        '!mp settings',
+        [
+          'Room name: OIDC2026: A vs B, History: https://osu.ppy.sh/mp/101',
+          'Team mode: HeadToHead, Win condition: Score',
+          'Players: 0',
+        ],
+      ],
+      ['!mp timer 90', ['Countdown ends in 1 minute and 30 seconds']],
+      ['!mp listrefs', ['Match referees:', 'Manu028']],
+      [
+        '!mp map 4724670 0',
+        [
+          'Changed beatmap to https://osu.ppy.sh/b/4724670 II-L - PIONEER-5',
+          'Changed match mode to Osu',
+        ],
+      ],
+      ['!mp mods NF', ['Enabled NoFail, disabled FreeMod']],
+    ] as const;
+    const f = await fixture(undefined, false, {
+      commandReplies: (command) => [...(commands.find(([value]) => value === command)?.[1] || [])],
+    });
+    const a = await f.browser();
+    a.send({ type: 'connect', acknowledged: true, password: 'separate-test-irc-password' });
+    await until(() => f.gateway.sessions.get('ref-a')?.state === 'connected');
+    a.send({ type: 'join' });
+    await until(() => f.gateway.sessions.get('ref-a')?.channels.has('#mp_101') || false);
+    const otherTab = await f.browser();
+    for (const [command, replies] of commands) {
+      const id = randomUUID();
+      a.send({ type: 'command', id, target: '#mp_101', command });
+      await until(() =>
+        otherTab.events.some(
+          (e) => e.type === 'delivery' && e.delivery.id === id && e.delivery.state === 'confirmed',
+        ),
+      );
+      expect(f.gateway.sessions.get('ref-a')?.pending.size).toBe(0);
+      for (const text of replies)
+        await until(() => a.events.some((e) => e.type === 'message' && e.message.text === text));
+      expect(f.mock.lines.filter((line) => line === `PRIVMSG #mp_101 :${command}`)).toHaveLength(1);
+    }
+    // Expired timers must not change confirmed receipts back to unknown.
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    const deliveries = f.gateway.sessions.get('ref-a')?.deliveries;
+    expect(deliveries).toHaveLength(5);
+    expect(deliveries?.every((d) => d.state === 'confirmed')).toBe(true);
+    expect(a.events.filter((e) => e.type === 'error')).toEqual([]);
+  });
+  it('ignores spoofed, cross-lobby, private and mismatched acknowledgements, then accepts the real reply', async () => {
+    const f = await fixture(undefined, false, { commandReplies: () => [] });
+    const a = await f.browser();
+    a.send({ type: 'connect', acknowledged: true, password: 'separate-test-irc-password' });
+    await until(() => f.gateway.sessions.get('ref-a')?.state === 'connected');
+    a.send({ type: 'join' });
+    await until(() => f.gateway.sessions.get('ref-a')?.channels.has('#mp_101') || false);
+    const id = randomUUID();
+    a.send({ type: 'command', id, target: '#mp_101', command: '!mp mods NF' });
+    await until(() => f.mock.lines.includes('PRIVMSG #mp_101 :!mp mods NF'));
+    for (const socket of f.mock.sockets) {
+      socket.write(':Other_player!user@mock PRIVMSG #mp_101 :Enabled NoFail, disabled FreeMod\r\n');
+      socket.write(':BanchoBot!bot@mock PRIVMSG #osu :Enabled NoFail, disabled FreeMod\r\n');
+      socket.write(':BanchoBot!bot@mock PRIVMSG #mp_102 :Enabled NoFail, disabled FreeMod\r\n');
+      socket.write(':BanchoBot!bot@mock PRIVMSG Ref_A :Enabled NoFail, disabled FreeMod\r\n');
+      socket.write(':BanchoBot!bot@mock PRIVMSG #mp_101 :Enabled Hidden, disabled FreeMod\r\n');
+    }
+    await until(() =>
+      a.events.some(
+        (e) => e.type === 'message' && e.message.text === 'Enabled Hidden, disabled FreeMod',
+      ),
+    );
+    expect(f.gateway.sessions.get('ref-a')?.pending.has('#mp_101')).toBe(true);
+    for (const socket of f.mock.sockets)
+      socket.write(':BanchoBot!bot@mock PRIVMSG #mp_101 :Enabled NoFail, disabled FreeMod\r\n');
+    await until(() =>
+      a.events.some(
+        (e) => e.type === 'delivery' && e.delivery.id === id && e.delivery.state === 'confirmed',
+      ),
+    );
+  });
+  it('reports explicit Bancho failures promptly instead of confirming or waiting for timeout', async () => {
+    const f = await fixture(undefined, false, {
+      commandReplies: () => ['You do not have permission to use this command.'],
+    });
+    const a = await f.browser();
+    a.send({ type: 'connect', acknowledged: true, password: 'separate-test-irc-password' });
+    await until(() => f.gateway.sessions.get('ref-a')?.state === 'connected');
+    a.send({ type: 'join' });
+    await until(() => f.gateway.sessions.get('ref-a')?.channels.has('#mp_101') || false);
+    const id = randomUUID();
+    a.send({ type: 'command', id, target: '#mp_101', command: '!mp timer 90' });
+    await until(() =>
+      a.events.some(
+        (e) => e.type === 'delivery' && e.delivery.id === id && e.delivery.state === 'failed',
+      ),
+    );
+    expect(f.gateway.sessions.get('ref-a')?.pending.size).toBe(0);
+    expect(f.mock.lines.filter((line) => line.includes('!mp timer 90'))).toHaveLength(1);
+  });
   it('uses legacy registration without CAP and preserves the exact supplied password', async () => {
     const password = ':Mixed+%2F/\\"=&?Z' + 'x'.repeat(80);
     const f = await fixture(undefined, false, { strictRegistration: true, password });

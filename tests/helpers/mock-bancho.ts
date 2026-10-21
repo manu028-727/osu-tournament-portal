@@ -4,6 +4,7 @@ export type MockBanchoOptions = {
   silentCreate?: boolean;
   strictRegistration?: boolean;
   password?: string | ((nickname: string) => string);
+  commandReplies?: (command: string) => string[];
   registrationError?: {
     code: '464' | 'ERROR' | '432' | '433' | '461';
     reason: string;
@@ -94,11 +95,14 @@ export function mockBancho(options: MockBanchoOptions = {}) {
             say(
               `:BanchoBot!bot@mock PRIVMSG ${nick} :Created the tournament match https://osu.ppy.sh/mp/${++made} ${text.slice(9)}`,
             );
+          else if (text.startsWith('!mp ') && options.commandReplies)
+            for (const reply of options.commandReplies(text))
+              say(`:BanchoBot!bot@mock PRIVMSG ${target} :${reply}`);
           else if (text === '!mp settings')
             say(`:BanchoBot!bot@mock PRIVMSG ${target} :Room name: Test`);
           else if (text.startsWith('!mp map '))
             say(
-              `:BanchoBot!bot@mock PRIVMSG ${target} :Beatmap changed to: Test (https://osu.ppy.sh/b/${text.split(' ')[2]})`,
+              `:BanchoBot!bot@mock PRIVMSG ${target} :Changed beatmap to https://osu.ppy.sh/b/${text.split(' ')[2]} Test`,
             );
           else if (!text.startsWith('!mp '))
             say(`:Other_player!user@mock PRIVMSG ${target} :Reply: ${text}`);
