@@ -13,7 +13,7 @@ import {
 } from './permissions';
 import { cleanHtml } from './rich-text';
 import { beatmaps, osuProfile } from './osu';
-import type { Prisma } from '@/generated/prisma/client';
+import { Prisma } from '@/generated/prisma/client';
 import { teamPermission, prepareTeamAction, applyTeamAction } from './teams-service';
 import type { TeamAction } from './teams-validation';
 import type { MatchAction } from './matches-validation';
@@ -25,7 +25,24 @@ import {
   applyQualifierAction,
 } from './qualifiers-service';
 import type { QualifierAction } from './qualifiers-validation';
+import { inheritedRules } from './gameplay-scoring';
+import { assertScoringChange } from './gameplay-scoring-service';
+import { qualifierPolicySchema } from './qualifier-policy';
+import { applyCompetitionAction } from './competition-service';
+import type { CompetitionAction } from './competition-validation';
+import {
+  applyQualifierStandingsAction,
+  type QualifierStandingsAction,
+} from './qualifier-standings-service';
+import { applyStageReconciliation } from './stage-reconciliation-service';
 export function actionPermission(a: AdminAction): PermissionKey {
+  if (
+    a.type.startsWith('competition.') ||
+    a.type.startsWith('qualifier.standings.') ||
+    a.type === 'qualifier.policy.save' ||
+    a.type === 'stage.reconcile'
+  )
+    return 'matches.manage';
   if (a.type.startsWith('qualifier.')) return qualifierPermission(a as QualifierAction);
   if (a.type.startsWith('match.')) return matchPermission(a as MatchAction);
   if (a.type.startsWith('team.')) return teamPermission(a as TeamAction);
@@ -42,7 +59,11 @@ export function actionPermission(a: AdminAction): PermissionKey {
   return 'mappools.edit';
 }
 function assertActionPermission(actor: Actor | null, action: AdminAction): asserts actor is Actor {
-  if (action.type.startsWith('qualifier.'))
+  if (
+    action.type.startsWith('qualifier.') &&
+    !action.type.startsWith('qualifier.standings.') &&
+    action.type !== 'qualifier.policy.save'
+  )
     assertQualifierPermission(actor, action as QualifierAction);
   else if (action.type.startsWith('match.'))
     assertMatchActionPermission(actor, action as MatchAction);
@@ -95,6 +116,27 @@ export async function executeAction(
       let result: unknown = { ok: true };
       let entityId = tournamentId;
       switch (a.type) {
+        case 'competition.create':
+        case 'competition.preview':
+        case 'competition.publish':
+        case 'competition.sync':
+        case 'competition.slot':
+        case 'competition.route':
+        case 'competition.entry':
+        case 'competition.group.resolve':
+          result = await applyCompetitionAction(tx, actor, a as CompetitionAction);
+          break;
+        case 'qualifier.policy.save':
+        case 'qualifier.standings.calculate':
+        case 'qualifier.standings.resolve':
+        case 'qualifier.standings.finalize':
+        case 'qualifier.standings.publish':
+        case 'qualifier.standings.reopen':
+          result = await applyQualifierStandingsAction(tx, actor, a as QualifierStandingsAction);
+          break;
+        case 'stage.reconcile':
+          result = await applyStageReconciliation(tx, actor, a);
+          break;
         case 'qualifier.create':
         case 'qualifier.schedule':
         case 'qualifier.lobby':
@@ -226,13 +268,70 @@ export async function executeAction(
           entityId = a.slug;
           break;
         case 'stage.save': {
-          const { type, id, matchRules, ...fields } = a;
+          const { type, id, matchRules, qualifierPolicy, ...fields } = a;
           void type;
+          const beforeStage = id
+            ? await tx.tournamentStage.findUniqueOrThrow({ where: { id } })
+            : null;
+          if (qualifierPolicy !== undefined) assertPermission(actor, 'matches.manage');
+          const kind = a.kind || beforeStage?.kind || 'CUSTOM';
+          if (kind === 'QUALIFIERS' && matchRules)
+            throw new AppError(
+              'Qualifier stages use qualifier policy, not Best-of or pick/ban settings.',
+            );
+          if (id && a.kind && a.kind !== beforeStage?.kind) {
+            if (
+              (a.kind === 'QUALIFIERS' &&
+                ((await tx.match.count({ where: { stageId: id } })) ||
+                  (await tx.bracketRound.count({ where: { stageId: id } })))) ||
+              (a.kind !== 'QUALIFIERS' &&
+                (await tx.qualifierLobby.count({ where: { stageId: id } })))
+            )
+              throw new AppError(
+                'This stage type is already used by incompatible competition records.',
+                409,
+              );
+          }
+          if (
+            id &&
+            a.qualifierPolicy !== undefined &&
+            JSON.stringify(qualifierPolicySchema.parse(a.qualifierPolicy || {})) !==
+              JSON.stringify(qualifierPolicySchema.parse(beforeStage?.qualifierPolicy || {}))
+          ) {
+            if (await tx.qualifierLobby.count({ where: { stageId: id } }))
+              throw new AppError(
+                'Qualifier policy is snapshotted by existing sessions. Create a new qualifier stage to use a different policy.',
+                409,
+              );
+          }
           if (matchRules !== undefined) assertPermission(actor, 'matches.manage');
           const data = {
             ...fields,
+            ...(qualifierPolicy !== undefined
+              ? {
+                  qualifierPolicy: qualifierPolicy
+                    ? JSON.parse(JSON.stringify(qualifierPolicy))
+                    : Prisma.DbNull,
+                }
+              : {}),
             ...(matchRules !== undefined
-              ? { matchRules: matchRules ? JSON.parse(JSON.stringify(matchRules)) : null }
+              ? {
+                  matchRules: matchRules
+                    ? JSON.parse(
+                        JSON.stringify(
+                          inheritedRules(
+                            matchRules,
+                            (
+                              await tx.tournamentSettings.findUniqueOrThrow({
+                                where: { tournamentId },
+                              })
+                            ).gameplayScoring,
+                            tournament.gameMode,
+                          ),
+                        ),
+                      )
+                    : null,
+                }
               : {}),
           };
           if (data.nextStageId) {
@@ -259,6 +358,16 @@ export async function executeAction(
           break;
         }
         case 'stage.delete':
+          if (await tx.bracketRound.count({ where: { stageId: a.id } }))
+            throw new AppError(
+              'This stage is assigned to a competition bracket. Archive it instead of deleting its history.',
+              409,
+            );
+          if (await tx.qualifierStanding.count({ where: { stageId: a.id } }))
+            throw new AppError(
+              'This stage has versioned qualifier standings and cannot be deleted.',
+              409,
+            );
           if (await tx.match.count({ where: { stageId: a.id } }))
             throw new AppError('This stage is used in match history and cannot be deleted.', 409);
           if (await tx.qualifierLobby.count({ where: { stageId: a.id } }))
@@ -512,9 +621,78 @@ export async function executeAction(
             format,
             startsAt,
             endsAt,
+            scoringReview,
             ...settings
           } = a;
           void type;
+          const currentSettings = await tx.tournamentSettings.findUniqueOrThrow({
+            where: { tournamentId },
+          });
+          if (a.gameplayScoring === null && currentSettings.gameplayScoring)
+            throw new AppError(
+              'An established gameplay scoring system cannot be cleared. Choose a supported mode and review its impact.',
+              409,
+            );
+          if (a.gameplayScoring && a.gameplayScoring !== currentSettings.gameplayScoring) {
+            await assertScoringChange(
+              tx,
+              tournamentId,
+              currentSettings.gameplayScoring,
+              a.gameplayScoring,
+              !!scoringReview,
+            );
+            // Scheduled, unplayed snapshots may follow a configuration change.
+            // Recorded competitive snapshots are never rewritten.
+            for (const match of await tx.match.findMany({
+              where: { status: 'SCHEDULED' },
+              include: { actions: true, results: true },
+            })) {
+              if (match.actions.length || match.results.length) continue;
+              await tx.match.update({
+                where: { id: match.id },
+                data: {
+                  rules: JSON.parse(
+                    JSON.stringify(inheritedRules(match.rules, a.gameplayScoring, gameMode)),
+                  ),
+                  version: { increment: 1 },
+                },
+              });
+              await tx.matchEvent.create({
+                data: {
+                  matchId: match.id,
+                  version: match.version + 1,
+                  actorId: actor.id,
+                  kind: 'scoring.configuration',
+                  data: { before: currentSettings.gameplayScoring, after: a.gameplayScoring },
+                },
+              });
+            }
+            for (const lobby of await tx.qualifierLobby.findMany({
+              where: { status: 'SCHEDULED' },
+              include: { scores: true },
+            })) {
+              if (lobby.scores.length) continue;
+              await tx.qualifierLobby.update({
+                where: { id: lobby.id },
+                data: {
+                  gameplayScoring: a.gameplayScoring,
+                  rules: JSON.parse(
+                    JSON.stringify(inheritedRules(lobby.rules, a.gameplayScoring, gameMode)),
+                  ),
+                  version: { increment: 1 },
+                },
+              });
+              await tx.qualifierEvent.create({
+                data: {
+                  lobbyId: lobby.id,
+                  version: lobby.version + 1,
+                  actorId: actor.id,
+                  kind: 'scoring.configuration',
+                  data: { before: currentSettings.gameplayScoring, after: a.gameplayScoring },
+                },
+              });
+            }
+          }
           if (timezone)
             try {
               new Intl.DateTimeFormat('en', { timeZone: timezone });
@@ -546,16 +724,22 @@ export async function executeAction(
         case 'media.delete':
           throw new AppError('Use the media deletion endpoint.');
       }
-      await tx.auditLog.create({
-        data: {
-          actorId: actor.id,
-          action: a.type,
-          tournamentId,
-          entityType: a.type.split('.')[0],
-          entityId,
-          details: a.type === 'match.delete' ? { code: a.confirmCode, reason: a.reason } : {},
-        },
-      });
+      if (
+        !a.type.startsWith('competition.') &&
+        !a.type.startsWith('qualifier.standings.') &&
+        a.type !== 'qualifier.policy.save' &&
+        a.type !== 'stage.reconcile'
+      )
+        await tx.auditLog.create({
+          data: {
+            actorId: actor.id,
+            action: a.type,
+            tournamentId,
+            entityType: a.type.split('.')[0],
+            entityId,
+            details: a.type === 'match.delete' ? { code: a.confirmCode, reason: a.reason } : {},
+          },
+        });
       return result;
     },
     { timeout: 15000 },

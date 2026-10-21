@@ -176,6 +176,8 @@ export function MatchScoreDialog({
                     }
                   : {
                       type: 'match.score',
+                      representation:
+                        match.rules.gameplayScoring === 'LAZER' ? 'STANDARDIZED' : 'LEGACY',
                       id: match.id,
                       baseVersion: selection.baseVersion,
                       actionId: selection.actionId,
@@ -197,6 +199,12 @@ export function MatchScoreDialog({
               Another referee changed this match. Close and reopen this score entry to review the
               latest version.
             </p>
+          )}
+          {match.rules.gameplayScoring === 'LAZER' && mode !== 'winner' && (
+            <label className="flex items-center gap-3 text-sm">
+              <input type="checkbox" required />
+              Scores are actual standardized lazer values, not classic-scaled display values.
+            </label>
           )}
           <ToggleGroup.Root
             type="single"

@@ -48,6 +48,10 @@ storage and starts services. Back up before using it for an update; read
 osu! login, scoped roles, visual page/rules editing, draft/publish workflows,
 image uploads, mappool metadata/import/sorting, staff and team management, schedules,
 qualifiers, pick/bans, scoring, history imports and Discord result formatting.
+The Matches workspace includes native single/double-elimination brackets and groups,
+with confirmed-result advancement. Qualifier stages support one/two runs, reviewed
+standings, published seedings and bracket generation. Choose gameplay scoring once
+in Tournament Settings; see the competition guides for compatibility limits.
 PostgreSQL and private S3-compatible storage are included. Filesystem/external S3
 storage and an optional Bancho IRC gateway are also supported.
 
@@ -60,6 +64,8 @@ storage and an optional Bancho IRC gateway are also supported.
 - [Architecture and security](docs/ARCHITECTURE.md)
 - [Interface design and visual testing](docs/DESIGN.md)
 - [Optional IRC and credential security](docs/IRC.md)
+- [Competition workflows, migration and verification](docs/COMPETITION-OVERHAUL.md)
+- [Qualifier calculations and seeding](docs/QUALIFIER-SEEDING.md)
 - [Contributing](CONTRIBUTING.md) and [security reporting](SECURITY.md)
 
 IRC is off by default and tested with a mock server, not live Bancho credentials.

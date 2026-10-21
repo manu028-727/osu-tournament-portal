@@ -24,6 +24,7 @@ try {
         timezone: 'UTC',
         settings: {
           create: {
+            gameplayScoring: 'SCORE_V2',
             banner: '',
             registrationUrl: '',
             socialLinks: [],

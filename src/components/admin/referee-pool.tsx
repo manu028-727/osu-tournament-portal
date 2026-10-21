@@ -99,18 +99,20 @@ export function RefereePool({
                           ['map command', commands.map, Terminal],
                           ['mod command', commands.mods, SlidersHorizontal],
                         ] as const
-                      ).map(([label, value, Icon]) => (
-                        <Button
-                          key={label}
-                          size="icon"
-                          variant="ghost"
-                          title={`Copy ${slot.name} ${label}`}
-                          aria-label={`Copy ${slot.name} ${label}`}
-                          onClick={() => copy(value)}
-                        >
-                          <Icon size={15} />
-                        </Button>
-                      ))}
+                      )
+                        .filter(([, value]) => value)
+                        .map(([label, value, Icon]) => (
+                          <Button
+                            key={label}
+                            size="icon"
+                            variant="ghost"
+                            title={`Copy ${slot.name} ${label}`}
+                            aria-label={`Copy ${slot.name} ${label}`}
+                            onClick={() => copy(value)}
+                          >
+                            <Icon size={15} />
+                          </Button>
+                        ))}
                     </div>
                   </td>
                   {action && <td>{action(slot)}</td>}

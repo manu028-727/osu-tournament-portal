@@ -12,6 +12,8 @@ import {
 } from '@/components/admin/workspace-sections';
 import { requestScope } from '@/lib/tournament-context';
 import type { PageContent } from '@/lib/types';
+import Link from '@/components/tournament-scope';
+import { can } from '@/lib/permissions';
 export default async function Section({
   params,
   searchParams,
@@ -60,7 +62,23 @@ export default async function Section({
         />
       );
     case 'teams':
-      return <TeamsEditor actor={actor} />;
+      return (
+        <>
+          {(can(actor, 'matches.view_all') ||
+            can(actor, 'matches.manage') ||
+            can(actor, 'matches.manage_all')) && (
+            <nav aria-label="Participant results" className="mb-4 flex flex-wrap gap-4 text-sm">
+              <Link href="/admin/qualifier-results" className="text-primary">
+                Qualifier results & seedings
+              </Link>
+              <Link href="/admin/matches" className="text-primary">
+                Matches & brackets
+              </Link>
+            </nav>
+          )}
+          <TeamsEditor actor={actor} />
+        </>
+      );
     case 'mappools':
       return (
         <PoolsWorkspace

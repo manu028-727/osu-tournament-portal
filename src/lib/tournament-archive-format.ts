@@ -33,7 +33,7 @@ export const ARCHIVE_TABLES = {
   ),
   settings: def(
     'tournamentSettings',
-    'tournamentId:s logo:s favicon:s banner:s primaryColor:s accentColor:s registrationUrl:s socialLinks:j importantDates:j navigation:j footer:s copy:j matchRules:j updatedAt:d',
+    'tournamentId:s gameplayScoring:s? logo:s favicon:s banner:s primaryColor:s accentColor:s registrationUrl:s socialLinks:j importantDates:j navigation:j footer:s copy:j matchRules:j updatedAt:d',
     { tournamentId: 'tournament' },
   ),
   media: def(
@@ -43,7 +43,7 @@ export const ARCHIVE_TABLES = {
   ),
   stages: def(
     'tournamentStage',
-    'id:s tournamentId:s name:s slug:s description:s position:i startsAt:d? bannerImageId:s? kind:s archivedAt:d? nextStageId:s? matchRules:j? createdAt:d',
+    'id:s tournamentId:s name:s slug:s description:s position:i startsAt:d? bannerImageId:s? kind:s archivedAt:d? nextStageId:s? matchRules:j? qualifierPolicy:j? createdAt:d',
     { tournamentId: 'tournament', bannerImageId: 'media', nextStageId: 'stages' },
   ),
   categories: def('modCategory', 'id:s tournamentId:s name:s acronym:s color:s position:i', {
@@ -164,7 +164,7 @@ export const ARCHIVE_TABLES = {
   ),
   qualifierLobbies: def(
     'qualifierLobby',
-    'id:s tournamentId:s code:s stageId:s poolRevisionId:s rules:j participants:j scheduledAt:d? status:s lobbyUrl:s notes:s version:i createdAt:d updatedAt:d',
+    'id:s tournamentId:s code:s stageId:s poolRevisionId:s rules:j policy:j? gameplayScoring:s? participants:j scheduledAt:d? status:s lobbyUrl:s notes:s version:i createdAt:d updatedAt:d',
     { tournamentId: 'tournament', stageId: 'stages', poolRevisionId: 'poolRevisions' },
   ),
   qualifierEntries: def('qualifierEntry', 'tournamentId:s lobbyId:s teamId:s position:i', {
@@ -174,7 +174,7 @@ export const ARCHIVE_TABLES = {
   }),
   qualifierScores: def(
     'qualifierScore',
-    'id:s lobbyId:s osuId:i slotName:s raw:n mods:j adjusted:n updatedAt:d',
+    'id:s lobbyId:s osuId:i slotName:s run:i actualScoring:s? representation:s source:s gameId:s? verified:b raw:n mods:j adjusted:n updatedAt:d',
     { lobbyId: 'qualifierLobbies', osuId: 'participants' },
     ['lobby'],
   ),
@@ -189,6 +189,46 @@ export const ARCHIVE_TABLES = {
     'id:s tournamentId:s actorId:s? action:s entityType:s entityId:s details:j createdAt:d',
     { tournamentId: 'tournament', actorId: 'identities' },
   ),
+  qualifierStandings: def(
+    'qualifierStanding',
+    'id:s tournamentId:s stageId:s version:i published:b sourceHash:s snapshot:j createdAt:d',
+    { tournamentId: 'tournament', stageId: 'stages' },
+  ),
+  brackets: def(
+    'bracket',
+    'id:s tournamentId:s name:s format:s generationKey:s config:j seedOrder:j sourceStandingId:s? published:b version:i createdAt:d updatedAt:d',
+    { tournamentId: 'tournament', sourceStandingId: 'qualifierStandings' },
+  ),
+  bracketRounds: def(
+    'bracketRound',
+    'id:s tournamentId:s bracketId:s stageId:s key:s name:s lane:s position:i',
+    { tournamentId: 'tournament', bracketId: 'brackets', stageId: 'stages' },
+  ),
+  bracketNodes: def(
+    'bracketNode',
+    'id:s tournamentId:s bracketId:s roundId:s key:s position:i matchId:s? state:s',
+    {
+      tournamentId: 'tournament',
+      bracketId: 'brackets',
+      roundId: 'bracketRounds',
+      matchId: 'matches',
+    },
+  ),
+  bracketSlots: def(
+    'bracketSlot',
+    'id:s tournamentId:s nodeId:s side:s teamId:s? resolved:b mode:s sourceNodeId:s? outcome:s?',
+    {
+      tournamentId: 'tournament',
+      nodeId: 'bracketNodes',
+      teamId: 'teams',
+      sourceNodeId: 'bracketNodes',
+    },
+  ),
+  bracketEntries: def('bracketEntry', 'tournamentId:s bracketId:s teamId:s seed:i status:s', {
+    tournamentId: 'tournament',
+    bracketId: 'brackets',
+    teamId: 'teams',
+  }),
   identities: def(
     'user',
     'id:s osuId:i username:s avatarUrl:s profileUrl:s country:s?',
@@ -249,6 +289,15 @@ const primitive: Record<string, z.ZodType> = {
   j: z.json(),
 };
 const enumFields: Record<string, readonly [string, ...string[]]> = {
+  'settings.gameplayScoring': ['SCORE_V1', 'SCORE_V2', 'LAZER'],
+  'qualifierLobbies.gameplayScoring': ['SCORE_V1', 'SCORE_V2', 'LAZER'],
+  'qualifierScores.actualScoring': ['SCORE_V1', 'SCORE_V2', 'LAZER'],
+  'qualifierScores.representation': ['LEGACY', 'STANDARDIZED'],
+  'qualifierScores.source': ['MANUAL', 'OSU_API', 'IMPORT'],
+  'brackets.format': ['SINGLE_ELIMINATION', 'DOUBLE_ELIMINATION', 'GROUPS'],
+  'bracketSlots.mode': ['AUTO', 'MANUAL', 'LOCKED'],
+  'bracketSlots.outcome': ['WINNER', 'LOSER', 'RESET_A', 'RESET_B'],
+  'bracketEntries.status': ['ACTIVE', 'WITHDRAWN', 'DISQUALIFIED'],
   'pages.state': ['DRAFT', 'PUBLISHED', 'UNPUBLISHED'],
   'pools.state': ['DRAFT', 'PUBLISHED', 'UNPUBLISHED'],
   'teams.status': ['PENDING', 'APPROVED', 'REJECTED'],
@@ -285,14 +334,21 @@ function fieldSchema(table: ArchiveTable, name: string, type: string, nullable: 
     schema = z.string().min(1).max(100);
   if (type === 's' && /^(?:color|primaryColor|accentColor)$/.test(name))
     schema = z.string().regex(/^#[a-fA-F0-9]{6}$/);
+  const defaults: Record<string, unknown> = {
+    'qualifierScores.run': 1,
+    'qualifierScores.representation': 'LEGACY',
+    'qualifierScores.source': 'MANUAL',
+    'qualifierScores.verified': true,
+  };
+  if (Object.hasOwn(defaults, `${table}.${name}`))
+    return schema.default(defaults[`${table}.${name}`]);
   return nullable ? schema.nullable().optional() : schema;
 }
 const tablesSchema = z
   .object(
     Object.fromEntries(
-      tableNames.map((table) => [
-        table,
-        z
+      tableNames.map((table) => {
+        const records = z
           .array(
             z
               .object(
@@ -305,8 +361,21 @@ const tablesSchema = z
               )
               .strict(),
           )
-          .max(60000),
-      ]),
+          .max(60000);
+        return [
+          table,
+          [
+            'qualifierStandings',
+            'brackets',
+            'bracketRounds',
+            'bracketNodes',
+            'bracketSlots',
+            'bracketEntries',
+          ].includes(table)
+            ? records.default([])
+            : records,
+        ];
+      }),
     ),
   )
   .strict();
@@ -423,6 +492,49 @@ export function validateArchiveData(input: unknown): ArchiveData {
   for (const result of [...data.mapResults, ...data.multiplayerGames.filter((row) => row.actionId)])
     if (indices.get('actions')!.get(result.actionId)?.matchId !== result.matchId)
       throw new AppError('A map result belongs to a different match.');
+  for (const node of data.bracketNodes)
+    if (indices.get('bracketRounds')!.get(node.roundId)?.bracketId !== node.bracketId)
+      throw new AppError('A bracket node belongs to a different round or division.');
+  const usedMatches = new Set<unknown>();
+  const nodeSlots = new Map<unknown, ArchiveRow[]>();
+  for (const slot of data.bracketSlots)
+    nodeSlots.set(slot.nodeId, [...(nodeSlots.get(slot.nodeId) || []), slot]);
+  for (const node of data.bracketNodes) {
+    if (node.matchId) {
+      if (usedMatches.has(node.matchId))
+        throw new AppError('A native match cannot occupy multiple bracket nodes.');
+      usedMatches.add(node.matchId);
+    }
+    const slots = nodeSlots.get(node.id) || [];
+    if (
+      slots.length !== 2 ||
+      !slots.some((s) => s.side === 'A') ||
+      !slots.some((s) => s.side === 'B')
+    )
+      throw new AppError('A bracket node requires exactly two participant slots.');
+  }
+  const slotNodes = new Map(data.bracketNodes.map((node) => [node.id, node]));
+  const outgoing = new Map<unknown, unknown[]>();
+  for (const slot of data.bracketSlots) {
+    if (!!slot.sourceNodeId !== !!slot.outcome)
+      throw new AppError('A progression slot requires both source and outcome.');
+    if (slot.sourceNodeId)
+      outgoing.set(slot.nodeId, [...(outgoing.get(slot.nodeId) || []), slot.sourceNodeId]);
+    if (!slotNodes.has(slot.nodeId)) throw new AppError('A bracket slot has no native node.');
+  }
+  const degrees = new Map([...slotNodes.keys()].map((id) => [id, (outgoing.get(id) || []).length]));
+  const children = new Map<unknown, unknown[]>();
+  for (const [id, sources] of outgoing)
+    for (const source of sources) children.set(source, [...(children.get(source) || []), id]);
+  const queue = [...degrees].filter(([, degree]) => degree === 0).map(([id]) => id);
+  for (let index = 0; index < queue.length; index++)
+    for (const child of children.get(queue[index]) || []) {
+      const degree = degrees.get(child)! - 1;
+      degrees.set(child, degree);
+      if (degree === 0) queue.push(child);
+    }
+  if (queue.length !== slotNodes.size)
+    throw new AppError('Bracket progression cannot contain cycles.');
   const uniqueFields: Partial<Record<ArchiveTable, string[][]>> = {
     identities: [['osuId']],
     pages: [['slug']],
@@ -449,7 +561,16 @@ export function validateArchiveData(input: unknown): ArchiveData {
       ['lobbyId', 'teamId'],
       ['lobbyId', 'position'],
     ],
-    qualifierScores: [['lobbyId', 'osuId', 'slotName']],
+    qualifierScores: [['lobbyId', 'osuId', 'slotName', 'run']],
+    qualifierStandings: [['stageId', 'version']],
+    brackets: [['generationKey']],
+    bracketRounds: [['bracketId', 'key']],
+    bracketNodes: [['bracketId', 'key']],
+    bracketSlots: [['nodeId', 'side']],
+    bracketEntries: [
+      ['bracketId', 'teamId'],
+      ['bracketId', 'seed'],
+    ],
     qualifierEvents: [['lobbyId', 'version']],
   };
   for (const [table, combinations] of Object.entries(uniqueFields))

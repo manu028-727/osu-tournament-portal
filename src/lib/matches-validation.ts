@@ -27,6 +27,9 @@ export const playerScoreSchema = z.object({
 export const matchActionOptions = [
   z.object({
     type: z.literal('match.create'),
+    bracketId: id.optional(),
+    allowIneligible: z.boolean().optional(),
+    overrideReason: z.string().trim().max(2000).optional(),
     code: z
       .string()
       .trim()
@@ -90,6 +93,7 @@ export const matchActionOptions = [
   base.extend({ type: z.literal('match.import'), proposalId: id, reason }),
   base.extend({
     type: z.literal('match.score'),
+    representation: z.enum(['LEGACY', 'STANDARDIZED']).default('LEGACY'),
     actionId: id,
     scoreA: score,
     scoreB: score,
@@ -123,9 +127,24 @@ export const matchActionOptions = [
     reason,
   }),
   base.extend({ type: z.literal('match.confirm'), reason }),
-  base.extend({ type: z.literal('match.reopen'), reason }),
-  base.extend({ type: z.literal('match.dispute'), reason }),
-  base.extend({ type: z.literal('match.cancel'), reason }),
+  base.extend({
+    type: z.literal('match.reopen'),
+    reason,
+    approveProgression: z.boolean().optional(),
+    correctionHash: z.string().length(64).optional(),
+  }),
+  base.extend({
+    type: z.literal('match.dispute'),
+    reason,
+    approveProgression: z.boolean().optional(),
+    correctionHash: z.string().length(64).optional(),
+  }),
+  base.extend({
+    type: z.literal('match.cancel'),
+    reason,
+    approveProgression: z.boolean().optional(),
+    correctionHash: z.string().length(64).optional(),
+  }),
   base.extend({ type: z.literal('match.delete'), reason, confirmCode: z.string().min(1).max(80) }),
   base.extend({
     type: z.literal('match.detected_pick'),

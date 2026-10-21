@@ -57,6 +57,26 @@ The main file is now `compose.yaml`; development uses `compose.dev.yaml`. Existi
 STACK_NAME keeps the existing volumes. Update any external scripts that referenced
 the previous filenames; specialist overlays are now under `deploy/`.
 
+## Competition Schema Update
+
+The competition release adds three migrations: tournament-wide gameplay scoring,
+native brackets/qualifier runs, and qualifier score provenance. Use the ordinary
+backup and `./portal install` workflow above; `./portal start` alone neither rebuilds
+the application nor applies these migrations. Do not deploy the new application
+against an unmigrated database.
+
+Existing scores, match actions, rule snapshots, CMS revisions and media are retained.
+Legacy scores become Run 1. Scoring is inferred only when legacy rule settings
+agree. Conflicting settings remain unresolved: review **Tournament Settings →
+Scoring System** before creating new competition records. Historical matches stay
+viewable; no numerical score conversion is performed. A recorded competition locks
+gameplay scoring, except explicit resolution of an unknown mode that matches every
+historical record. Review stage reconciliation suggestions separately; migrations
+do not silently rename imported stages or reassign historical matches.
+
+Read [competition compatibility and verification](COMPETITION-OVERHAUL.md) before
+enabling a new bracket or qualifier policy on an existing event.
+
 ## Release Cutover
 
 1. Build tagged web/tools/IRC images from one reviewed generic commit. Retain prior

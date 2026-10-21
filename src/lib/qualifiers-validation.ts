@@ -29,6 +29,8 @@ export const qualifierActionOptions = [
   base.extend({ type: z.literal('qualifier.lobby'), lobbyUrl: z.string().max(300) }),
   base.extend({
     type: z.literal('qualifier.score'),
+    run: z.number().int().min(1).max(2).default(1),
+    representation: z.enum(['LEGACY', 'STANDARDIZED']).default('LEGACY'),
     osuId: z.number().int().positive().max(2147483647),
     slotName: z.string().min(1).max(20),
     raw: z.number().min(0).max(1_000_000_000_000),

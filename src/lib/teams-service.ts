@@ -217,6 +217,11 @@ export async function applyTeamAction(
   }
   await currentTeam(tx, a.id, a.baseVersion);
   if (a.type === 'team.delete') {
+    if (await tx.bracketEntry.count({ where: { teamId: a.id } }))
+      throw new AppError(
+        'This entrant belongs to a competition bracket. Withdraw or hide it instead of deleting its history.',
+        409,
+      );
     if (await tx.qualifierEntry.count({ where: { teamId: a.id } }))
       throw new AppError(
         'This entrant is used in qualifier history. Hide it instead of deleting it.',

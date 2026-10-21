@@ -3,13 +3,25 @@ import { scopedDb } from './scoped-db';
 import { requestScope } from './tournament-context';
 import { sortPoolSlots } from './mappool-order';
 import { cleanHtml } from './rich-text';
+import { gameplayScoringSchema } from './gameplay-scoring';
 export const revisionInclude = { blocks: { orderBy: { position: 'asc' as const } } };
 export const poolRevisionInclude = { slots: { orderBy: { position: 'asc' as const } } };
 export async function getTournament(tournamentId?: string) {
-  return rootDb.tournament.findUniqueOrThrow({
+  const tournament = await rootDb.tournament.findUniqueOrThrow({
     where: { id: tournamentId || (await requestScope()).tournamentId },
     include: { settings: true },
   });
+  return {
+    ...tournament,
+    settings: tournament.settings
+      ? {
+          ...tournament.settings,
+          gameplayScoring: gameplayScoringSchema
+            .nullable()
+            .parse(tournament.settings.gameplayScoring),
+        }
+      : null,
+  };
 }
 async function publicDb(tournamentId?: string) {
   const t = await getTournament(tournamentId);

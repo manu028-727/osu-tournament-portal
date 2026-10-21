@@ -8,12 +8,16 @@ import {
   rosterSnapshot,
   matchOptions,
   eligibleRefereeFor,
+  lobbyInfo,
   type MatchParticipants,
 } from './matches-service';
 import { teamInclude } from './teams-service';
 import { matchRulesSchema } from './match-rules';
 import { convertedScore } from './match-engine';
 import type { QualifierAction } from './qualifiers-validation';
+import { inheritedRules, historicalScoring, assertScoreRepresentation } from './gameplay-scoring';
+import { qualifierPolicySchema } from './qualifier-policy';
+import { assertQualifierMutable } from './qualifier-standings-service';
 const json = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value));
 const include = {
   stage: { select: { id: true, name: true } },
@@ -77,6 +81,9 @@ export async function qualifierData(actor: Actor, url: URL) {
     lobbies: records.map((lobby) => ({
       ...lobby,
       rules: matchRulesSchema.parse(lobby.rules),
+      policy: qualifierPolicySchema.parse(
+        lobby.policy || { requiredPlayers: matchRulesSchema.parse(lobby.rules).teamSize },
+      ),
       access: matchAccess(actor, lobby),
       ...(!can(actor, 'matches.view_history') && !can(actor, 'matches.manage')
         ? { events: [] }
@@ -138,6 +145,23 @@ export async function applyQualifierAction(
       include: { mappool: { include: { publishedRevision: { include: { slots: true } } } } },
     });
     const revision = stage.mappool?.publishedRevision;
+    if (stage.kind !== 'QUALIFIERS' || stage.archivedAt)
+      throw new AppError(
+        'Choose an active qualifier stage. Elimination stages use the match workspace.',
+      );
+    await assertQualifierMutable(tx, stage.id, tournamentId);
+    if (
+      await tx.qualifierEntry.findFirst({
+        where: {
+          teamId: { in: a.teamIds },
+          lobby: { stageId: stage.id, status: { not: 'CANCELLED' } },
+        },
+      })
+    )
+      throw new AppError(
+        'An entrant already has a qualifier session for this stage. Reschedule that session instead of creating duplicate performances.',
+        409,
+      );
     if (
       stage.tournamentId !== tournamentId ||
       stage.mappool?.state !== 'PUBLISHED' ||
@@ -162,12 +186,24 @@ export async function applyQualifierAction(
     });
     const tournament = await tx.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
     const rules = matchRulesSchema.parse({
-      ...matchRulesSchema.parse(stage.matchRules || settings.matchRules),
+      ...inheritedRules(stage.matchRules || settings.matchRules, settings.gameplayScoring),
       gameMode: tournament.gameMode,
+      teamMode: 'HEAD_TO_HEAD',
       ...(solo ? { teamSize: 1 } : {}),
     });
-    if (teams.some((team) => team.members.filter((p) => !p.substitute).length < rules.teamSize))
+    const policy = qualifierPolicySchema.parse(
+      stage.qualifierPolicy || { requiredPlayers: rules.teamSize },
+    );
+    if (
+      teams.some(
+        (team) => team.members.filter((p) => !p.substitute).length < policy.requiredPlayers,
+      )
+    )
       throw new AppError('An entrant has too few starting players.');
+    if (solo && policy.requiredPlayers !== 1)
+      throw new AppError('Individual qualifiers require one player per entrant.');
+    if (teams.length * policy.requiredPlayers > 16)
+      throw new AppError('Split these entrants into sessions of at most sixteen active players.');
     const date = a.scheduledAt ? new Date(a.scheduledAt) : null;
     await checkRefs(tx, a.refereeIds, date, undefined, tournamentId);
     const participants = a.teamIds.map((id) =>
@@ -179,6 +215,8 @@ export async function applyQualifierAction(
         stageId: stage.id,
         poolRevisionId: revision.id,
         rules: json(rules),
+        policy: json(policy),
+        gameplayScoring: settings.gameplayScoring,
         participants: json(participants),
         scheduledAt: date,
         notes: a.notes,
@@ -198,6 +236,8 @@ export async function applyQualifierAction(
   if (lobby.version !== a.baseVersion)
     throw new AppError('Another referee updated this lobby. Reload before saving.', 409);
   const rules = matchRulesSchema.parse(lobby.rules);
+  const policy = qualifierPolicySchema.parse(lobby.policy || { requiredPlayers: rules.teamSize });
+  await assertQualifierMutable(tx, lobby.stageId, tournamentId);
   const participants = lobby.participants as unknown as MatchParticipants['A'][];
   let changes: Prisma.QualifierLobbyUncheckedUpdateManyInput = {};
   let eventData: unknown = a;
@@ -214,12 +254,7 @@ export async function applyQualifierAction(
   } else if (a.type === 'qualifier.lobby') {
     if (!['SCHEDULED', 'IN_PROGRESS'].includes(lobby.status))
       throw new AppError('Reopen this lobby before editing.', 409);
-    if (
-      a.lobbyUrl &&
-      !/^https:\/\/osu\.ppy\.sh\/(?:community\/)?matches\/[1-9]\d{0,9}\/?$/.test(a.lobbyUrl)
-    )
-      throw new AppError('Use an osu! multiplayer match URL.');
-    changes.lobbyUrl = a.lobbyUrl;
+    changes.lobbyUrl = a.lobbyUrl ? lobbyInfo(a.lobbyUrl, null).lobbyUrl : '';
   } else if (a.type === 'qualifier.score.remove') {
     if (lobby.status !== 'IN_PROGRESS')
       throw new AppError('Reopen this lobby before correcting scores.', 409);
@@ -228,6 +263,14 @@ export async function applyQualifierAction(
     await tx.qualifierScore.delete({ where: { id: before.id } });
     eventData = { reason: a.reason, before, after: null };
   } else if (a.type === 'qualifier.score') {
+    if (a.run > policy.runs) throw new AppError('This run is not enabled in the qualifier policy.');
+    const scoring = historicalScoring(rules);
+    if (!scoring)
+      throw new AppError(
+        'This historical session has unresolved gameplay scoring. Review its provenance before recording competitive scores.',
+        409,
+      );
+    assertScoreRepresentation(scoring, scoring, a.representation, a.raw);
     if (lobby.status !== 'IN_PROGRESS')
       throw new AppError('Start or reopen the lobby before recording scores.', 409);
     if (!participants.some((team) => team.members.some((p) => p.osuId === a.osuId)))
@@ -249,17 +292,27 @@ export async function applyQualifierAction(
     )
       throw new AppError('This mod is not allowed in FreeMod.');
     const where = {
-      lobbyId_osuId_slotName: { lobbyId: lobby.id, osuId: a.osuId, slotName: a.slotName },
+      lobbyId_osuId_slotName_run: {
+        lobbyId: lobby.id,
+        osuId: a.osuId,
+        slotName: a.slotName,
+        run: a.run,
+      },
     };
     const before = await tx.qualifierScore.findUnique({ where });
     const data = {
       raw: a.raw,
       mods: json(a.mods),
       adjusted: convertedScore(rules, a.raw, a.mods, slot.name).adjusted,
+      actualScoring: historicalScoring(rules),
+      representation: a.representation,
+      source: 'MANUAL',
+      gameId: null,
+      verified: true,
     };
     const after = await tx.qualifierScore.upsert({
       where,
-      create: { lobbyId: lobby.id, osuId: a.osuId, slotName: a.slotName, ...data },
+      create: { lobbyId: lobby.id, osuId: a.osuId, slotName: a.slotName, run: a.run, ...data },
       update: data,
     });
     eventData = { reason: a.reason, before, after };
@@ -275,29 +328,45 @@ export async function applyQualifierAction(
       throw new AppError('This status transition is not available.', 409);
     if (a.command === 'START' && (!lobby.scheduledAt || !lobby.assignments.length))
       throw new AppError('Set a schedule and referee before starting.');
+    if (a.command === 'START') {
+      const settings = await tx.tournamentSettings.findUniqueOrThrow({ where: { tournamentId } });
+      if (!historicalScoring(rules) || historicalScoring(rules) !== settings.gameplayScoring)
+        throw new AppError(
+          'Session scoring differs from the tournament configuration. Review the session snapshot before starting.',
+          409,
+        );
+    }
     if (a.command === 'SUBMIT' || a.command === 'CONFIRM') {
       if (!lobby.lobbyUrl) throw new AppError('Record the multiplayer link before submitting.');
-      for (const slot of lobby.poolRevision.slots)
-        for (const team of participants) {
-          const scores = lobby.scores.filter(
-            (s) => s.slotName === slot.name && team.members.some((p) => p.osuId === s.osuId),
-          );
-          if (scores.length !== rules.teamSize)
-            throw new AppError(
-              `${team.name} needs exactly ${rules.teamSize} scores on ${slot.name}.`,
+      for (const run of Array.from({ length: policy.runs }, (_, i) => i + 1))
+        for (const slot of lobby.poolRevision.slots)
+          for (const team of participants) {
+            const scores = lobby.scores.filter(
+              (s) =>
+                s.slotName === slot.name &&
+                s.run === run &&
+                team.members.some((p) => p.osuId === s.osuId),
             );
-          if (rules.freeModCategories.includes(slot.category)) {
-            const mods = scores.map((s) => s.mods as string[]);
             if (
-              mods.filter((m) => m.includes('HR')).length < rules.freeModRequiredHR ||
-              mods.filter((m) => !m.includes('HR') && (m.includes('HD') || m.includes('EZ')))
-                .length < rules.freeModRequiredHD
+              policy.teamAggregation === 'TOP_N'
+                ? scores.length < policy.requiredPlayers
+                : scores.length !== policy.requiredPlayers
             )
               throw new AppError(
-                `${team.name} does not meet the FreeMod requirements on ${slot.name}.`,
+                `${team.name} needs ${policy.requiredPlayers} scores on ${slot.name}, Run ${run}.`,
               );
+            if (rules.freeModCategories.includes(slot.category)) {
+              const mods = scores.map((s) => s.mods as string[]);
+              if (
+                mods.filter((m) => m.includes('HR')).length < rules.freeModRequiredHR ||
+                mods.filter((m) => !m.includes('HR') && (m.includes('HD') || m.includes('EZ')))
+                  .length < rules.freeModRequiredHD
+              )
+                throw new AppError(
+                  `${team.name} does not meet the FreeMod requirements on ${slot.name}.`,
+                );
+            }
           }
-        }
     }
     changes.status = {
       START: 'IN_PROGRESS',

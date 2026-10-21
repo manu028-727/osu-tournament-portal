@@ -25,6 +25,7 @@ let owner: Actor,
   teamAId: string,
   teamBId: string;
 const userIds: string[] = [];
+const qualifierStageIds: string[] = [];
 const act = (actor: Actor | null, input: unknown) =>
   executeAction(actor, actionSchema.parse(input));
 async function account(osuId: number, systemKey: string): Promise<Actor> {
@@ -142,7 +143,8 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.qualifierLobby.deleteMany({ where: { code: { startsWith: prefix } } });
   await db.match.deleteMany({ where: { code: { startsWith: prefix } } });
-  if (stageId) await db.tournamentStage.deleteMany({ where: { id: stageId } });
+  if (stageId)
+    await db.tournamentStage.deleteMany({ where: { id: { in: [stageId, ...qualifierStageIds] } } });
   await db.team.deleteMany({ where: { id: { in: [teamAId, teamBId].filter(Boolean) } } });
   await db.participant.deleteMany({ where: { osuId: { in: [951000001, 951000002, 951000003] } } });
   await db.user.deleteMany({ where: { id: { in: userIds } } });
@@ -491,6 +493,42 @@ describe.sequential('assigned referee and persistent match workflows', () => {
       refereeIds: [referee.id],
       scheduledAt: '2078-01-01T12:00:00.000Z',
     };
+    const source = await db.tournamentStage.findUniqueOrThrow({
+      where: { id: stageId },
+      include: { mappool: { include: { publishedRevision: { include: { slots: true } } } } },
+    });
+    const qualifierStage = await db.tournamentStage.create({
+      data: {
+        name: `${prefix} qualifiers`,
+        slug: `${prefix}-qualifiers`,
+        kind: 'QUALIFIERS',
+        matchRules: source.matchRules!,
+        mappool: { create: {} },
+      },
+      include: { mappool: true },
+    });
+    qualifierStageIds.push(qualifierStage.id);
+    const qualifierRevision = await db.mappoolRevision.create({
+      data: {
+        mappoolId: qualifierStage.mappool!.id,
+        slots: {
+          create: source.mappool!.publishedRevision!.slots.map(({ id, revisionId, ...slot }) => {
+            void id;
+            void revisionId;
+            return { ...slot, metadata: JSON.parse(JSON.stringify(slot.metadata)) };
+          }),
+        },
+      },
+    });
+    await db.mappool.update({
+      where: { id: qualifierStage.mappool!.id },
+      data: {
+        state: 'PUBLISHED',
+        publishedRevisionId: qualifierRevision.id,
+        draftRevisionId: qualifierRevision.id,
+      },
+    });
+    input.stageId = qualifierStage.id;
     await expect(act(referee, input)).rejects.toThrow('permission');
     const lobby = (await act(owner, input)) as { id: string; version: number };
     await expect(
@@ -569,7 +607,10 @@ describe.sequential('assigned referee and persistent match workflows', () => {
       update(referee, 'qualifier.status', { command: 'CONFIRM', reason: 'Self confirmation' }),
     ).rejects.toThrow('permission');
     await update(owner, 'qualifier.status', { command: 'CONFIRM', reason: 'Results reviewed' });
-    expect(await current()).toMatchObject({ status: 'COMPLETED', poolRevisionId: revisionId });
+    expect(await current()).toMatchObject({
+      status: 'COMPLETED',
+      poolRevisionId: qualifierRevision.id,
+    });
     const history = await qualifierData(outsider, new URL(`http://test?id=${lobby.id}`));
     expect(history.lobbies[0].scores).toHaveLength(14);
     expect(

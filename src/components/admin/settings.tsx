@@ -12,6 +12,7 @@ import { MediaField } from './media';
 import { ExportTournamentButton } from './tournament-export-button';
 import { can, type Actor } from '@/lib/permissions';
 import { DEFAULT_COPY, siteCopy } from '@/lib/copy';
+import { SCORING_LABELS, SCORING_DESCRIPTIONS, type GameplayScoring } from '@/lib/gameplay-scoring';
 import {
   action,
   Field,
@@ -24,7 +25,10 @@ import {
   useTask,
   useUnsaved,
 } from './shared';
-type SettingsData = TournamentView & { settings: TournamentView['settings'] & { favicon: string } };
+type SettingsData = TournamentView & {
+  settings: TournamentView['settings'] & { favicon: string };
+  scoringImpact?: { locked: boolean; affected: { id: string; code: string; kind: string }[] };
+};
 type Form = Omit<SettingsData, 'settings'> & SettingsData['settings'];
 export type SettingsArea = 'info' | 'branding' | 'navigation' | 'advanced';
 const titles = {
@@ -47,6 +51,7 @@ export function SettingsEditor({
   const [form, setForm] = useState<Form | null>(null),
     [dirty, setDirty] = useState(false),
     [preview, setPreview] = useState(false);
+  const [scoringReview, setScoringReview] = useState(false);
   const { busy, run } = useTask();
   const router = useRouter();
   useUnsaved(dirty);
@@ -93,7 +98,7 @@ export function SettingsEditor({
         onSubmit={(e) => {
           e.preventDefault();
           void run(async () => {
-            await action({ type: 'settings.save', ...form });
+            await action({ type: 'settings.save', ...form, scoringReview });
             await reload();
             router.refresh();
           }, 'Saved. Website settings take effect immediately; page and mappool drafts are unchanged.');
@@ -444,6 +449,56 @@ export function SettingsEditor({
                     ))}
                   </select>
                 </Field>
+                <Field
+                  label="Scoring System"
+                  hint={
+                    form.gameplayScoring
+                      ? SCORING_DESCRIPTIONS[form.gameplayScoring]
+                      : 'Legacy scoring configuration requires review.'
+                  }
+                >
+                  <select
+                    value={form.gameplayScoring || ''}
+                    disabled={data.scoringImpact?.locked && !!data.settings.gameplayScoring}
+                    onChange={(e) => update('gameplayScoring', e.target.value as GameplayScoring)}
+                    required
+                  >
+                    <option value="" disabled>
+                      Review scoring configuration
+                    </option>
+                    {Object.entries(SCORING_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {!data.settings.gameplayScoring && data.scoringImpact?.locked && (
+                  <label className="flex items-center gap-3 text-sm">
+                    <input
+                      type="checkbox"
+                      required
+                      checked={scoringReview}
+                      onChange={(e) => setScoringReview(e.target.checked)}
+                    />
+                    I reviewed the historical records. The chosen scoring system must match every
+                    recorded result; no scores will be converted.
+                  </label>
+                )}
+                {data.scoringImpact?.locked && (
+                  <details className="text-sm text-muted">
+                    <summary>
+                      Scoring locked: {data.scoringImpact.affected.length} started or scored records
+                    </summary>
+                    <ul>
+                      {data.scoringImpact.affected.map((record) => (
+                        <li key={record.id}>
+                          {record.kind}: {record.code}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
                 {text('timezone', 'Timezone')}
                 <Field label="Format">
                   <select

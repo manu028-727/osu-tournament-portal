@@ -31,6 +31,7 @@ export type TournamentView = {
   status: string;
   gameMode: string;
   settings: {
+    gameplayScoring?: import('./gameplay-scoring').GameplayScoring | null;
     logo: string;
     banner: string;
     primaryColor: string;

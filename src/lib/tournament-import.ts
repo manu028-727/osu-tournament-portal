@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import { z } from 'zod';
+import { inferLegacyScoring } from './gameplay-scoring';
 import { db } from './db';
 import { AppError, DEFAULT_ROLES, PERMISSIONS, type Actor } from './permissions';
 import { getObject, putObject, deleteObject, contentHash } from './storage';
@@ -20,6 +21,10 @@ import { cleanHtml } from './rich-text';
 import { blockSchema, actionSchema, safeUrl } from './validation';
 import { matchRulesSchema } from './match-rules';
 import type { Prisma } from '@/generated/prisma/client';
+import { competitionActionSchema } from './competition-validation';
+import { qualifierPolicySchema } from './qualifier-policy';
+import { rebindImportedQualifierStandings } from './qualifier-standings-service';
+import { rebindImportedCompetition, validateCompetitionArchive } from './competition-service';
 
 export const importSlug = z
   .string()
@@ -74,6 +79,7 @@ const beatmapSchema = z
   .passthrough();
 export async function inspectArchive(bytes: Buffer) {
   const archive = await readArchive(bytes);
+  validateCompetitionArchive(archive.data);
   // Validate real CMS/rule contracts before staging files, not just the ZIP envelope.
   const t = archive.data.tournament[0],
     settings = archive.data.settings[0];
@@ -82,6 +88,34 @@ export async function inspectArchive(bytes: Buffer) {
   for (const block of archive.data.blocks) blockSchema.parse(block);
   for (const stage of archive.data.stages)
     if (stage.matchRules) matchRulesSchema.parse(stage.matchRules);
+  for (const stage of archive.data.stages)
+    if (stage.qualifierPolicy) qualifierPolicySchema.parse(stage.qualifierPolicy);
+  for (const lobby of archive.data.qualifierLobbies)
+    if (lobby.policy) qualifierPolicySchema.parse(lobby.policy);
+  for (const bracket of archive.data.brackets) {
+    const config = competitionActionSchema.options[0].parse(bracket.config);
+    if (config.teamIds.some((id) => !archive.data.teams.some((team) => team.id === id)))
+      throw new AppError('Bracket configuration refers to a participant outside the archive.');
+    if (
+      config.sourceBracketId &&
+      (!archive.data.brackets.some(
+        (source) => source.id === config.sourceBracketId && source.format === 'GROUPS',
+      ) ||
+        config.sourceBracketId === bracket.id)
+    )
+      throw new AppError('Bracket configuration refers to an invalid source group.');
+    if (
+      config.sourceStandingId &&
+      !archive.data.qualifierStandings.some((standing) => standing.id === config.sourceStandingId)
+    )
+      throw new AppError('Bracket configuration refers to an unknown qualifier standing.');
+    if (
+      [config.stageId, ...Object.values(config.roundStages)].some(
+        (id) => !archive.data.stages.some((stage) => stage.id === id),
+      )
+    )
+      throw new AppError('Bracket configuration refers to an unknown stage.');
+  }
   for (const match of [...archive.data.matches, ...archive.data.qualifierLobbies])
     matchRulesSchema.parse(match.rules);
   for (const row of archive.data.matches)
@@ -149,9 +183,14 @@ function remapJson(
   archive: ParsedArchive,
   slug: string,
   field = '',
+  path: string[] = [],
 ): unknown {
   if (typeof value === 'string') {
-    if (/^(?:id|.*Id|.*Ids|createdBy)$/.test(field) && ids.has(value)) return ids.get(value)!;
+    const identityField =
+      /^(?:id|.*Id|.*Ids|createdBy|calculatedBy|seedOrder|groupTieOrder)$/.test(field) ||
+      path.at(-2) === 'roundStages' ||
+      (field === 'order' && path.at(-2) === 'tieResolution');
+    if (identityField && ids.has(value)) return ids.get(value)!;
     const sourcePrefix = `/t/${archive.manifest.sourceSlug}`;
     const text = value.replace(
       /(?:https?:\/\/[^\s"'<>]+)?\/api\/media\/([a-zA-Z0-9_-]+)/g,
@@ -167,10 +206,13 @@ function remapJson(
       .replace(new RegExp(sourcePrefix + '(?=[/?#"\'\\s<]|$)', 'g'), `/t/${slug}`);
   }
   if (Array.isArray(value))
-    return value.map((child) => remapJson(child, ids, archive, slug, field));
+    return value.map((child) => remapJson(child, ids, archive, slug, field, path));
   if (value && typeof value === 'object')
     return Object.fromEntries(
-      Object.entries(value).map(([key, child]) => [key, remapJson(child, ids, archive, slug, key)]),
+      Object.entries(value).map(([key, child]) => [
+        key,
+        remapJson(child, ids, archive, slug, key, [...path, key]),
+      ]),
     );
   return value;
 }
@@ -200,6 +242,12 @@ const insertionOrder: ArchiveTable[] = [
   'qualifierEntries',
   'qualifierScores',
   'qualifierEvents',
+  'qualifierStandings',
+  'brackets',
+  'bracketRounds',
+  'bracketNodes',
+  'bracketSlots',
+  'bracketEntries',
   'audits',
 ];
 async function insert(client: TransferClient, table: ArchiveTable, rows: ArchiveRow[]) {
@@ -350,6 +398,14 @@ export async function importTournament(
         }
         const settings = {
           ...mapped.settings[0],
+          gameplayScoring:
+            mapped.settings[0].gameplayScoring ??
+            inferLegacyScoring([
+              mapped.settings[0].matchRules,
+              ...mapped.stages.map((row) => row.matchRules),
+              ...mapped.matches.map((row) => row.rules),
+              ...mapped.qualifierLobbies.map((row) => row.rules),
+            ]),
           tournamentId,
           updatedAt: new Date(mapped.settings[0].updatedAt as string),
         };
@@ -406,6 +462,13 @@ export async function importTournament(
             where: { id: item.id },
             data: item.fields,
           });
+        const standingsRestore = await rebindImportedQualifierStandings(tx, tournamentId);
+        const competitionRestore = await rebindImportedCompetition(
+          tx,
+          tournamentId,
+          archive.data,
+          ids,
+        );
         const counts: Record<string, number> = {};
         for (const table of insertionOrder) {
           const rows = await archiveDelegate(tx, table).findMany({
@@ -431,6 +494,8 @@ export async function importTournament(
           published: false,
           sourceFingerprint: archive.fingerprint,
           imported: counts,
+          standingsRestore,
+          competitionRestore,
           mediaFilesVerified: keys.length,
           errors: [],
           review: {
@@ -442,6 +507,7 @@ export async function importTournament(
             identities: archive.data.identities,
           },
           warnings: [
+            ...standingsRestore.warnings,
             ...archive.manifest.warnings,
             'Imported role memberships and referee assignments were not applied. Review them before assigning access.',
             'Existing global osu! profiles and beatmap cache records were not overwritten.',

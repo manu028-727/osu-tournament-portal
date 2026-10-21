@@ -124,6 +124,13 @@ export type MatchView = MatchSummary & {
   }[];
 };
 export type MatchOptions = {
+  scoringNeedsReview?: boolean;
+  paths?: {
+    id: string;
+    name: string;
+    stageIds: string[];
+    teams: { teamId: string; eligible: boolean; reason: string }[];
+  }[];
   defaults: MatchRules;
   defaultsHash: string;
   stages: {

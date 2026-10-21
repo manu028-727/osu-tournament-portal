@@ -6,10 +6,25 @@ import { AppError, assertPermission, can, type Actor } from './permissions';
 import { matchInclude, rosterSnapshot, lobbyInfo } from './matches-service';
 import { teamInclude } from './teams-service';
 import { validateSheetRecord } from './referee-workbook-state';
-import { matchRulesSchema } from './match-rules';
-import { fingerprint, parseRefereeWorkbook, type RefereeRecord } from './referee-workbook';
+import { inheritedRules, tournamentScoring } from './gameplay-scoring';
+import {
+  approvedStageMappings,
+  normalizeStageLabel,
+  objectMetadata,
+  resolveStageLabel,
+} from './stage-reconciliation';
+import {
+  fingerprint,
+  parseRefereeWorkbook,
+  workbookScoringCompatibility,
+  type RefereeRecord,
+} from './referee-workbook';
 import { z } from 'zod';
 import { sameTimeline, storedTimeline } from './referee-timeline';
+import {
+  assertCompetitionResultCorrection,
+  advanceConfirmedCompetitionResult,
+} from './competition-service';
 const json = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value));
 export const importApplySchema = z
   .object({
@@ -24,6 +39,10 @@ export const importApplySchema = z
         z.object({ row: z.number().int().min(9).max(500), use: z.enum(['SOURCE', 'WEBSITE']) }),
       )
       .max(250)
+      .refine(
+        (rows) => new Set(rows.map((row) => row.row)).size === rows.length,
+        'Resolve each source row only once.',
+      )
       .default([]),
     reason: z.string().trim().min(3).max(2000),
     create: z
@@ -87,18 +106,18 @@ export async function importPreview(actor: Actor, id: string) {
     preview = await db.refereeImport.findUnique({ where: { id } });
   if (!preview || preview.expiresAt < new Date())
     throw new AppError('Import preview expired or not found. Upload the workbook again.', 404);
-  const [matches, stages, teams, importEvents] = await Promise.all([
+  const [matches, stages, teams, importEvents, settings] = await Promise.all([
     db.match.findMany({
       include: {
-        stage: { select: { name: true } },
+        stage: { select: { name: true, id: true } },
         poolRevision: { include: { slots: true } },
         actions: { orderBy: { sequence: 'asc' } },
         results: true,
       },
     }),
     db.tournamentStage.findMany({
-      where: { archivedAt: null },
-      select: { id: true, name: true },
+      where: { archivedAt: null, kind: { not: 'QUALIFIERS' } },
+      include: { mappool: { include: { publishedRevision: { include: { slots: true } } } } },
       orderBy: { position: 'asc' },
     }),
     db.team.findMany({
@@ -107,10 +126,14 @@ export async function importPreview(actor: Actor, id: string) {
       orderBy: { name: 'asc' },
     }),
     db.matchEvent.findMany({
-      where: { kind: 'sheet.import' },
-      select: { matchId: true, data: true },
+      where: { kind: { in: ['sheet.import', 'stage.reconcile'] } },
+      select: { matchId: true, kind: true, data: true },
+    }),
+    db.tournamentSettings.findUniqueOrThrow({
+      where: { tournamentId: actor.tournamentId || 'main' },
     }),
   ]);
+  const scoring = tournamentScoring(settings.gameplayScoring);
   return {
     id: preview.id,
     filename: preview.filename,
@@ -119,18 +142,32 @@ export async function importPreview(actor: Actor, id: string) {
       select: { id: true, slug: true, name: true },
     }),
     canConfirm: can(actor, 'matches.manage'),
+    gameplayScoring: scoring,
     records: (preview.records as unknown as RefereeRecord[])
       .sort((a, b) => Number(a.sheet) - Number(b.sheet))
       .map((record) => {
         const match = matches.find((m) => m.code === record.code);
         const conflicts: string[] = [];
-        const errors = [...record.issues];
+        const compatibility = workbookScoringCompatibility(record.scoring, scoring);
+        const errors = [...record.issues, ...compatibility.errors];
+        const warnings = [...(record.warnings || []), ...compatibility.warnings];
         let sourceLobby = record.mp;
-        const stage = stages.find((s) => s.name === record.stage),
+        const stageMapping = resolveStageLabel(
+          record.stage,
+          stages,
+          approvedStageMappings(importEvents),
+        );
+        const stage = stageMapping.stage,
           red = teams.find((t) => t.name === record.red),
           blue = teams.find((t) => t.name === record.blue);
         const createSuggestion =
-          !match && stage && red && blue && red.id !== blue.id
+          !match &&
+          stage &&
+          stage.mappool?.state === 'PUBLISHED' &&
+          stage.mappool.publishedRevision?.slots.length &&
+          red &&
+          blue &&
+          red.id !== blue.id
             ? { stageId: stage.id, teamAId: red.id, teamBId: blue.id }
             : null;
         try {
@@ -145,7 +182,8 @@ export async function importPreview(actor: Actor, id: string) {
           };
           if (participants.A.name !== record.red || participants.B.name !== record.blue)
             errors.push('Participating teams differ.');
-          if (match.stage.name !== record.stage) errors.push('Stage differs.');
+          if (!stageMapping.candidates.some((stage) => stage.id === match.stageId))
+            errors.push('Stage differs or requires reconciliation to an existing gameplay stage.');
           if (match.lobbyUrl && match.lobbyUrl !== sourceLobby)
             conflicts.push('Multiplayer link differs.');
           if (match.actions.some((a) => !a.voided))
@@ -159,7 +197,9 @@ export async function importPreview(actor: Actor, id: string) {
             conflicts.push(`Website match is ${match.status}. Explicit confirmation is required.`);
           try {
             if (!match.poolRevision) throw new AppError('No frozen pool is linked to this match.');
-            validateSheetRecord(record, match.rules, match.poolRevision.slots);
+            validateSheetRecord(record, match.rules, match.poolRevision.slots, {
+              preserveRules: true,
+            });
           } catch (e) {
             errors.push((e as Error).message);
           }
@@ -168,6 +208,14 @@ export async function importPreview(actor: Actor, id: string) {
             'Match not found. Select existing stage and approved teams for historical creation.',
           );
         }
+        if (stageMapping.ambiguous)
+          warnings.push(
+            'Stage mapping is ambiguous. Explicitly select one of the existing matching stages.',
+          );
+        if (!stageMapping.candidates.length)
+          errors.push(
+            'No approved source-stage mapping. Explicitly select an existing stage for historical creation; no stage will be created.',
+          );
         const alreadyImported =
           !!match &&
           sameOutcome(match, record) &&
@@ -181,6 +229,19 @@ export async function importPreview(actor: Actor, id: string) {
           );
         return {
           record,
+          warnings,
+          scoring: { source: record.scoring?.mode || null, target: scoring },
+          stageMapping: {
+            source: record.stage,
+            stageId: stage?.id || null,
+            stageName: stage?.name || null,
+            candidates: stageMapping.candidates.map((stage) => ({
+              id: stage.id,
+              name: stage.name,
+            })),
+            bracket: stageMapping.bracket,
+            roundLabel: stageMapping.roundLabel,
+          },
           alreadyImported,
           errors: [...new Set(errors)],
           requiresReplacement: !alreadyImported && conflicts.length > 0,
@@ -192,7 +253,9 @@ export async function importPreview(actor: Actor, id: string) {
           websiteActions: match ? storedTimeline(match) : [],
         };
       }),
-    stages,
+    stages: stages
+      .filter((stage) => !normalizeStageLabel(stage.name).bracket)
+      .map((stage) => ({ id: stage.id, name: stage.name })),
     teams,
   };
 }
@@ -219,6 +282,24 @@ export async function applyWorkbook(original: Actor, input: z.infer<typeof impor
         (r) => r.sheet === input.sheet,
       );
       if (!record) throw new AppError('Worksheet not found in this preview.', 404);
+      const settings = await tx.tournamentSettings.findUniqueOrThrow({ where: { tournamentId } });
+      const compatibility = workbookScoringCompatibility(
+        record.scoring,
+        tournamentScoring(settings.gameplayScoring),
+      );
+      if (compatibility.errors.length) throw new AppError(compatibility.errors.join(' '), 409);
+      const stages = await tx.tournamentStage.findMany({
+        where: { archivedAt: null, kind: { not: 'QUALIFIERS' } },
+      });
+      const mappingEvents = await tx.matchEvent.findMany({
+        where: { kind: { in: ['sheet.import', 'stage.reconcile'] } },
+        select: { kind: true, data: true },
+      });
+      const stageMapping = resolveStageLabel(
+        record.stage,
+        stages,
+        approvedStageMappings(mappingEvents),
+      );
       const lobby = lobbyInfo(record.mp, null);
       const acceptedFingerprint = fingerprint({
         source: record.fingerprint,
@@ -231,28 +312,40 @@ export async function applyWorkbook(original: Actor, input: z.infer<typeof impor
       if (match && match.code !== record.code)
         throw new AppError('The match identifier does not match this worksheet.');
       const sourceRecord = structuredClone(record);
+      const retainedActions = new Map<
+        number,
+        { id: string; provenance: Prisma.JsonValue | null }
+      >();
+      const retainedResults = new Map<number, NonNullable<typeof match>['results'][number]>();
       if (input.choices.length) {
         if (!match)
           throw new AppError('Per-action conflict resolution requires an existing match.');
         const website = match.actions.filter((a) => !a.voided);
         for (const choice of input.choices) {
+          const index = record.actions.findIndex((a) => a.row === choice.row);
+          if (index < 0) throw new AppError('That source row is unavailable. Refresh the preview.');
           if (choice.use !== 'WEBSITE') continue;
-          const index = record.actions.findIndex((a) => a.row === choice.row),
-            current = website[index];
-          if (index < 0 || !current)
+          const current = website[index];
+          if (!current)
             throw new AppError('That website action is unavailable. Refresh the preview.');
+          retainedActions.set(choice.row, {
+            id: current.id,
+            provenance: current.provenance ?? null,
+          });
+          const result = match.results.find((r) => !r.voided && r.actionId === current.id);
+          if (result) retainedResults.set(choice.row, result);
           record.actions[index] = {
             ...record.actions[index],
             kind: current.kind,
             side: current.side,
             slotName: current.slotName,
-            winner:
-              match.results.find((r) => !r.voided && r.actionId === current.id)?.winnerSide || null,
+            winner: result?.winnerSide || null,
           };
         }
       }
       if (
         match &&
+        (!input.confirmResults || match.status === 'COMPLETED') &&
         sameTimeline(match, record) &&
         sameOutcome(match, record) &&
         match.lobbyUrl === lobby.lobbyUrl &&
@@ -291,7 +384,7 @@ export async function applyWorkbook(original: Actor, input: z.infer<typeof impor
         assertPermission(actor, 'matches.manage');
         if (await tx.match.findFirst({ where: { code: record.code } }))
           throw new AppError('That match already exists. Select it instead.', 409);
-        const [stage, teams, settings, tournament] = await Promise.all([
+        const [stage, teams, tournament] = await Promise.all([
           tx.tournamentStage.findUniqueOrThrow({
             where: { id: input.create.stageId },
             include: { mappool: { include: { publishedRevision: { include: { slots: true } } } } },
@@ -300,12 +393,13 @@ export async function applyWorkbook(original: Actor, input: z.infer<typeof impor
             where: { id: { in: [input.create.teamAId, input.create.teamBId] }, status: 'APPROVED' },
             include: teamInclude,
           }),
-          tx.tournamentSettings.findUniqueOrThrow({ where: { tournamentId } }),
           tx.tournament.findUniqueOrThrow({ where: { id: tournamentId } }),
         ]);
         if (
           teams.length !== 2 ||
-          stage.name !== record.stage ||
+          (stageMapping.candidates.length > 0 &&
+            !stageMapping.candidates.some((candidate) => candidate.id === stage.id)) ||
+          !!normalizeStageLabel(stage.name).bracket ||
           stage.kind === 'QUALIFIERS' ||
           stage.archivedAt ||
           stage.mappool?.state !== 'PUBLISHED' ||
@@ -320,15 +414,26 @@ export async function applyWorkbook(original: Actor, input: z.infer<typeof impor
           throw new AppError('Selected team names do not match the workbook.');
         const valid = validateSheetRecord(
           record,
-          {
-            ...matchRulesSchema.parse(stage.matchRules || settings.matchRules),
-            gameMode: tournament.gameMode,
-          },
+          inheritedRules(
+            stage.matchRules || settings.matchRules,
+            settings.gameplayScoring,
+            tournament.gameMode,
+          ),
           stage.mappool.publishedRevision.slots,
         );
         match = await tx.match.create({
           data: {
             code: record.code,
+            sourceKey: `referee:${tournamentId}:${record.code}`,
+            bracket: stageMapping.bracket || '',
+            source: json({
+              type: 'XLSX',
+              originalStage: record.stage,
+              bracket: stageMapping.bracket,
+              roundLabel: stageMapping.roundLabel,
+              scoring: record.scoring || null,
+              sourceFingerprint: sourceRecord.fingerprint,
+            }),
             stageId: stage.id,
             teamAId: a.id,
             teamBId: b.id,
@@ -338,6 +443,7 @@ export async function applyWorkbook(original: Actor, input: z.infer<typeof impor
           },
           include: matchInclude,
         });
+        if (!stageMapping.candidates.length) stageMapping.candidates.push(stage);
       }
       if (!match) throw new AppError('Choose a target match.');
       const participants = match.participants as unknown as {
@@ -345,21 +451,35 @@ export async function applyWorkbook(original: Actor, input: z.infer<typeof impor
         B: { name: string };
       };
       if (
-        match.stage.name !== record.stage ||
+        !stageMapping.candidates.some((stage) => stage.id === match.stageId) ||
         participants.A.name !== record.red ||
         participants.B.name !== record.blue ||
         !match.poolRevision
       )
         throw new AppError('Match stage, participants or frozen pool do not match the source.');
-      const valid = validateSheetRecord(record, match.rules, match.poolRevision.slots);
+      const valid = validateSheetRecord(record, match.rules, match.poolRevision.slots, {
+        preserveRules: true,
+      });
       const completed =
         !!valid.winner &&
         (input.confirmResults || (match.status === 'COMPLETED' && sameOutcome(match, record)));
+      if (
+        match.status === 'COMPLETED' &&
+        (!completed || !sameOutcome(match, record) || match.winnerSide !== valid.winner)
+      )
+        await assertCompetitionResultCorrection(
+          tx,
+          tournamentId,
+          match.id,
+          completed ? valid.winner : null,
+          false,
+        );
       const before = match;
       await tx.matchMapAction.updateMany({ where: { matchId: match.id }, data: { voided: true } });
       await tx.matchMapResult.updateMany({ where: { matchId: match.id }, data: { voided: true } });
       let sequence = match.actions.at(-1)?.sequence || 0;
       for (const row of valid.actions) {
+        const retainedResult = retainedResults.get(row.row);
         const saved = await tx.matchMapAction.create({
           data: {
             matchId: match.id,
@@ -375,6 +495,13 @@ export async function applyWorkbook(original: Actor, input: z.infer<typeof impor
               worksheet: record.sheet,
               sourceRow: row.row,
               sourceFingerprint: sourceRecord.fingerprint,
+              sourceScoring: sourceRecord.scoring || null,
+              sourceGameMode: sourceRecord.gameMode,
+              resolution: retainedActions.has(row.row) ? 'WEBSITE' : 'SOURCE',
+              ...(retainedActions.has(row.row)
+                ? { retainedWebsiteAction: retainedActions.get(row.row) }
+                : {}),
+              ...(retainedResult ? { retainedWebsiteResultId: retainedResult.id } : {}),
               original: row.original,
             }),
           },
@@ -385,8 +512,25 @@ export async function applyWorkbook(original: Actor, input: z.infer<typeof impor
               matchId: match.id,
               actionId: saved.id,
               winnerSide: row.winner,
-              entryMode: 'WINNER_ONLY',
-              notes: `Accepted worksheet ${record.sheet}, row ${row.row}`,
+              entryMode: retainedResult?.entryMode || 'WINNER_ONLY',
+              scoreA: retainedResult?.scoreA ?? null,
+              scoreB: retainedResult?.scoreB ?? null,
+              notes: retainedResult
+                ? retainedResult.notes
+                : `Accepted worksheet ${record.sheet}, row ${row.row}`,
+              ...(retainedResult?.playerScores?.length
+                ? {
+                    playerScores: {
+                      create: retainedResult.playerScores.map((score) => ({
+                        osuId: score.osuId,
+                        side: score.side,
+                        score: score.score,
+                        accuracy: score.accuracy,
+                        mods: score.mods === null ? Prisma.JsonNull : json(score.mods),
+                      })),
+                    },
+                  }
+                : {}),
             },
           });
       }
@@ -397,7 +541,17 @@ export async function applyWorkbook(original: Actor, input: z.infer<typeof impor
       const updated = await tx.match.updateMany({
         where: { id: match.id, version: match.version },
         data: {
-          rules: json(valid.rules),
+          bracket: match.bracket || stageMapping.bracket || '',
+          source: json({
+            ...objectMetadata(match.source),
+            refereeWorkbook: {
+              originalStage: record.stage,
+              bracket: stageMapping.bracket,
+              roundLabel: stageMapping.roundLabel,
+              scoring: record.scoring || null,
+              sourceFingerprint: sourceRecord.fingerprint,
+            },
+          }),
           ...valid.starters,
           ...lobby,
           scoreA: valid.scoreA,
@@ -434,6 +588,14 @@ export async function applyWorkbook(original: Actor, input: z.infer<typeof impor
             source: 'XLSX',
             record,
             originalRecord: sourceRecord,
+            stageMapping: {
+              stageId: match.stageId,
+              approved: !!input.create,
+              bracket: stageMapping.bracket,
+              roundLabel: stageMapping.roundLabel,
+            },
+            scoringProvenance: record.scoring || null,
+            scoringWarnings: compatibility.warnings,
             previousActions: before.actions,
             previousResults: before.results,
             acceptedAt: new Date().toISOString(),
@@ -466,6 +628,7 @@ export async function applyWorkbook(original: Actor, input: z.infer<typeof impor
           details: { sheet: record.sheet, fingerprint: record.fingerprint, reason: input.reason },
         },
       });
+      if (completed) await advanceConfirmedCompetitionResult(tx, tournamentId, match.id, actor.id);
       return {
         id: match.id,
         version: match.version + 1,

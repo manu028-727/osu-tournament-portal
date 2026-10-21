@@ -3,6 +3,7 @@ import { PageHeading, EmptyState } from '@/components/content';
 import { MatchList } from '@/components/match-list';
 import { Button } from '@/components/ui/button';
 import { publicMatches } from '@/lib/public-matches';
+import Link from '@/components/tournament-scope';
 export const metadata = { title: 'Incontri e risultati' };
 export default async function Matches({
   searchParams,
@@ -28,6 +29,14 @@ export default async function Matches({
         title="Incontri e risultati"
         description={`${all.length} incontri · ${all.filter((m) => m.status === 'COMPLETED').length} conclusi`}
       />
+      <nav aria-label="Competition views" className="mb-5 flex flex-wrap gap-3">
+        <Button asChild variant="outline" size="sm">
+          <Link href="/brackets">Brackets</Link>
+        </Button>
+        <Button asChild variant="outline" size="sm">
+          <Link href="/qualifiers">Qualifier results</Link>
+        </Button>
+      </nav>
       <form className="mb-8 flex flex-wrap items-end gap-4 border-b pb-7" method="GET">
         <label className="field min-w-40 flex-1">
           <span id="match-stage-label">Stage</span>

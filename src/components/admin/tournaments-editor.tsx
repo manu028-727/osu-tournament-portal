@@ -7,6 +7,7 @@ import type { Actor } from '@/lib/permissions';
 import { api, Field, Modal, SectionTitle, useTask, LoadingState, ConfirmButton } from './shared';
 import { PlatformSettingsEditor, type PlatformConfig } from './platform-settings';
 import { TournamentImporter } from './tournament-transfer';
+import { SCORING_LABELS } from '@/lib/gameplay-scoring';
 type Item = {
   canPublish: boolean;
   matchCount: number;
@@ -236,6 +237,15 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
               <option value="TEAMS">Teams</option>
               <option value="SOLO">1v1</option>
               <option value="CUSTOM">Custom</option>
+            </select>
+          </Field>
+          <Field label="Scoring System">
+            <select name="gameplayScoring" defaultValue="SCORE_V2">
+              {Object.entries(SCORING_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
             </select>
           </Field>
           <Field label="Timezone">

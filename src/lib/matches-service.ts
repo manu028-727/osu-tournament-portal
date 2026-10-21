@@ -7,6 +7,21 @@ import { AppError, assertPermission, can, type Actor, type PermissionKey } from 
 import { teamInclude } from './teams-service';
 import { matchRulesSchema, firstTo, otherSide, type Side } from './match-rules';
 import {
+  advanceConfirmedCompetitionResult,
+  assertCompetitionMatchStart,
+  assertCompetitionResultCorrection,
+  synchronizeCompetitionResults,
+  assertCompetitionEligibility,
+  competitionEligibilityOptions,
+} from './competition-service';
+import {
+  inheritedRules,
+  historicalScoring,
+  tournamentScoring,
+  assertScoreRepresentation,
+  gameplayScoringSchema,
+} from './gameplay-scoring';
+import {
   aggregateScores,
   nextDraftStep,
   validateDraftAction,
@@ -179,7 +194,7 @@ export async function matchOptions(actor: Actor) {
   const tournamentId = actor.tournamentId || 'main',
     db = scopedDb(rootDb, tournamentId);
   if (!can(actor, 'matches.manage')) assertPermission(actor, 'matches.assign_referees');
-  const [settings, stages, teams, referees] = await Promise.all([
+  const [settings, stages, teams, referees, paths] = await Promise.all([
     db.tournamentSettings.findUniqueOrThrow({ where: { tournamentId } }),
     db.tournamentStage.findMany({
       where: { archivedAt: null },
@@ -196,20 +211,32 @@ export async function matchOptions(actor: Actor) {
       select: profileSelect,
       orderBy: { username: 'asc' },
     }),
+    can(actor, 'matches.manage')
+      ? competitionEligibilityOptions({ ...actor, tournamentId })
+      : Promise.resolve([]),
   ]);
+  const configuredScoring = gameplayScoringSchema.safeParse(settings.gameplayScoring);
   return {
-    defaults: matchRulesSchema.parse(settings.matchRules),
+    scoringNeedsReview: !configuredScoring.success,
+    defaults: configuredScoring.success
+      ? inheritedRules(settings.matchRules, configuredScoring.data)
+      : matchRulesSchema.parse(settings.matchRules),
     defaultsHash: rulesHash(settings.matchRules),
     stages: stages.map((s) => ({
       id: s.id,
       name: s.name,
       kind: s.kind,
       published: s.mappool?.state === 'PUBLISHED' && !!s.mappool.publishedRevisionId,
-      rules: s.matchRules ? matchRulesSchema.parse(s.matchRules) : null,
+      rules: s.matchRules
+        ? configuredScoring.success
+          ? inheritedRules(s.matchRules, configuredScoring.data)
+          : matchRulesSchema.parse(s.matchRules)
+        : null,
       rulesHash: rulesHash(s.matchRules),
     })),
     teams: can(actor, 'matches.manage') ? teams : [],
     referees,
+    paths,
   };
 }
 export async function matchData(actor: Actor, url: URL, section: string) {
@@ -615,20 +642,24 @@ export async function applyMatchAction(
   tx = scopedDb(tx, tournamentId);
   assertMatchActionPermission(actor, a);
   if (a.type === 'match.rules.save') {
+    const scoring = (await tx.tournamentSettings.findUniqueOrThrow({ where: { tournamentId } }))
+      .gameplayScoring;
     const target = a.stageId
       ? await tx.tournamentStage.findUniqueOrThrow({ where: { id: a.stageId } })
       : await tx.tournamentSettings.findUniqueOrThrow({ where: { tournamentId } });
+    if ('kind' in target && target.kind === 'QUALIFIERS')
+      throw new AppError('Qualifier stages use full-pool policies, not Best-of or pick/ban rules.');
     if (rulesHash(target.matchRules) !== a.baseHash)
       throw new AppError('These rule settings changed. Reload before saving.', 409);
     if (a.stageId)
       await tx.tournamentStage.update({
         where: { id: a.stageId },
-        data: { matchRules: a.rules ? json(a.rules) : Prisma.DbNull },
+        data: { matchRules: a.rules ? json(inheritedRules(a.rules, scoring)) : Prisma.DbNull },
       });
     else
       await tx.tournamentSettings.update({
         where: { tournamentId },
-        data: { matchRules: json(a.rules || {}) },
+        data: { matchRules: json(inheritedRules(a.rules || {}, scoring)) },
       });
     return { id: a.stageId || tournamentId };
   }
@@ -638,6 +669,26 @@ export async function applyMatchAction(
       where: { id: a.stageId },
       include: { mappool: { include: { publishedRevision: { include: { slots: true } } } } },
     });
+    const paths = await tx.bracket.findMany({
+      where: { rounds: { some: { stageId: stage.id } } },
+      select: { id: true },
+    });
+    const bracketId = a.bracketId || (paths.length === 1 ? paths[0].id : undefined);
+    if (paths.length > 1 && !bracketId && !a.allowIneligible)
+      throw new AppError('Select the relevant competition path for this match.');
+    if (a.allowIneligible && (!a.overrideReason || a.overrideReason.trim().length < 3))
+      throw new AppError('Record an explicit reason for this exhibition or eligibility override.');
+    if (bracketId) {
+      if (!paths.some((p) => p.id === bracketId))
+        throw new AppError('The selected competition path does not use this stage.');
+      for (const teamId of [a.teamAId, a.teamBId])
+        await assertCompetitionEligibility(tx, actor, {
+          bracketId,
+          teamId,
+          allowIneligible: !!a.allowIneligible,
+          reason: a.overrideReason,
+        });
+    }
     const teams = await tx.team.findMany({
       where: { id: { in: [a.teamAId, a.teamBId] }, tournamentId, status: 'APPROVED' },
       include: teamInclude,
@@ -656,7 +707,7 @@ export async function applyMatchAction(
     if (stage.mappool?.state !== 'PUBLISHED' || !revision?.slots.length)
       throw new AppError('The selected stage needs a published mappool.');
     const rules = matchRulesSchema.parse({
-      ...matchRulesSchema.parse(stage.matchRules || settings.matchRules),
+      ...inheritedRules(stage.matchRules || settings.matchRules, settings.gameplayScoring),
       gameMode: tournament.gameMode,
       ...(a.bestOf === undefined ? {} : { bestOf: a.bestOf }),
     });
@@ -703,7 +754,7 @@ export async function applyMatchAction(
         where: {
           stageId: a.stageId,
           scheduledAt: date,
-          status: { not: 'CANCELLED' },
+          status: a.allowIneligible ? { notIn: ['CANCELLED', 'COMPLETED'] } : { not: 'CANCELLED' },
           OR: [
             { teamAId: a.teamAId, teamBId: a.teamBId },
             { teamAId: a.teamBId, teamBId: a.teamAId },
@@ -716,6 +767,15 @@ export async function applyMatchAction(
     const match = await tx.match.create({
       data: {
         code: a.code,
+        ...(bracketId || a.allowIneligible
+          ? {
+              source: json({
+                competitionPathId: bracketId || null,
+                eligibilityOverride: !!a.allowIneligible,
+                overrideReason: a.overrideReason || '',
+              }),
+            }
+          : {}),
         stageId: a.stageId,
         teamAId: a.teamAId,
         teamBId: a.teamBId,
@@ -736,6 +796,11 @@ export async function applyMatchAction(
   }
   const match = await tx.match.findUniqueOrThrow({ where: { id: a.id }, include: matchInclude });
   if (a.type === 'match.delete') {
+    if (await tx.bracketNode.findFirst({ where: { matchId: match.id } }))
+      throw new AppError(
+        'This match belongs to a bracket. Correct its position or cancel it through the competition workflow instead of deleting its history.',
+        409,
+      );
     if (match.version !== a.baseVersion)
       throw new AppError('The match changed. Reload and review it before deleting.', 409);
     if (a.confirmCode !== match.code)
@@ -780,6 +845,23 @@ export async function applyMatchAction(
     );
   const rules = matchRulesSchema.parse(match.rules),
     participants = match.participants as unknown as MatchParticipants;
+  if (a.type === 'match.reopen' || a.type === 'match.cancel' || a.type === 'match.dispute') {
+    const impact = await assertCompetitionResultCorrection(
+      tx,
+      tournamentId,
+      match.id,
+      null,
+      !!a.approveProgression,
+    );
+    if (impact.affected.length) {
+      assertPermission(actor, 'matches.manage');
+      if (a.correctionHash !== impact.hash)
+        throw new AppError(
+          'Downstream progression changed since the preview. Review it again.',
+          409,
+        );
+    }
+  }
   if (a.type === 'match.detected_pick') {
     active(match);
     const game = await tx.multiplayerGame.findFirst({
@@ -955,8 +1037,33 @@ export async function applyMatchAction(
       changes = { published: a.published };
       break;
     case 'match.start':
+      await assertCompetitionMatchStart(tx, tournamentId, match.id);
+      {
+        const source = match.source as {
+          competitionPathId?: string;
+          eligibilityOverride?: boolean;
+        } | null;
+        if (source?.competitionPathId && !source.eligibilityOverride)
+          for (const teamId of [match.teamAId, match.teamBId])
+            if (teamId)
+              await assertCompetitionEligibility(tx, actor, {
+                bracketId: source.competitionPathId,
+                teamId,
+              });
+      }
       if (match.status !== 'SCHEDULED')
         throw new AppError('Only scheduled matches can be started.', 409);
+      if (
+        historicalScoring(rules) !==
+        tournamentScoring(
+          (await tx.tournamentSettings.findUniqueOrThrow({ where: { tournamentId } }))
+            .gameplayScoring,
+        )
+      )
+        throw new AppError(
+          'The frozen scoring configuration differs from the tournament. Review it before starting.',
+          409,
+        );
       if (!match.teamAId || !match.teamBId)
         throw new AppError('Resolve both opponents before starting this fixture.', 409);
       if (!match.poolRevisionId) {
@@ -982,6 +1089,15 @@ export async function applyMatchAction(
       };
       break;
     case 'match.schedule':
+      if (
+        ((a.teamAId && a.teamAId !== match.teamAId) ||
+          (a.teamBId && a.teamBId !== match.teamBId)) &&
+        (await tx.bracketNode.findFirst({ where: { matchId: match.id } }))
+      )
+        throw new AppError(
+          'Change bracket opponents through the Bracket view so progression stays consistent.',
+          409,
+        );
       if (
         !can(actor, 'matches.manage') &&
         (a.teamAId || a.teamBId || a.bestOf || a.published !== undefined)
@@ -1181,6 +1297,14 @@ export async function applyMatchAction(
     case 'match.winner':
     case 'match.score': {
       active(match);
+      if (a.type === 'match.score') {
+        const scoring = historicalScoring(rules);
+        if (scoring)
+          for (const value of a.players.length
+            ? a.players.map((p) => p.score)
+            : [a.scoreA, a.scoreB])
+            assertScoreRepresentation(scoring, scoring, a.representation, value);
+      }
       const picked = match.actions.find(
         (action) => action.id === a.actionId && action.kind === 'PICK' && !action.voided,
       );
@@ -1461,5 +1585,9 @@ export async function applyMatchAction(
       },
     });
   }
+  if (a.type === 'match.confirm')
+    await advanceConfirmedCompetitionResult(tx, tournamentId, match.id, actor.id);
+  if (['match.reopen', 'match.cancel', 'match.dispute'].includes(a.type))
+    await synchronizeCompetitionResults(tx, tournamentId, actor.id);
   return { id: match.id, version: match.version + 1 };
 }

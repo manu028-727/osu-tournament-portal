@@ -5,6 +5,11 @@ import { teamActionOptions } from './teams-validation';
 import { matchActionOptions } from './matches-validation';
 import { qualifierActionOptions } from './qualifiers-validation';
 import { matchRulesSchema } from './match-rules';
+import { gameplayScoringSchema } from './gameplay-scoring';
+import { qualifierPolicySchema } from './qualifier-policy';
+import { competitionActionSchema } from './competition-validation';
+import { qualifierStandingsActionSchema } from './qualifier-standings-validation';
+import { stageReconciliationActionSchema } from './stage-reconciliation';
 export const id = z.string().min(1).max(100);
 export const label = z.string().trim().min(1).max(120);
 export const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -49,6 +54,9 @@ export const slotSchema = z.object({
 });
 const base = z.object({ type: z.string() });
 export const actionSchema = z.discriminatedUnion('type', [
+  ...competitionActionSchema.options,
+  ...qualifierStandingsActionSchema.options,
+  stageReconciliationActionSchema,
   ...teamActionOptions,
   ...matchActionOptions,
   ...qualifierActionOptions,
@@ -81,6 +89,7 @@ export const actionSchema = z.discriminatedUnion('type', [
     startsAt: z.iso.datetime().nullable(),
     bannerImageId: id.nullable().optional(),
     kind: z.enum(['QUALIFIERS', 'ELIMINATION', 'GROUPS', 'CUSTOM']).optional(),
+    qualifierPolicy: qualifierPolicySchema.nullable().optional(),
     nextStageId: id.nullable().optional(),
     archivedAt: z.iso.datetime().nullable().optional(),
     matchRules: matchRulesSchema.nullable().optional(),
@@ -134,6 +143,8 @@ export const actionSchema = z.discriminatedUnion('type', [
   base.extend({ type: z.literal('user.roles'), userId: id, roleIds: z.array(id).max(30) }),
   base.extend({
     type: z.literal('settings.save'),
+    scoringReview: z.boolean().optional(),
+    gameplayScoring: gameplayScoringSchema.nullable().optional(),
     name: label,
     acronym: z.string().trim().min(1).max(20),
     description: z.string().max(2000),

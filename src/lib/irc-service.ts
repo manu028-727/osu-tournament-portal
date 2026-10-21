@@ -75,6 +75,11 @@ export async function authorizeIrc(
     include: { assignments: true },
   });
   if (!match) throw new AppError('Match not found.', 404);
+  if ((match.rules as { gameplayScoring?: string }).gameplayScoring === 'LAZER')
+    throw new AppError(
+      'Legacy Bancho IRC cannot configure lazer multiplayer rooms. Operate the lazer room directly.',
+      409,
+    );
   return { actor, match, access: matchAccess(actor, match) };
 }
 export async function executeGateway(input: GatewayRequest) {

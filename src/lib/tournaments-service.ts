@@ -8,10 +8,12 @@ import { matchRulesSchema } from './match-rules';
 import { DEFAULT_COPY } from './copy';
 import { safeUrl, color } from './validation';
 import { appUrl } from './security';
+import { gameplayScoringSchema } from './gameplay-scoring';
 
 export const tournamentActionSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('create'),
+    gameplayScoring: gameplayScoringSchema.default('SCORE_V2'),
     name: z.string().trim().min(1).max(120),
     acronym: z.string().trim().min(1).max(20),
     slug: z
@@ -102,8 +104,9 @@ export async function tournamentList(actor?: Actor | null, publicOnly = false) {
 }
 export async function tournamentAction(
   original: Actor,
-  input: z.infer<typeof tournamentActionSchema>,
+  rawInput: z.input<typeof tournamentActionSchema>,
 ) {
+  const input = tournamentActionSchema.parse(rawInput);
   return db.$transaction(
     async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(78214321)`;
@@ -121,7 +124,7 @@ export async function tournamentAction(
           throw new AppError('Choose a valid IANA timezone.');
         }
         id = randomUUID();
-        const { type, ...fields } = input;
+        const { type, gameplayScoring, ...fields } = input;
         void type;
         const platform = await tx.platformSettings.findUnique({ where: { id: 'main' } });
         await tx.tournament.create({
@@ -132,6 +135,7 @@ export async function tournamentAction(
             status: 'DRAFT',
             settings: {
               create: {
+                gameplayScoring,
                 banner: '',
                 logo: '',
                 favicon: '',

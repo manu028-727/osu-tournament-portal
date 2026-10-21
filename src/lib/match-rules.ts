@@ -8,6 +8,7 @@ export const matchRulesSchema = z
     gameMode: z.enum(['osu', 'taiko', 'fruits', 'mania']).default('osu'),
     teamMode: z.enum(['TEAM_VS', 'HEAD_TO_HEAD', 'TAG_COOP', 'TAG_TEAM_VS']).default('TEAM_VS'),
     scoreMode: z.enum(['SCORE_V2', 'SCORE', 'COMBO', 'ACCURACY']).default('SCORE_V2'),
+    gameplayScoring: z.enum(['SCORE_V1', 'SCORE_V2', 'LAZER']).optional(),
     draftSequence: z
       .array(z.enum(['PROTECT', 'BAN', 'PICK', 'TB_BAN']))
       .max(30)

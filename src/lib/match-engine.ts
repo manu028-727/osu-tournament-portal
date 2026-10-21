@@ -334,13 +334,24 @@ export function lobbyCommands(
   acronym: string,
   match: { code: string; teamA: string; teamB: string },
   slot?: DraftSlot,
+  lobby?: { qualifierPlayers: number },
 ) {
+  if (
+    lobby &&
+    (!Number.isInteger(lobby.qualifierPlayers) ||
+      lobby.qualifierPlayers < 1 ||
+      lobby.qualifierPlayers > 16)
+  )
+    throw new AppError('Qualifier lobbies require between one and sixteen active players.');
   const safe = (value: string) => value.replace(/[\r\n\x00-\x1f]/g, ' ').slice(0, 120);
   const name = `${safe(acronym)}: (${safe(match.teamA)}) vs (${safe(match.teamB)})`;
   const commands = {
     name,
-    make: `!mp make ${name}`,
-    settings: `!mp set ${{ HEAD_TO_HEAD: 0, TAG_COOP: 1, TEAM_VS: 2, TAG_TEAM_VS: 3 }[rules.teamMode]} ${{ SCORE: 0, ACCURACY: 1, COMBO: 2, SCORE_V2: 3 }[rules.scoreMode]} ${Math.min(rules.teamSize * 2 + 1, 16)}`,
+    make: rules.gameplayScoring === 'LAZER' ? '' : `!mp make ${name}`,
+    settings:
+      rules.gameplayScoring === 'LAZER'
+        ? ''
+        : `!mp set ${lobby ? 0 : { HEAD_TO_HEAD: 0, TAG_COOP: 1, TEAM_VS: 2, TAG_TEAM_VS: 3 }[rules.teamMode]} ${{ SCORE: 0, ACCURACY: 1, COMBO: 2, SCORE_V2: 3 }[rules.scoreMode]} ${lobby?.qualifierPlayers ?? Math.min(rules.teamSize * 2 + 1, 16)}`,
     map: slot
       ? `!mp map ${slot.beatmapId} ${{ osu: 0, taiko: 1, fruits: 2, mania: 3 }[rules.gameMode]}`
       : '',
@@ -352,5 +363,17 @@ export function lobbyCommands(
     inspect: '!mp settings',
     abort: '!mp abort',
   };
+  if (rules.gameplayScoring === 'LAZER')
+    for (const key of [
+      'make',
+      'settings',
+      'map',
+      'mods',
+      'start',
+      'timer',
+      'inspect',
+      'abort',
+    ] as const)
+      commands[key] = '';
   return commands;
 }

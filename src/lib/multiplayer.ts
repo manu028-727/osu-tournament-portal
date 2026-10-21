@@ -159,6 +159,10 @@ export function multiplayerProposals(input: unknown, match: MatchView) {
     if (!event.game) continue;
     try {
       const g = gameSchema.parse(event.game);
+      if (match.rules.gameplayScoring === 'LAZER')
+        throw Error(
+          'The legacy match API cannot verify standardized lazer scoring. Use reviewed manual entry.',
+        );
       if (!g.end_time) continue;
       const slots = match.poolRevision?.slots.filter((s) => s.beatmapId === g.beatmap_id) || [];
       if (slots.length !== 1) throw Error('Map is not uniquely identified in the frozen pool.');

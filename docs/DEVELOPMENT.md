@@ -47,6 +47,13 @@ Run integration/browser suites sequentially when they share a database. Session
 fixtures exist only in tests; there is no web fake-login endpoint. Use synthetic
 profiles/workbooks, never real registration data or captured private match payloads.
 
+After building with the isolated test database configuration, run the same browser
+suite against the production standalone server with `E2E_PRODUCTION=1 npm run test:e2e`.
+The harness copies generated static/public assets beside that server, as the Docker
+image does. It does not build, migrate, start Docker networks, or alter installation
+data. Competition UI tests cover bracket/referee workflows and qualifier publication
+at 1366px, 390px and 320px in both appearances.
+
 Optional end-to-end infrastructure checks live in `tests/smoke/`: fresh onboarding,
 S3, media migration, upload authorization and the mock Bancho gateway. They need
 explicit isolated environments; guarded scripts reject installation databases.

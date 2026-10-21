@@ -64,18 +64,17 @@ export function MatchRulesFields({
             <option value="TAG_TEAM_VS">Tag team versus</option>
           </select>
         </Field>
-        <Field label="Scoring">
-          <select
-            value={rules.scoreMode}
-            onChange={(e) =>
-              onChange({ ...rules, scoreMode: e.target.value as MatchRules['scoreMode'] })
-            }
-          >
-            <option value="SCORE_V2">ScoreV2</option>
-            <option value="SCORE">Score</option>
-            <option value="COMBO">Combo</option>
-            <option value="ACCURACY">Accuracy</option>
-          </select>
+        <Field label="Gameplay scoring">
+          <output className="block py-2 text-sm">
+            {rules.gameplayScoring === 'LAZER'
+              ? 'osu!lazer'
+              : rules.scoreMode === 'SCORE'
+                ? 'ScoreV1'
+                : rules.scoreMode === 'SCORE_V2'
+                  ? 'ScoreV2'
+                  : rules.scoreMode}{' '}
+            (Tournament Settings)
+          </output>
         </Field>
         {numbers.map(([key, label]) => (
           <Field key={key} label={label}>

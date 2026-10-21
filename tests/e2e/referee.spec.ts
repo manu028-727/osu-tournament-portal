@@ -402,7 +402,7 @@ test('guided BO9 completes protects, Blue-first ABBA, corrections, refresh and a
     ).toBeVisible();
   }
   await page.getByRole('button', { name: 'Save stage', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('Stage settings saved');
+  await expect(page.getByRole('status').filter({ hasText: 'Stage settings saved' })).toBeVisible();
   const created = await context.request.post('/api/admin/action', {
     headers: { Origin: 'http://localhost:3001' },
     data: {
@@ -817,6 +817,41 @@ test('qualifier lobby persists scores, commands, observing and a confirmed resul
   browser,
 }) => {
   await login(page.context(), 0);
+  const source = await db.tournamentStage.findUniqueOrThrow({
+    where: { id: stageId },
+    include: { mappool: { include: { publishedRevision: { include: { slots: true } } } } },
+  });
+  const qualifierStage = await db.tournamentStage.create({
+    data: {
+      name: `${prefix} qualifiers`,
+      slug: `${prefix}-qualifiers`,
+      kind: 'QUALIFIERS',
+      matchRules: source.matchRules!,
+      mappool: { create: {} },
+    },
+    include: { mappool: true },
+  });
+  extraStages.push(qualifierStage.id);
+  const qualifierRevision = await db.mappoolRevision.create({
+    data: {
+      mappoolId: qualifierStage.mappool!.id,
+      slots: {
+        create: source.mappool!.publishedRevision!.slots.map(({ id, revisionId, ...slot }) => {
+          void id;
+          void revisionId;
+          return { ...slot, metadata: JSON.parse(JSON.stringify(slot.metadata)) };
+        }),
+      },
+    },
+  });
+  await db.mappool.update({
+    where: { id: qualifierStage.mappool!.id },
+    data: {
+      state: 'PUBLISHED',
+      publishedRevisionId: qualifierRevision.id,
+      draftRevisionId: qualifierRevision.id,
+    },
+  });
   const upload = await page.request.post('/api/media', {
     headers: { Origin: 'http://localhost:3001' },
     multipart: {
@@ -833,7 +868,7 @@ test('qualifier lobby persists scores, commands, observing and a confirmed resul
   await page.goto('/t/test-cup/admin/referee/qualifiers');
   await page.getByRole('button', { name: 'Create qualifier lobby', exact: true }).click();
   await page.getByLabel('Qualifier lobby code', { exact: true }).fill(`${prefix}-Q1`);
-  await page.getByLabel('Qualifier stage', { exact: true }).selectOption(stageId);
+  await page.getByLabel('Qualifier stage', { exact: true }).selectOption(qualifierStage.id);
   await page.getByLabel('Qualifier start time', { exact: true }).fill('2079-01-01T15:00');
   await page.getByLabel(`${prefix} red`, { exact: true }).check();
   await page.getByLabel(`${prefix} blue`, { exact: true }).check();
@@ -872,13 +907,17 @@ test('qualifier lobby persists scores, commands, observing and a confirmed resul
     await ref.getByRole('button', { name: 'Start qualifier lobby', exact: true }).click();
     await ref.getByLabel('Qualifier status reason', { exact: true }).fill('All participants ready');
     await ref.getByRole('button', { name: 'Confirm qualifier action', exact: true }).click();
-    await expect(ref.getByRole('status')).toContainText('Qualifier status saved');
+    await expect(
+      ref.getByRole('status').filter({ hasText: 'Qualifier status saved' }),
+    ).toBeVisible();
     await ref.getByRole('button', { name: 'Edit multiplayer link', exact: true }).click();
     await ref
       .getByLabel('Qualifier multiplayer URL', { exact: true })
       .fill('https://osu.ppy.sh/community/matches/123456');
     await ref.getByRole('button', { name: 'Save multiplayer link', exact: true }).click();
-    await expect(ref.getByRole('status')).toContainText('Multiplayer link saved');
+    await expect(
+      ref.getByRole('status').filter({ hasText: 'Multiplayer link saved' }),
+    ).toBeVisible();
     for (const osuId of [962000001, 962000002]) {
       await ref.getByRole('button', { name: 'Record qualifier score', exact: true }).click();
       await ref.getByLabel('Qualifier player', { exact: true }).selectOption(String(osuId));
@@ -887,7 +926,9 @@ test('qualifier lobby persists scores, commands, observing and a confirmed resul
         .getByLabel('Qualifier score reason', { exact: true })
         .fill('Multiplayer score verified');
       await ref.getByRole('button', { name: 'Save qualifier score', exact: true }).click();
-      await expect(ref.getByRole('status')).toContainText('Qualifier score saved');
+      await expect(
+        ref.getByRole('status').filter({ hasText: 'Qualifier score saved' }),
+      ).toBeVisible();
     }
     await expect(
       observer.getByRole('table').last().getByText('123,456', { exact: true }),
@@ -895,14 +936,18 @@ test('qualifier lobby persists scores, commands, observing and a confirmed resul
     await ref.getByRole('button', { name: 'Submit qualifier results', exact: true }).click();
     await ref.getByLabel('Qualifier status reason', { exact: true }).fill('Scores checked');
     await ref.getByRole('button', { name: 'Confirm qualifier action', exact: true }).click();
-    await expect(ref.getByRole('status')).toContainText('Qualifier status saved');
+    await expect(
+      ref.getByRole('status').filter({ hasText: 'Qualifier status saved' }),
+    ).toBeVisible();
     await page.goto(`/t/test-cup/admin/referee/qualifiers/${lobby.id}`);
     await page.getByRole('button', { name: 'Confirm qualifier results', exact: true }).click();
     await page
       .getByLabel('Qualifier status reason', { exact: true })
       .fill('Organizer checked results');
     await page.getByRole('button', { name: 'Confirm qualifier action', exact: true }).click();
-    await expect(page.getByRole('status')).toContainText('Qualifier status saved');
+    await expect(
+      page.getByRole('status').filter({ hasText: 'Qualifier status saved' }),
+    ).toBeVisible();
     await expect(
       observer.getByRole('button', { name: 'Copy Discord Result', exact: true }),
     ).toBeEnabled({ timeout: 10000 });

@@ -11,6 +11,11 @@ import { MatchRulesFields } from './match-rules-fields';
 import { MediaField } from './media';
 import { slugify } from '@/lib/utils';
 import {
+  qualifierPolicySchema,
+  QUALIFIER_METHOD_LABELS,
+  type QualifierPolicy,
+} from '@/lib/qualifier-policy';
+import {
   action,
   Field,
   SectionTitle,
@@ -33,6 +38,7 @@ type Stage = {
   startsAt: string | null;
   bannerImageId: string | null;
   matchRules: MatchRules | null;
+  qualifierPolicy?: QualifierPolicy | null;
 };
 const stageKinds: Record<string, string> = {
   QUALIFIERS: 'Qualifiers',
@@ -69,6 +75,7 @@ export function StagesEditor({
     startsAt: null,
     bannerImageId: null,
     matchRules: null,
+    qualifierPolicy: qualifierPolicySchema.parse({}),
   });
   useEffect(() => {
     if (!data || opened.current) return;
@@ -143,7 +150,9 @@ export function StagesEditor({
                   )}
                 </td>
                 <td>{stageKinds[s.kind] || s.kind}</td>
-                <td>{s.matchRules?.bestOf || data.defaults.bestOf}</td>
+                <td>
+                  {s.kind === 'QUALIFIERS' ? '-' : s.matchRules?.bestOf || data.defaults.bestOf}
+                </td>
                 <td>{data.stages.find((n) => n.id === s.nextStageId)?.name || '-'}</td>
                 <td>
                   <Button
@@ -179,11 +188,19 @@ export function StagesEditor({
             onSubmit={(e) => {
               e.preventDefault();
               void run(async () => {
-                const { matchRules, ...fields } = draft;
+                const { matchRules, qualifierPolicy, ...fields } = draft;
                 const result = await action<{ id: string }>({
                   type: 'stage.save',
                   ...fields,
-                  ...(can(actor, 'matches.manage') ? { matchRules } : {}),
+                  ...(can(actor, 'matches.manage')
+                    ? {
+                        matchRules: draft.kind === 'QUALIFIERS' ? null : matchRules,
+                        qualifierPolicy:
+                          draft.kind === 'QUALIFIERS'
+                            ? qualifierPolicySchema.parse(qualifierPolicy || {})
+                            : null,
+                      }
+                    : {}),
                 });
                 setDraft(null);
                 setDirty(false);
@@ -300,7 +317,7 @@ export function StagesEditor({
                 />
                 Archived
               </label>
-              {can(actor, 'matches.manage') && (
+              {can(actor, 'matches.manage') && draft.kind !== 'QUALIFIERS' && (
                 <section className="space-y-5 border-t pt-5">
                   <label className="flex items-center gap-3">
                     <input
@@ -322,6 +339,120 @@ export function StagesEditor({
                       onChange={(rules) => update({ matchRules: rules })}
                     />
                   )}
+                </section>
+              )}
+              {can(actor, 'matches.manage') && draft.kind === 'QUALIFIERS' && (
+                <section className="space-y-4 border-t pt-5">
+                  <h2 className="font-semibold">Qualifier policy</h2>
+                  <div className="grid-fields">
+                    <Field label="Seeding method">
+                      <select
+                        value={draft.qualifierPolicy?.method || 'RAW_SCORE'}
+                        onChange={(e) =>
+                          update({
+                            qualifierPolicy: qualifierPolicySchema.parse({
+                              ...draft.qualifierPolicy,
+                              method: e.target.value,
+                            }),
+                          })
+                        }
+                      >
+                        {Object.entries(QUALIFIER_METHOD_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Playthroughs">
+                      <select
+                        value={draft.qualifierPolicy?.runs || 1}
+                        onChange={(e) =>
+                          update({
+                            qualifierPolicy: qualifierPolicySchema.parse({
+                              ...draft.qualifierPolicy,
+                              runs: Number(e.target.value),
+                              runSelection: 'BEST_PER_MAP',
+                            }),
+                          })
+                        }
+                      >
+                        <option value={1}>Once</option>
+                        <option value={2}>Twice</option>
+                      </select>
+                    </Field>
+                    {draft.qualifierPolicy?.runs === 2 && (
+                      <Field label="Run selection">
+                        <select
+                          value={draft.qualifierPolicy.runSelection}
+                          onChange={(e) =>
+                            update({
+                              qualifierPolicy: qualifierPolicySchema.parse({
+                                ...draft.qualifierPolicy,
+                                runSelection: e.target.value,
+                              }),
+                            })
+                          }
+                        >
+                          <option value="BEST_PER_MAP">Best per map</option>
+                          <option value="BEST_COMPLETE_RUN">Best complete run</option>
+                          <option value="FIRST_RUN">First run only</option>
+                          <option value="SECOND_RUN">Second run only</option>
+                        </select>
+                      </Field>
+                    )}
+                    <Field label="Players counted per map">
+                      <input
+                        type="number"
+                        min={1}
+                        max={16}
+                        value={draft.qualifierPolicy?.requiredPlayers || 1}
+                        onChange={(e) =>
+                          update({
+                            qualifierPolicy: {
+                              ...qualifierPolicySchema.parse(draft.qualifierPolicy || {}),
+                              requiredPlayers: Number(e.target.value),
+                            },
+                          })
+                        }
+                      />
+                    </Field>
+                    <Field label="Team aggregation">
+                      <select
+                        value={draft.qualifierPolicy?.teamAggregation || 'SUM'}
+                        onChange={(e) =>
+                          update({
+                            qualifierPolicy: qualifierPolicySchema.parse({
+                              ...draft.qualifierPolicy,
+                              teamAggregation: e.target.value,
+                            }),
+                          })
+                        }
+                      >
+                        <option value="SUM">Sum</option>
+                        <option value="AVERAGE">Average</option>
+                        <option value="TOP_N">Top N players</option>
+                      </select>
+                    </Field>
+                    {(!draft.qualifierPolicy || draft.qualifierPolicy.method === 'RAW_SCORE') && (
+                      <Field label="Pool aggregation">
+                        <select
+                          value={draft.qualifierPolicy?.rawAggregation || 'TOTAL'}
+                          onChange={(e) =>
+                            update({
+                              qualifierPolicy: qualifierPolicySchema.parse({
+                                ...draft.qualifierPolicy,
+                                rawAggregation: e.target.value,
+                              }),
+                            })
+                          }
+                        >
+                          <option value="TOTAL">Total</option>
+                          <option value="AVERAGE">Average</option>
+                        </select>
+                      </Field>
+                    )}
+                  </div>
                 </section>
               )}
             </details>

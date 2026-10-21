@@ -9,6 +9,11 @@ import { teamInclude } from '@/lib/teams-service';
 import { matchData, matchOptions } from '@/lib/matches-service';
 import { qualifierData } from '@/lib/qualifiers-service';
 import { matchRulesSchema } from '@/lib/match-rules';
+import { inheritedRules } from '@/lib/gameplay-scoring';
+import { scoringImpact } from '@/lib/gameplay-scoring-service';
+import { competitionData, previewCompetitionCorrection } from '@/lib/competition-service';
+import { qualifierStandingsData } from '@/lib/qualifier-standings-service';
+import { stageReconciliationPreview } from '@/lib/stage-reconciliation-service';
 export async function GET(request: Request) {
   try {
     const actor = await requireTournamentActor();
@@ -18,13 +23,55 @@ export async function GET(request: Request) {
       section = url.searchParams.get('section');
     let data: unknown;
     switch (section) {
-      case 'stages':
+      case 'competition':
+        data = await competitionData(actor);
+        break;
+      case 'competition-correction':
+        assertPermission(actor, 'matches.manage');
+        data = await previewCompetitionCorrection(
+          db,
+          tournamentId,
+          url.searchParams.get('id') || '',
+          null,
+        );
+        break;
+      case 'qualifier-standings':
+        data = await qualifierStandingsData(actor, url.searchParams.get('stageId') || '');
+        break;
+      case 'qualifier-stages':
+        if (
+          !['matches.manage', 'matches.view', 'matches.view_all'].some((p) =>
+            actor.permissions.includes(p as 'matches.manage'),
+          )
+        )
+          throw new AppError('Forbidden.', 403);
+        data = await db.tournamentStage.findMany({
+          where: { kind: 'QUALIFIERS' },
+          select: { id: true, name: true },
+          orderBy: { position: 'asc' },
+        });
+        break;
+      case 'stage-reconciliation':
+        data = await stageReconciliationPreview(actor);
+        break;
+      case 'stages': {
         if (!canAccessSection(actor, 'stages')) throw new AppError('Forbidden.', 403);
+        const settings = (await getTournament()).settings!;
+        const stages = await db.tournamentStage.findMany({ orderBy: { position: 'asc' } });
         data = {
-          stages: await db.tournamentStage.findMany({ orderBy: { position: 'asc' } }),
-          defaults: matchRulesSchema.parse((await getTournament()).settings?.matchRules || {}),
+          stages: stages.map((s) => ({
+            ...s,
+            matchRules:
+              s.matchRules && settings.gameplayScoring
+                ? inheritedRules(s.matchRules, settings.gameplayScoring)
+                : s.matchRules,
+          })),
+          defaults: settings.gameplayScoring
+            ? inheritedRules(settings.matchRules, settings.gameplayScoring)
+            : matchRulesSchema.parse(settings.matchRules),
         };
         break;
+      }
       case 'qualifiers':
         data = await qualifierData(actor, url);
         break;
@@ -177,7 +224,7 @@ export async function GET(request: Request) {
         break;
       case 'settings':
         assertPermission(actor, 'settings.manage');
-        data = await getTournament();
+        data = { ...(await getTournament()), scoringImpact: await scoringImpact(db, tournamentId) };
         break;
       case 'audit':
         assertPermission(actor, 'audit.view');

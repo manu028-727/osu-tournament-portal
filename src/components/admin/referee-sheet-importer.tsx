@@ -18,6 +18,14 @@ type Preview = {
     target: { id: string; code: string; version: number; status: string } | null;
     conflicts: string[];
     errors: string[];
+    warnings: string[];
+    scoring: { source: string | null; target: string };
+    stageMapping: {
+      stageId: string | null;
+      stageName: string | null;
+      bracket: string | null;
+      roundLabel: string;
+    };
     requiresReplacement: boolean;
     alreadyImported: boolean;
     createSuggestion: { stageId: string; teamAId: string; teamBId: string } | null;
@@ -203,6 +211,10 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                           <p className="text-xs text-muted">
                             {r.record.red} vs {r.record.blue}
                           </p>
+                          <p className="text-xs text-muted">
+                            {r.stageMapping.stageName || 'Unresolved stage'}
+                            {r.stageMapping.bracket ? ` / ${r.stageMapping.bracket}` : ''}
+                          </p>
                         </td>
                         <td>
                           {r.record.actions.length} /{' '}
@@ -216,6 +228,11 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                               ? 'Ready: add missing history'
                               : 'Ready: create historical match')}
                           {r.record.forfeitSide ? ' · Forfeit' : ''}
+                          {r.warnings.map((warning) => (
+                            <p key={warning} className="mt-1 text-muted">
+                              {warning}
+                            </p>
+                          ))}
                         </td>
                       </tr>
                     ))}
@@ -358,6 +375,19 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                     {item.record.scoreB}
                   </p>
                   <p className="break-all text-sm">{item.record.mp || 'No multiplayer link'}</p>
+                  <p className="text-sm text-muted">
+                    Stage: {item.record.stage} to {item.stageMapping.stageName || 'manual review'}
+                    {item.stageMapping.bracket ? ` / ${item.stageMapping.bracket}` : ''}
+                    {' · '}Scoring: {item.scoring.source || 'Not supplied'} / Tournament:{' '}
+                    {item.scoring.target}
+                  </p>
+                  {!!item.warnings.length && (
+                    <ul className="list-inside list-disc text-sm text-muted">
+                      {item.warnings.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  )}
                   {!!item.errors.length && (
                     <ul role="alert" className="list-inside list-disc text-sm text-red-200">
                       {item.errors.map((issue) => (
@@ -479,9 +509,9 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                         checked={replace}
                         onChange={(e) => setReplace(e.target.checked)}
                       />
-                      Accept source rules and replace the match history. Existing actions/results
-                      are retained as voided records; an updated result needs organizer
-                      confirmation.
+                      Replace the reviewed match history while preserving frozen rules. Existing
+                      actions/results are retained as voided records; an updated result needs
+                      organizer confirmation.
                     </label>
                   )}
                   <Field label="Import reason">

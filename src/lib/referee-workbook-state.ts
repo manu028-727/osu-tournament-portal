@@ -1,27 +1,45 @@
 import { AppError } from './permissions';
 import { matchRulesSchema, firstTo } from './match-rules';
 import { replayDraft, type DraftSlot } from './match-engine';
-import type { RefereeRecord } from './referee-workbook';
-export function validateSheetRecord(record: RefereeRecord, base: unknown, slots: DraftSlot[]) {
+import { qualifierWorkbookIssue, type RefereeRecord } from './referee-workbook';
+import { historicalScoring } from './gameplay-scoring';
+export function validateSheetRecord(
+  record: RefereeRecord,
+  base: unknown,
+  slots: DraftSlot[],
+  options: { preserveRules?: boolean } = {},
+) {
+  const qualifierIssue = qualifierWorkbookIssue(record.stage);
+  if (qualifierIssue) throw new AppError(qualifierIssue);
   if (record.issues.length) throw new AppError(record.issues.join(' '));
   const pairs = record.draftSequence;
   const inherited = matchRulesSchema.parse(base);
   if (inherited.gameMode !== record.gameMode)
     throw new AppError('Workbook game mode differs from this tournament match.');
-  const rules = matchRulesSchema.parse({
-    ...inherited,
-    bestOf: record.bestOf,
-    banOrder: record.banOrder,
-    bansPerTeam: pairs.filter((k) => k === 'BAN').length,
-    protectsPerTeam: pairs.filter((k) => k === 'PROTECT').length,
-    pickOrder: 'ABAB',
-    protectOrder: record.protectOrder,
-    draftSequence: pairs,
-    rollRequired: true,
-    firstBanRule: 'CHOICE',
-    firstPickRule: 'CHOICE',
-    firstProtectRule: 'CHOICE',
-  });
+  if (record.scoring?.declarations.length && !record.scoring.mode)
+    throw new AppError('Source scoring metadata is unrecognized or conflicting.');
+  if (record.scoring?.mode && record.scoring.mode !== historicalScoring(inherited))
+    throw new AppError(
+      'Source scoring differs from the frozen match scoring provenance. No score conversion is supported.',
+    );
+  if (options.preserveRules && inherited.bestOf !== record.bestOf)
+    throw new AppError('Workbook best-of differs from the frozen historical match rules.');
+  const rules = options.preserveRules
+    ? inherited
+    : matchRulesSchema.parse({
+        ...inherited,
+        bestOf: record.bestOf,
+        banOrder: record.banOrder,
+        bansPerTeam: pairs.filter((k) => k === 'BAN').length,
+        protectsPerTeam: pairs.filter((k) => k === 'PROTECT').length,
+        pickOrder: 'ABAB',
+        protectOrder: record.protectOrder,
+        draftSequence: pairs,
+        rollRequired: true,
+        firstBanRule: 'CHOICE',
+        firstPickRule: 'CHOICE',
+        firstProtectRule: 'CHOICE',
+      });
   const starters = {
     firstBanSide: record.firstBanSide,
     firstPickSide: record.firstPickSide,

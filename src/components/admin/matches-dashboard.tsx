@@ -24,6 +24,7 @@ import { useTournamentTime, useTournamentScope } from '@/components/tournament-s
 export { matchTime } from '@/lib/match-display';
 import { MatchRulesFields } from './match-rules-fields';
 import { RefereeSheetImporter } from './referee-sheet-importer';
+import { StageReconciliation } from './stage-reconciliation';
 import {
   action,
   Field,
@@ -96,6 +97,9 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
     [notes, setNotes] = useState(''),
     [published, setPublished] = useState(false),
     [edit, setEdit] = useState<MatchSummary | null>(null);
+  const [pathId, setPathId] = useState(''),
+    [allowIneligible, setAllowIneligible] = useState(false),
+    [overrideReason, setOverrideReason] = useState('');
   const [ruleEditor, setRuleEditor] = useState(false),
     [ruleStage, setRuleStage] = useState(''),
     [rules, setRules] = useState<MatchRules | null>(null),
@@ -126,6 +130,9 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
     setDirty(false);
   };
   const begin = (match?: MatchSummary) => {
+    setPathId('');
+    setAllowIneligible(false);
+    setOverrideReason('');
     setCode(data?.nextCode || '');
     const first = options?.stages.filter((stage) => stage.published && stage.kind !== 'QUALIFIERS');
     setStageId(first?.length === 1 ? first[0].id : '');
@@ -152,6 +159,12 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
     setDirty(false);
   };
   if (!data) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
+  const paths = options?.paths?.filter((p) => p.stageIds.includes(stageId)) || [];
+  const path = paths.find((p) => p.id === pathId) || (paths.length === 1 ? paths[0] : null);
+  const eligibleTeams =
+    options?.teams.filter(
+      (t) => allowIneligible || !path || path.teams.some((e) => e.teamId === t.id && e.eligible),
+    ) || [];
   const stats = [
     ['SCHEDULED', 'Upcoming'],
     ['IN_PROGRESS', 'Live'],
@@ -236,7 +249,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
           </Button>
           {can(actor, 'matches.manage') && (
             <>
-              <Button size="sm" onClick={() => begin()}>
+              <Button size="sm" disabled={options?.scoringNeedsReview} onClick={() => begin()}>
                 <Plus size={17} />
                 New match
               </Button>
@@ -244,6 +257,15 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
           )}
         </div>
       </SectionTitle>
+      {options?.scoringNeedsReview && (
+        <p className="mb-4 text-sm text-muted">
+          Historical matches remain accessible.{' '}
+          <Link className="text-primary" href="/admin/settings">
+            Review tournament gameplay scoring
+          </Link>{' '}
+          before creating new competition records.
+        </p>
+      )}
       {(can(actor, 'matches.import') || can(actor, 'matches.manage')) && (
         <details className="mb-4 border-b pb-2">
           <summary className="min-h-11 cursor-pointer py-2 text-sm text-muted">
@@ -251,6 +273,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
           </summary>
           <div className="flex flex-wrap gap-2 pb-3">
             {can(actor, 'matches.import') && <RefereeSheetImporter onChanged={reload} />}{' '}
+            {can(actor, 'matches.manage') && <StageReconciliation onChanged={reload} />}
             {can(actor, 'matches.manage') && (
               <Button
                 variant="outline"
@@ -543,6 +566,9 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                         }
                       : {
                           type: 'match.create',
+                          bracketId: path?.id,
+                          allowIneligible,
+                          overrideReason,
                           code,
                           stageId,
                           teamAId,
@@ -581,6 +607,9 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                       onChange={(e) => {
                         const stage = options.stages.find((s) => s.id === e.target.value);
                         setStageId(e.target.value);
+                        setPathId('');
+                        setTeamA('');
+                        setTeamB('');
                         setBestOf((stage?.rules || options.defaults).bestOf);
                       }}
                     >
@@ -597,7 +626,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                   <Field label="Team A / red">
                     <select required value={teamAId} onChange={(e) => setTeamA(e.target.value)}>
                       <option value="">Select approved entry</option>
-                      {options.teams.map((t) => (
+                      {eligibleTeams.map((t) => (
                         <option value={t.id} key={t.id}>
                           {t.name}
                         </option>
@@ -607,7 +636,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                   <Field label="Team B / blue">
                     <select required value={teamBId} onChange={(e) => setTeamB(e.target.value)}>
                       <option value="">Select approved entry</option>
-                      {options.teams
+                      {eligibleTeams
                         .filter((t) => t.id !== teamAId)
                         .map((t) => (
                           <option value={t.id} key={t.id}>
@@ -616,6 +645,62 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                         ))}
                     </select>
                   </Field>
+                  {paths.length > 0 && (
+                    <Field label="Competition path">
+                      <select
+                        value={path?.id || ''}
+                        required={!allowIneligible}
+                        onChange={(e) => {
+                          setPathId(e.target.value);
+                          setTeamA('');
+                          setTeamB('');
+                        }}
+                      >
+                        <option value="">Select competition path</option>
+                        {paths.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  )}
+                  {paths.length > 0 && (
+                    <label className="flex items-center gap-3 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={allowIneligible}
+                        onChange={(e) => setAllowIneligible(e.target.checked)}
+                      />
+                      Allow ineligible participants (exhibition or custom match)
+                    </label>
+                  )}
+                  {path && path.teams.some((team) => !team.eligible) && (
+                    <details className="text-sm text-muted">
+                      <summary>Unavailable participants</summary>
+                      <ul className="mt-2 space-y-1">
+                        {path.teams
+                          .filter((team) => !team.eligible)
+                          .map((team) => (
+                            <li key={team.teamId}>
+                              {options.teams.find((t) => t.id === team.teamId)?.name || team.teamId}
+                              : {team.reason}
+                            </li>
+                          ))}
+                      </ul>
+                    </details>
+                  )}
+                  {allowIneligible && (
+                    <Field label="Eligibility override reason">
+                      <textarea
+                        required
+                        minLength={3}
+                        maxLength={2000}
+                        value={overrideReason}
+                        onChange={(e) => setOverrideReason(e.target.value)}
+                      />
+                    </Field>
+                  )}
                   <p className="self-end py-3 text-sm text-muted">
                     Best of {bestOf} · Inherited from stage rules
                   </p>

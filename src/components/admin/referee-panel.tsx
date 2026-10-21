@@ -97,6 +97,12 @@ export function RefereePanel({
     } | null>(null),
     [decision, setDecision] = useState<Decision | null>(null),
     [reason, setReason] = useState('');
+  const [progressionImpact, setProgressionImpact] = useState<{
+      affected: { code: string | null }[];
+      blocked: boolean;
+      hash: string;
+    } | null>(null),
+    [approveProgression, setApproveProgression] = useState(false);
   const [submit, setSubmit] = useState<{ baseVersion: number; notes: string } | null>(null),
     [lobby, setLobby] = useState<{ baseVersion: number; url: string; mp: string } | null>(null);
   const [incident, setIncident] = useState<{
@@ -151,7 +157,22 @@ export function RefereePanel({
       await reload();
     }, message);
   const choose = (kind: Decision['kind']) => {
-    setDecision({ kind, baseVersion: m.version, winnerSide: 'A' });
+    setProgressionImpact(null);
+    setApproveProgression(false);
+    if (
+      ['reopen', 'cancel', 'dispute'].includes(kind) &&
+      m.status === 'COMPLETED' &&
+      access.manager
+    )
+      void run(async () => {
+        setProgressionImpact(
+          await api(
+            `/api/admin/data?section=competition-correction&id=${encodeURIComponent(m.id)}`,
+          ),
+        );
+        setDecision({ kind, baseVersion: m.version, winnerSide: 'A' });
+      });
+    else setDecision({ kind, baseVersion: m.version, winnerSide: 'A' });
     setReason('');
   };
   const stale = (version: number) => version !== m.version;
@@ -1137,6 +1158,9 @@ export function RefereePanel({
                   id: m.id,
                   baseVersion: decision.baseVersion,
                   reason,
+                  ...(progressionImpact?.affected.length
+                    ? { approveProgression, correctionHash: progressionImpact.hash }
+                    : {}),
                   ...(decision.kind === 'forfeit' ? { winnerSide: decision.winnerSide } : {}),
                 });
                 setDecision(null);
@@ -1158,6 +1182,32 @@ export function RefereePanel({
               </select>
             </Field>
           )}
+          {!!progressionImpact?.affected.length && (
+            <section className="space-y-3 text-sm">
+              <h3 className="font-semibold">Affected downstream fixtures</h3>
+              <ul>
+                {progressionImpact.affected.map((change, i) => (
+                  <li key={i}>{change.code || 'Pending bracket position'}</li>
+                ))}
+              </ul>
+              {progressionImpact.blocked ? (
+                <p role="alert">
+                  Started or completed downstream matches require manual reconciliation. This change
+                  is blocked.
+                </p>
+              ) : (
+                <label className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={approveProgression}
+                    onChange={(e) => setApproveProgression(e.target.checked)}
+                    required
+                  />
+                  Approve updating these unstarted fixtures
+                </label>
+              )}
+            </section>
+          )}
           <Field label="Reason">
             <textarea
               required
@@ -1167,7 +1217,10 @@ export function RefereePanel({
               onChange={(e) => setReason(e.target.value)}
             />
           </Field>
-          <SaveButton busy={busy} disabled={!decision || stale(decision.baseVersion)}>
+          <SaveButton
+            busy={busy}
+            disabled={!decision || stale(decision.baseVersion) || progressionImpact?.blocked}
+          >
             {decision ? decisionLabels[decision.kind] : 'Confirm'}
           </SaveButton>
         </form>

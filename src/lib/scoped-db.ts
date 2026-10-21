@@ -22,6 +22,12 @@ const direct = new Set([
   'match',
   'qualifierLobby',
   'qualifierEntry',
+  'qualifierStanding',
+  'bracket',
+  'bracketRound',
+  'bracketNode',
+  'bracketSlot',
+  'bracketEntry',
   'auditLog',
   'refereeImport',
   'ircLobbyRequest',
@@ -48,7 +54,7 @@ const relations: Record<string, Record<string, string>> = {
     publishedRevision: 'pageRevision',
   },
   pageRevision: { blocks: 'contentBlock' },
-  tournamentStage: { mappool: 'mappool' },
+  tournamentStage: { mappool: 'mappool', qualifierStandings: 'qualifierStanding' },
   mappool: {
     revisions: 'mappoolRevision',
     draftRevision: 'mappoolRevision',
@@ -73,6 +79,8 @@ const relations: Record<string, Record<string, string>> = {
     scores: 'qualifierScore',
     events: 'qualifierEvent',
   },
+  bracket: { rounds: 'bracketRound', nodes: 'bracketNode', entries: 'bracketEntry' },
+  bracketNode: { slots: 'bracketSlot' },
 };
 const object = (value: unknown): Data =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as Data) : {};

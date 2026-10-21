@@ -23,6 +23,7 @@ import { RefereePool } from './referee-pool';
 import { FreeModCalculator } from './freemod-calculator';
 import { MATCH_STATUS_LABELS } from './matches-dashboard';
 import { useTournamentTime } from '@/components/tournament-scope';
+import { QualifierCaptureDialog } from './qualifier-capture';
 type StatusCommand = Extract<QualifierAction, { type: 'qualifier.status' }>['command'];
 export function QualifiersWorkspace({
   actor,
@@ -53,6 +54,7 @@ export function QualifiersWorkspace({
     baseVersion: number;
     osuId: number;
     slotName: string;
+    run: number;
     raw: number;
     mods: string[];
     reason: string;
@@ -108,7 +110,7 @@ export function QualifiersWorkspace({
     </fieldset>
   );
   const selected = m?.scores.find(
-    (s) => s.osuId === score?.osuId && s.slotName === score?.slotName,
+    (s) => s.osuId === score?.osuId && s.slotName === score?.slotName && s.run === score?.run,
   );
   const localDate = (iso: string | null) =>
     iso
@@ -118,18 +120,43 @@ export function QualifiersWorkspace({
       : '';
   const roster =
     m?.participants.flatMap((team) => team.members.map((p) => ({ ...p, team: team.name }))) || [];
+  const next = m
+    ? Array.from({ length: m.policy.runs }, (_, i) => i + 1)
+        .flatMap((run) =>
+          m.poolRevision.slots.flatMap((slot) =>
+            m.participants.map((team) => ({
+              run,
+              slot,
+              team,
+              scores: m.scores.filter(
+                (s) =>
+                  s.run === run &&
+                  s.slotName === slot.name &&
+                  team.members.some((p) => p.osuId === s.osuId),
+              ),
+            })),
+          ),
+        )
+        .find((item) => item.scores.length < m.policy.requiredPlayers)
+    : null;
   const command = m
-    ? lobbyCommands(m.rules, acronym, {
-        code: m.code,
-        teamA: 'Qualifiers',
-        teamB: `Lobby ${m.code}`,
-      })
+    ? lobbyCommands(
+        m.rules,
+        acronym,
+        {
+          code: m.code,
+          teamA: 'Qualifiers',
+          teamB: `Lobby ${m.code}`,
+        },
+        undefined,
+        { qualifierPlayers: Math.min(m.participants.length * m.policy.requiredPlayers, 16) },
+      )
     : null;
   const qualifierSetup =
-    m && command
+    m && command && m.gameplayScoring !== 'LAZER'
       ? {
           make: command.make,
-          settings: command.settings.replace(/ \d+$/, ' 8'),
+          settings: command.settings,
           timer: command.timer,
           start: command.start,
           abort: command.abort,
@@ -159,12 +186,20 @@ export function QualifiersWorkspace({
           <header className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b pb-4">
             <h1 className="text-2xl font-semibold">Qualifier lobbies</h1>
             {manager && (
-              <Button onClick={() => setCreate(true)}>
+              <Button disabled={options?.scoringNeedsReview} onClick={() => setCreate(true)}>
                 <Plus size={16} />
                 Create qualifier lobby
               </Button>
             )}
           </header>
+          {options?.scoringNeedsReview && (
+            <p className="mb-4 text-sm text-muted">
+              <Link className="text-primary" href="/admin/settings">
+                Review tournament gameplay scoring
+              </Link>{' '}
+              before creating qualifier sessions.
+            </p>
+          )}
           <div className="mb-5 grid gap-3 sm:grid-cols-2">
             <Field label="Find qualifier lobby">
               <input type="search" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -288,12 +323,21 @@ export function QualifiersWorkspace({
                 </Button>
               )}
               {m.status === 'IN_PROGRESS' && m.access.score && (
+                <QualifierCaptureDialog lobby={m} onChanged={reload} />
+              )}
+              {m.status === 'IN_PROGRESS' && m.access.score && (
                 <Button
                   onClick={() =>
                     setScore({
                       baseVersion: m.version,
-                      osuId: roster[0]?.osuId || 0,
-                      slotName: m.poolRevision.slots[0]?.name || '',
+                      osuId:
+                        next?.team.members.find(
+                          (p) => !next.scores.some((s) => s.osuId === p.osuId),
+                        )?.osuId ||
+                        roster[0]?.osuId ||
+                        0,
+                      slotName: next?.slot.name || m.poolRevision.slots[0]?.name || '',
+                      run: next?.run || 1,
                       raw: 0,
                       mods: m.rules.enforceNoFail ? ['NF'] : [],
                       reason: '',
@@ -347,6 +391,20 @@ export function QualifiersWorkspace({
           </header>
           <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
             <div className="min-w-0 xl:sticky xl:top-5">
+              <p className="mb-3 text-sm text-muted">
+                {m.rules.gameplayScoring === 'LAZER'
+                  ? 'osu!lazer'
+                  : m.rules.scoreMode === 'SCORE'
+                    ? 'ScoreV1'
+                    : 'ScoreV2'}{' '}
+                · {m.policy.runs} {m.policy.runs === 1 ? 'run' : 'runs'} ·{' '}
+                {m.policy.method.replaceAll('_', ' ')}
+              </p>
+              <p className="mb-3 text-sm font-semibold" role="status">
+                {next
+                  ? `Next: Run ${next.run} · ${next.slot.name} · ${next.team.name}`
+                  : 'All configured map scores recorded'}
+              </p>
               <RefereePool slots={m.poolRevision.slots} rules={m.rules} copy={copy} />
               <FreeModCalculator rules={m.rules} />
             </div>
@@ -365,29 +423,32 @@ export function QualifiersWorkspace({
                   </a>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      copy(
-                        [
-                          qualifierSetup!.make,
-                          qualifierSetup!.settings,
-                          ...m.assignments.map((r) => `!mp addref #${r.user.osuId}`),
-                          ...roster
-                            .filter(
-                              (p) =>
-                                p.captain || m.participants.every((t) => t.format === 'INDIVIDUAL'),
-                            )
-                            .map((p) => `!mp invite #${p.osuId}`),
-                          qualifierSetup!.timer,
-                        ].join('\n'),
-                      )
-                    }
-                  >
-                    <Copy size={15} />
-                    Copy Setup Commands
-                  </Button>
+                  {qualifierSetup && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        copy(
+                          [
+                            qualifierSetup!.make,
+                            qualifierSetup!.settings,
+                            ...m.assignments.map((r) => `!mp addref #${r.user.osuId}`),
+                            ...roster
+                              .filter(
+                                (p) =>
+                                  p.captain ||
+                                  m.participants.every((t) => t.format === 'INDIVIDUAL'),
+                              )
+                              .map((p) => `!mp invite #${p.osuId}`),
+                            qualifierSetup!.timer,
+                          ].join('\n'),
+                        )
+                      }
+                    >
+                      <Copy size={15} />
+                      Copy Setup Commands
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"
@@ -406,7 +467,13 @@ export function QualifiersWorkspace({
                     Copy Qualifier Ping
                   </Button>
                 </div>
-                {Object.entries(qualifierSetup!).map(([name, value]) => (
+                {!qualifierSetup && (
+                  <p className="text-sm text-muted">
+                    Legacy Bancho commands are unavailable for osu!lazer rooms. Record standardized
+                    scores manually.
+                  </p>
+                )}
+                {Object.entries(qualifierSetup || {}).map(([name, value]) => (
                   <div key={name} className="flex items-center justify-between gap-2 border-b py-1">
                     <code className="min-w-0 break-words text-xs">{value}</code>
                     <Button
@@ -420,31 +487,33 @@ export function QualifiersWorkspace({
                     </Button>
                   </div>
                 ))}
-                <details>
-                  <summary className="cursor-pointer text-sm font-semibold">
-                    Participant invites
-                  </summary>
-                  {roster.map((p) => (
-                    <div
-                      key={p.osuId}
-                      className="flex items-center justify-between gap-2 border-b py-1 text-sm"
-                    >
-                      <span>
-                        {p.team} · {p.username}
-                        {p.captain ? ' · Captain' : ''}
-                      </span>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        title={`Invite ${p.username}`}
-                        aria-label={`Copy invite ${p.username}`}
-                        onClick={() => copy(`!mp invite #${p.osuId}`)}
+                {qualifierSetup && (
+                  <details>
+                    <summary className="cursor-pointer text-sm font-semibold">
+                      Participant invites
+                    </summary>
+                    {roster.map((p) => (
+                      <div
+                        key={p.osuId}
+                        className="flex items-center justify-between gap-2 border-b py-1 text-sm"
                       >
-                        <Copy size={15} />
-                      </Button>
-                    </div>
-                  ))}
-                </details>
+                        <span>
+                          {p.team} · {p.username}
+                          {p.captain ? ' · Captain' : ''}
+                        </span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title={`Invite ${p.username}`}
+                          aria-label={`Copy invite ${p.username}`}
+                          onClick={() => copy(`!mp invite #${p.osuId}`)}
+                        >
+                          <Copy size={15} />
+                        </Button>
+                      </div>
+                    ))}
+                  </details>
+                )}
               </section>
               <section>
                 <h2 className="mb-3 font-semibold">Qualifier scores</h2>
@@ -452,6 +521,7 @@ export function QualifiersWorkspace({
                   <table className="admin-table">
                     <thead>
                       <tr>
+                        <th>Run</th>
                         <th>Slot</th>
                         <th>Player</th>
                         <th>Raw</th>
@@ -463,6 +533,7 @@ export function QualifiersWorkspace({
                     <tbody>
                       {m.scores.map((s) => (
                         <tr key={s.id}>
+                          <td>{s.run}</td>
                           <td>{s.slotName}</td>
                           <td>{roster.find((p) => p.osuId === s.osuId)?.username || s.osuId}</td>
                           <td>{s.raw.toLocaleString()}</td>
@@ -490,6 +561,9 @@ export function QualifiersWorkspace({
                     </tbody>
                   </table>
                 </div>
+                <p className="mt-3 text-xs text-muted">
+                  Recorded totals across all runs. Final seedings use the stage policy.
+                </p>
                 <dl className="mt-3 space-y-2 text-sm">
                   {m.participants.map((team) => (
                     <div key={team.id} className="flex justify-between gap-2 border-b pb-2">
@@ -606,7 +680,7 @@ export function QualifiersWorkspace({
               >
                 <option value="">Select stage</option>
                 {options?.stages
-                  .filter((s) => s.published)
+                  .filter((s) => s.published && s.kind === 'QUALIFIERS')
                   .map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
@@ -660,7 +734,12 @@ export function QualifiersWorkspace({
             onSubmit={(e) => {
               e.preventDefault();
               void post(
-                { type: 'qualifier.score', id: m.id, ...score },
+                {
+                  type: 'qualifier.score',
+                  id: m.id,
+                  ...score,
+                  representation: m.rules.gameplayScoring === 'LAZER' ? 'STANDARDIZED' : 'LEGACY',
+                },
                 'Qualifier score saved.',
                 () => setScore(null),
               );
@@ -668,6 +747,23 @@ export function QualifiersWorkspace({
           >
             {score.baseVersion !== m.version && (
               <p role="alert">This lobby changed. Reopen the score form.</p>
+            )}
+            {m.policy.runs === 2 && (
+              <Field label="Run">
+                <select
+                  value={score.run}
+                  onChange={(e) => setScore({ ...score, run: Number(e.target.value) })}
+                >
+                  <option value={1}>Run 1</option>
+                  <option value={2}>Run 2</option>
+                </select>
+              </Field>
+            )}
+            {m.rules.gameplayScoring === 'LAZER' && (
+              <label className="flex items-center gap-3 text-sm">
+                <input type="checkbox" required />
+                Scores are actual standardized lazer values, not classic-scaled display values.
+              </label>
             )}
             <Field label="Qualifier player">
               <select

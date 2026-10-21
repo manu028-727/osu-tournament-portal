@@ -3,6 +3,12 @@ import yauzl from 'yauzl';
 import { createHash } from 'node:crypto';
 import { AppError } from './permissions';
 import { type Side } from './match-rules';
+import { type GameplayScoring } from './gameplay-scoring';
+import { normalizeStageLabel } from './stage-reconciliation';
+export type WorkbookScoring = {
+  mode: GameplayScoring | null;
+  declarations: { sheet: string; cell: string; label: string; value: string }[];
+};
 export type SheetAction = {
   row: number;
   kind: 'PROTECT' | 'BAN' | 'PICK';
@@ -15,6 +21,10 @@ export type RefereeRecord = {
   sheet: string;
   code: string;
   stage: string;
+  bracket?: string | null;
+  roundLabel?: string;
+  scoring?: WorkbookScoring;
+  warnings?: string[];
   red: string;
   blue: string;
   mp: string;
@@ -37,6 +47,25 @@ export type RefereeRecord = {
 };
 export const fingerprint = (input: unknown) =>
   createHash('sha256').update(JSON.stringify(input)).digest('hex');
+export function qualifierWorkbookIssue(label: string): string | null {
+  const key = normalizeStageLabel(label).key;
+  return [
+    'qualifiers',
+    'qualifier results',
+    'qualifier scores',
+    'qualifier sessions',
+    'qualifier runs',
+    'qualifier standings',
+    'qualifier setup',
+    'qualifiers ref',
+    'qualifiers schedule',
+    'qualifiers ref schedule',
+    'qualifier ref',
+    'qualifier schedule',
+  ].includes(key)
+    ? 'Qualifier workbook normalization is unavailable in this head-to-head importer. Sessions, runs, individual scores and seeding policies are not imported or inferred.'
+    : null;
+}
 export function checkWorkbookZip(input: Buffer): Promise<void> {
   if (input.length > 4 * 1024 * 1024) throw new AppError('Use an XLSX workbook up to 4 MB.', 413);
   return new Promise((resolve, reject) =>
@@ -94,6 +123,80 @@ export function workbookText(value: ExcelJS.CellValue): string {
   if ('richText' in value) return value.richText.map((t) => t.text).join('');
   return '';
 }
+export function parseWorkbookScoring(value: string): GameplayScoring | null {
+  const key = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s!_.-]+/g, '');
+  if (['scorev1', 'score1', 'v1'].includes(key)) return 'SCORE_V1';
+  if (['scorev2', 'score2', 'v2'].includes(key)) return 'SCORE_V2';
+  if (['lazer', 'osulazer'].includes(key)) return 'LAZER';
+  return null;
+}
+
+export function workbookScoringCompatibility(
+  scoring: WorkbookScoring | undefined,
+  target: GameplayScoring,
+) {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  if (!scoring?.declarations.length)
+    warnings.push(
+      'Workbook has no explicit gameplay scoring provenance. Source scores are not assumed to use the tournament scoring system; no conversion is performed.',
+    );
+  else if (!scoring.mode)
+    errors.push(
+      'Workbook scoring metadata is unrecognized or conflicting. Review the original scoring declarations.',
+    );
+  else if (scoring.mode !== target)
+    errors.push(
+      `Workbook gameplay scoring ${scoring.mode} differs from tournament ${target}. Import is blocked; score conversion is not supported.`,
+    );
+  return { warnings, errors };
+}
+
+function detectWorkbookScoring(book: ExcelJS.Workbook): WorkbookScoring {
+  const declarations: WorkbookScoring['declarations'] = [];
+  const settings = book.getWorksheet('Settings');
+  if (settings) {
+    for (let row = 1; row <= Math.min(settings.rowCount, 100); row++) {
+      for (let column = 1; column <= Math.min(settings.columnCount, 40); column++) {
+        const cell = settings.getCell(row, column);
+        if (cell.isMerged && cell.master.address !== cell.address) continue;
+        const label = workbookText(cell.value).trim();
+        if (
+          !/^(?:gameplay scoring(?: system)?|scoring system|scoring mode|score mode)$/i.test(label)
+        )
+          continue;
+        for (let offset = 1; offset <= 4; offset++) {
+          const valueCell = settings.getCell(row, column + offset);
+          if (valueCell.isMerged && valueCell.master.address === cell.address) continue;
+          const value = workbookText(valueCell.value).trim();
+          if (!value) continue;
+          declarations.push({ sheet: settings.name, cell: valueCell.address, label, value });
+          break;
+        }
+      }
+    }
+    // Numbered Stat Lord referee sheets define F10 as gameplay scoring, even without a label.
+    const fixedScoring = workbookText(settings.getCell('F10').value).trim();
+    if (
+      book.getWorksheet('Round Setup') &&
+      book.worksheets.some((sheet) => /^\d{1,6}$/.test(sheet.name)) &&
+      fixedScoring &&
+      !declarations.some((declaration) => declaration.cell === 'F10')
+    )
+      declarations.push({
+        sheet: settings.name,
+        cell: 'F10',
+        label: 'Stat Lord gameplay scoring (Settings F10)',
+        value: fixedScoring,
+      });
+  }
+  const modes = declarations.map((declaration) => parseWorkbookScoring(declaration.value));
+  const unique = new Set(modes);
+  return { mode: unique.size === 1 && !unique.has(null) ? modes[0] : null, declarations };
+}
 export async function parseRefereeWorkbook(input: Buffer) {
   await checkWorkbookZip(input);
   const book = new ExcelJS.Workbook();
@@ -114,11 +217,20 @@ export async function parseRefereeWorkbook(input: Buffer) {
   };
   const rounds = book.getWorksheet('Round Setup'),
     records: RefereeRecord[] = [];
+  const scoring = detectWorkbookScoring(book);
+  const unsupported = book.worksheets.filter(
+    (sheet) => !/^\d{1,6}$/.test(sheet.name) && qualifierWorkbookIssue(sheet.name),
+  );
+  const warnings = unsupported.map(
+    (sheet) => `Worksheet "${sheet.name}" was not imported. ${qualifierWorkbookIssue(sheet.name)}`,
+  );
   for (const sheet of book.worksheets.filter((s) => /^\d{1,6}$/.test(s.name))) {
     const issues: string[] = [],
       stage = text(sheet, 'AB7'),
       red = text(sheet, 'E2'),
       blue = text(sheet, 'J2');
+    const qualifierIssue = qualifierWorkbookIssue(stage);
+    if (qualifierIssue) issues.push(qualifierIssue);
     const setting = book.getWorksheet('Settings'),
       sourceMode = setting ? text(setting, 'F9').toLowerCase() : '';
     const modes: Record<string, RefereeRecord['gameMode']> = {
@@ -140,12 +252,29 @@ export async function parseRefereeWorkbook(input: Buffer) {
     const side = (value: string): Side | null =>
       value === 'Red' || value === red ? 'A' : value === 'Blue' || value === blue ? 'B' : null;
     let roundRow = 0;
-    if (rounds)
-      for (let r = 5; r <= Math.min(rounds.rowCount, 200); r++)
-        if (text(rounds, `G${r}`) === stage) {
-          roundRow = r;
-          break;
-        }
+    if (rounds) {
+      const sourceStage = normalizeStageLabel(stage);
+      const candidates: { row: number; label: string; key: string; bracket: string | null }[] = [];
+      for (let row = 5; row <= Math.min(rounds.rowCount, 200); row++) {
+        const label = text(rounds, `G${row}`);
+        const normalized = normalizeStageLabel(label);
+        if (normalized.key === sourceStage.key)
+          candidates.push({ row, label, key: normalized.key, bracket: normalized.bracket });
+      }
+      const exact = candidates.filter(
+        (candidate) => candidate.label.toLowerCase() === stage.toLowerCase(),
+      );
+      const contextual = candidates.filter(
+        (candidate) => candidate.bracket === sourceStage.bracket,
+      );
+      const generic = candidates.filter((candidate) => !candidate.bracket);
+      const rows = exact.length ? exact : contextual.length ? contextual : generic;
+      if (rows.length === 1) roundRow = rows[0].row;
+      else if (rows.length > 1)
+        issues.push(
+          'Round Setup contains ambiguous stage/round aliases; review the source mapping.',
+        );
+    }
     const pairs: RefereeRecord['draftSequence'] = [];
     if (rounds && roundRow)
       for (let c = 8; c <= 21; c++) {
@@ -251,6 +380,10 @@ export async function parseRefereeWorkbook(input: Buffer) {
       sheet: sheet.name,
       code,
       stage,
+      bracket: normalizeStageLabel(stage).bracket,
+      roundLabel: stage,
+      scoring,
+      ...(warnings.length ? { warnings } : {}),
       red,
       blue,
       mp: text(sheet, 'S5'),
@@ -274,6 +407,11 @@ export async function parseRefereeWorkbook(input: Buffer) {
     result.fingerprint = fingerprint({ ...result, fingerprint: undefined });
     records.push(result);
   }
-  if (!records.length) throw new AppError('No numbered referee match worksheets were found.');
+  if (!records.length)
+    throw new AppError(
+      unsupported.length
+        ? qualifierWorkbookIssue(unsupported[0].name)!
+        : 'No numbered referee match worksheets were found.',
+    );
   return { fingerprint: createHash('sha256').update(input).digest('hex'), records };
 }

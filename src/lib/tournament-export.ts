@@ -4,6 +4,7 @@ import { AppError, assertPermission, type Actor } from './permissions';
 import { getObject } from './storage';
 import path from 'node:path';
 import { bundleStaticAssets } from './tournament-export-assets';
+import { rebindLocalizedCompetition } from './competition-service';
 import {
   ARCHIVE_FORMAT,
   ARCHIVE_VERSION,
@@ -110,21 +111,27 @@ export function localizeArchive(data: ArchiveData) {
       if (typeof row.id === 'string') ids.set(row.id, `${table}_${index + 1}`);
     });
   }
-  function visit(value: unknown, field = ''): unknown {
+  function visit(value: unknown, field = '', path: string[] = []): unknown {
     if (typeof value === 'string') {
-      if (/^(?:id|.*Id|.*Ids|createdBy)$/.test(field) && ids.has(value)) return ids.get(value)!;
+      const identityField =
+        /^(?:id|.*Id|.*Ids|createdBy|calculatedBy|seedOrder|groupTieOrder)$/.test(field) ||
+        path.at(-2) === 'roundStages' ||
+        (field === 'order' && path.at(-2) === 'tieResolution');
+      if (identityField && ids.has(value)) return ids.get(value)!;
       return value.replace(/(\/api\/media\/)([a-zA-Z0-9_-]+)/g, (match, base, id) =>
         ids.has(id) ? base + ids.get(id) : match,
       );
     }
-    if (Array.isArray(value)) return value.map((child) => visit(child, field));
+    if (Array.isArray(value)) return value.map((child) => visit(child, field, path));
     if (value && typeof value === 'object')
       return Object.fromEntries(
-        Object.entries(value).map(([key, child]) => [key, visit(child, key)]),
+        Object.entries(value).map(([key, child]) => [key, visit(child, key, [...path, key])]),
       );
     return value;
   }
-  return { data: visit(data) as ArchiveData, ids };
+  const localized = visit(data) as ArchiveData;
+  rebindLocalizedCompetition(data, localized, ids);
+  return { data: localized, ids };
 }
 export async function exportTournament(
   actor: Actor,

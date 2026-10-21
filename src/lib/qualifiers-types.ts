@@ -9,6 +9,8 @@ export type QualifierView = {
   status: MatchStatus;
   version: number;
   rules: MatchRules;
+  policy: import('./qualifier-policy').QualifierPolicy;
+  gameplayScoring: string | null;
   participants: MatchParticipants['A'][];
   poolRevision: NonNullable<MatchView['poolRevision']>;
   scheduledAt: string | null;
@@ -22,6 +24,12 @@ export type QualifierView = {
     id: string;
     osuId: number;
     slotName: string;
+    run: number;
+    actualScoring: string | null;
+    representation: string;
+    source: string;
+    gameId: string | null;
+    verified: boolean;
     raw: number;
     mods: string[];
     adjusted: number;
