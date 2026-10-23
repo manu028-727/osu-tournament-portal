@@ -27,7 +27,8 @@ in `/admin/tournaments`, then choose **Open tournament**. Its editors live at
 show tournament editing controls. There are no default
 tournaments or fake player accounts.
 
-See [self-hosting](docs/SELF-HOSTING.md) for proxy configuration and troubleshooting.
+See [deployment and configuration](docs/ARCHITECTURE.md#deployment-and-configuration)
+for proxy configuration and troubleshooting.
 
 ## Everyday Commands
 
@@ -41,7 +42,7 @@ See [self-hosting](docs/SELF-HOSTING.md) for proxy configuration and troubleshoo
 Stopping does not delete data. Starting does not run migrations. With an existing
 configuration, `./portal install` builds, applies migrations, initializes configured
 storage and starts services. Back up before using it for an update; read
-[updates and recovery](docs/UPGRADING.md) first.
+[updating and recovery](docs/ARCHITECTURE.md#updating-and-release-cutover) first.
 
 ## Included
 
@@ -51,24 +52,26 @@ qualifiers, pick/bans, scoring, history imports and Discord result formatting.
 The Matches workspace includes native single/double-elimination brackets and groups,
 with confirmed-result advancement. Qualifier stages support one/two runs, reviewed
 standings, published seedings and bracket generation. Choose gameplay scoring once
-in Tournament Settings; see the competition guides for compatibility limits.
+in Tournament Settings; see the [specification](docs/SPEC.md#qualifiers-and-scoring)
+for compatibility limits.
 PostgreSQL and private S3-compatible storage are included. Filesystem/external S3
 storage and an optional Bancho IRC gateway are also supported.
 
-## Guides
+## Documentation
 
-- [Self-hosting and configuration](docs/SELF-HOSTING.md)
-- [Updates, backups and existing-installation adoption](docs/UPGRADING.md)
-- [Development and tests](docs/DEVELOPMENT.md)
-- [Tournament export, import and legacy migration](docs/TOURNAMENT-TRANSFERS.md)
-- [Architecture and security](docs/ARCHITECTURE.md)
-- [Interface design and visual testing](docs/DESIGN.md)
-- [Optional IRC and credential security](docs/IRC.md)
-- [Competition workflows, migration and verification](docs/COMPETITION-OVERHAUL.md)
-- [Organizer bulk editing, stages, pooling and scheduling](docs/ORGANIZER-WORKFLOW-AUDIT.md)
-- [Stable match numbers and linking historical brackets](docs/MATCH-NUMBERING.md)
-- [Qualifier calculations and seeding](docs/QUALIFIER-SEEDING.md)
-- [Contributing](CONTRIBUTING.md) and [security reporting](SECURITY.md)
+- [AGENTS.md](AGENTS.md): development instructions and documentation reading order.
+- [INTENT.md](docs/INTENT.md): motivation, audience and product principles.
+- [SPEC.md](docs/SPEC.md): functional requirements and explicit capability limits.
+- [PLAN.md](docs/PLAN.md): completed work, verification evidence and next steps.
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md): technical internals, hosting, upgrades,
+  backups, transfers, IRC, security, development and tests.
+- [DESIGN.md](docs/DESIGN.md): approved visual language and interaction contracts.
+
+These are the only maintained project Markdown documents. For common tasks, jump
+to [tournament transfers](docs/ARCHITECTURE.md#tournament-archive-protocol),
+[historical bracket linking](docs/ARCHITECTURE.md#linking-historical-matches),
+[development](docs/ARCHITECTURE.md#development-and-tests), or
+[security reporting and contributions](docs/ARCHITECTURE.md#security-and-distribution).
 
 IRC is off by default and tested with a mock server, not live Bancho credentials.
 Its plaintext-network warning matters. External OAuth/S3 providers require your
@@ -77,4 +80,4 @@ credentials and deployment checks. Persistent volumes are not off-host backups.
 ## License
 
 [MIT](LICENSE). Third-party components retain their own licenses and notices;
-see [licensing and attribution](docs/LICENSING.md).
+see [licensing and attribution](docs/ARCHITECTURE.md#security-and-distribution).

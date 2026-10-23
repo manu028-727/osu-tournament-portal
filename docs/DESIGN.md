@@ -1,127 +1,196 @@
-# Interface Design
+# Design Language
 
-The approved design and current rollout are documented in
-[Tournament Profile Design](PROFILE-DESIGN.md). That document supersedes the
-historical palette, geometry and overview treatments recorded below. Shared
-warm surfaces, rounded controls, editable branding and both themes now apply
-throughout the application, including referee and qualifier tools.
+## Approved Direction
 
-## Direction
+The current design is the approved osu!-inspired tournament profile and rounded
+application rollout, refined for dense organizer work. Earlier graphite/sidebar
+and rejected calm pilots are not alternative specifications. Preserve existing
+functionality, saved branding and content; this document is not permission for
+another redesign. Product motives are in [INTENT.md](INTENT.md), behavior in
+[SPEC.md](SPEC.md), implementation in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-Graphite surfaces, restrained tournament branding and readable competition data.
-Public pages favor artwork and identity; organizer screens favor rows and forms;
-referee screens favor score, current action, maps and history. They share the same
-type, controls, spacing and semantic colors, not the same page composition.
+Public pages prioritize actual tournament identity/artwork and readable content.
+Organizer pages prioritize compact tables, useful bulk edits and explicit save
+states. Referee pages prioritize score, current action, maps, commands and history.
+They share typography, semantic tokens and controls, not identical compositions.
+Do not use oversized marketing headings, empty dashboards, decorative statistics,
+invented announcements, heavy section framing or generic promotional copy.
 
-The visual audit used a separate `platform_visual_test` database, clearly labelled
-synthetic teams/maps and an original test color chart. No installation content,
-private player records, OIDC artwork or published CMS text was changed.
+## Foundation And Tokens
 
-## Audit and Changes
+`src/app/globals.css` owns base tokens, focus, spacing and operational layouts;
+`src/lib/theme.ts` derives readable branding. Feature CSS modules own scoped geometry.
+Use semantic tokens instead of hardcoding a new local palette. Current defaults:
 
-| Area           | Observed Problem                                                 | Treatment                                                                                               |
-| -------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Typography     | Arial plus global overrides enlarged tiny labels inconsistently  | Self-hosted IBM Plex Sans 400/600 and Plex Mono 400; explicit text scales                               |
-| Navigation     | Duplicate acronym, wrong scoped active links, 288px sidebar      | Full tournament identity, scoped active state, 240px sidebar, keyboard-aware mobile menus               |
-| Directory      | Large tiles and raw enum labels                                  | Short artwork tiles, readable statuses, count and compact filter bar                                    |
-| Homepage       | Hidden tournament heading, tall timeline cards                   | Visible identity, bounded artwork and date rows; original CMS content retained                          |
-| Public content | Large section headings, oversized staff/team placeholders        | Document-style rules, compact people/rosters, restrained team identity and stage lists                  |
-| Mappools       | Good dense cards but inconsistent surrounding hierarchy          | Preserve 64/72px cards, centered category groups, hover portals and touch detail sheets                 |
-| Overview       | Banner, gradient and four oversized statistic cards              | Inline real counts, editor links and plain stage/date/activity lists                                    |
-| CMS            | Repeated panel framing and fully expanded homepage blocks        | Tabbed, unframed settings sections, collapsible content blocks, consistent action bars                  |
-| Referee        | Width consumed by navigation and dispersed hierarchy             | Three operational panes, sticky desktop scoreboard, current-action emphasis and scrollable maps/history |
-| Mobile matches | Filters hid the match list and actions needed sideways scrolling | Collapsible filters, visible search and match rows with the same permission-gated actions               |
-| States         | Large empty/loading panels and inconsistent modal geometry       | Short empty rows, skeleton rows, bounded dialogs, shared errors and textual status indicators           |
-| Responsive     | Existing chooser/user-table overflow                             | Minimum widths, wrapping toolbars and positioned scroll containers that contain offscreen labels        |
+| Token                              | Light             | Dark               |
+| ---------------------------------- | ----------------- | ------------------ |
+| --page                             | #f8f5f6           | #231f23            |
+| --surface                          | #ffffff           | #302b30            |
+| --surface-hover / --surface-raised | #f1e9ed           | #3d353c            |
+| --text                             | #30242b           | #f3edf0            |
+| --muted                            | #70616b           | #bfb0bb            |
+| --control-border                   | #cabec6           | #695963            |
+| --separator                        | #e4dce1           | #4a3f47            |
+| --team-red / --state-danger        | Distinct dark red | Readable pale red  |
+| --team-blue                        | Readable blue     | Readable pale blue |
+| --state-live                       | Dark green        | Mint               |
+| --state-warning                    | Dark gold         | Pale gold          |
 
-Security notices, deletion confirmations, input constraints and publication
-explanations remain. Generic promotional subtitles and decorative icons were
-removed. Backend endpoints, match calculations, authentication, permissions and
-publication contracts are unchanged. There is no database migration.
+Saved primaryColor/accentColor are authoritative and editable; platform values
+initialize new tournaments and selected-tournament values take precedence. Theme
+derivatives target 4.5:1 text contrast on relevant surfaces, including readable
+button foregrounds, without rewriting stored values. Mod colors remain independent.
+Use --brand/--accent/--brand-ink/--accent-subtle/--accent-border/--focus-ring for their
+intended roles, not a one-hue replacement palette. Global element styles belong in
+Tailwind's base layer so they do not override utility colors unexpectedly.
 
-## Tokens and Components
+Appearance has one nonsensitive SameSite cookie, portal_appearance: Light, Dark,
+System. Async server cookies initialize HTML; native color-scheme/light-dark handles
+OS preference before paint and on changes. No inline startup script/CSP weakening,
+duplicate localStorage preference, database color edits or theme flash workarounds.
+Dialogs/menus inherit workspace theme; portaled public previews capture scoped
+branding. Both themes apply to CMS, referee, qualifiers, errors and loading states.
 
-`src/app/globals.css` owns the palette, type scales, surfaces, radii, focus,
-responsive constraints and operational layouts. Base element styles live in
-Tailwind's base layer so they cannot override utility border colors accidentally.
+## Typography, Geometry And Controls
 
-- Background `#141416`, raised surface `#202023`, foreground `#f2f0f1`, muted `#b3b1b8`.
-- Default brand pink, live mint, warning gold, distinguishable red/blue teams.
-- Body 16px; public prose 17px; operational text 14px; secondary labels 13px.
-- Controls 4px radius, repeated items 6px, dialogs 8px. No negative tracking.
-- Standard controls 44px; compact desktop controls 40px; coarse-pointer buttons
-  and mobile referee copy controls at least 44px tall.
-- Motion is short and functional. Reduced-motion preferences disable transitions
-  and animation. No glass effects, glowing backgrounds or animated page entrances.
+Self-host IBM Plex Sans 400/600 for interface/prose and Plex Mono 400 for identifiers,
+dates, numerical evidence and commands. Keep OFL notices; no remote font requests.
+Use tabular numerals for scores and comparison columns, not monospace for all prose.
 
-Use `Button`, `Badge`, `StateBadge`, `MatchStatusBadge`, `Field`, `Modal`,
-`ConfirmButton`, `SectionTitle` and `LoadingState` rather than another local style.
-Use cards for repeated objects or genuinely framed tools, not every page section.
-Numeric scores/IDs use the data font and tabular numerals. Keep meaningful text
-alongside semantic colors. Maintain `aria-current`, visible focus and dialog names.
+- Body 16px, prose 17px, operational text 14px, secondary labels 13px. Compact
+  headers are modest, never hero-scale. Profile title is 28px desktop/23px mobile.
+- Letter spacing is zero. Do not scale fonts with viewport width. Long identity
+  text wraps; long dense row titles truncate with full text available in details.
+- Shared controls are 12px radius, repeated items/dialogs 16px, compact inner
+  inputs/badges can use 8px. Profile banner is 24px desktop/20px mobile. These are
+  established design-system exceptions, not a new nested-card aesthetic.
+- Standard controls/touch targets are about 44px. Dense desktop pool inputs remain
+  34px; mobile/coarse-pointer actions retain sufficient hit area and spacing.
+- General wrap is max 1240px with 64px total desktop inset, reduced on mobile.
+  Use minmax(0, ...), min-width:0, explicit aspect ratios and bounded dialogs so
+  content/focus/hover cannot resize neighboring controls.
+- Use Button, Badge, StateBadge, MatchStatusBadge, Field, Modal, ConfirmButton,
+  SectionTitle and LoadingState instead of a parallel component vocabulary.
+- Use Lucide icons and accessible labels/tooltips for tool actions, color inputs
+  for swatches, tabs for views, checkboxes/toggles for binary settings and ordinary
+  commands for save/publish. Do not replace familiar icons with text pills.
+- Sections are unframed layouts/bands with constrained content. Cards are repeated
+  objects or genuine tools, not every section and not cards nested inside cards.
+- Motion is short, functional and subtle; respect prefers-reduced-motion. No
+  decorative orbs, glow/blob backgrounds, glass effects or animated page entrances.
 
-Tournament logos, banners, mod colors and all CMS content remain configurable.
-`src/lib/theme.ts` raises insufficiently contrasting primary/accent display colors
-to a 4.5:1 contrast ratio against the raised surface and chooses readable button
-text. The stored original color is not changed. Workspace dialogs are portaled
-inside the workspace so they inherit its tournament theme. Public map previews
-retain their own scoped theme capture.
+## Shared Public Tournament Layout
 
-IBM's unmodified WOFF2 assets are bundled with their OFL 1.1 license in
-`public/fonts/`. `next/font/local` serves them locally with adjusted fallbacks;
-there is no Google Fonts or other runtime font dependency. See [licensing](LICENSING.md).
-No new UI library or image service was added. Existing artwork supplies the visuals.
+The platform header contains platform directory/appearance/account controls only.
+Below it: actual banner, identity/logo/status/dates, **one** tournament tab list,
+then page content. No separate boxed hero or duplicate desktop/mobile tournament
+navigation. Identity/tabs flow naturally into the page, not another floating panel.
 
-## Visual Verification
+The banner is unobstructed: no title/control/gradient laid over text-heavy artwork.
+Use object-fit:contain in a 4:1 desktop, 3:1 mobile frame with letterboxing. Missing
+banner has a shorter accent surface; missing logo is omitted, never fabricated.
+Identity sits physically below artwork. Tabs remain reachable with contained
+horizontal scrolling/keyboard access on mobile; the page itself must not overflow.
 
-`tests/smoke/visual-review.ts` is deliberately guarded to the separate database
-`platform_visual_test`, a loopback `APP_URL`, and
-`ALLOW_ISOLATED_CONTAINER_TESTS=yes`. Migrate and bootstrap that empty database
-with test owner ID `990200011`, then run with `--seed` to create its explicitly
-synthetic fixtures. Run with `--before`, `--matrix` or `--interactions-only`.
-Do not run it against an installation database. Seeding does not reset databases.
+`src/app/(public)/layout.tsx` keeps profile/banner/identity/tabs mounted across Home,
+Mappools, Matches, Teams, Staff and Rules; only content underneath changes. Preserve
+DOM/image identity and geometry on same-tournament links. Cross-tenant navigation
+resets deliberately. Published homepage overrides remain independent of private
+draft preview. Home retains accessible H1; subpages have their own headings.
 
-Screenshots and JSON reports go to ignored `.data/visual/before` and
-`.data/visual/after`. The matrix covers 28 public/organizer/referee routes at
-320, 375, 390, 768, 1024, 1366 and 1920px. It rejects non-200 responses, page
-overflow and console/page errors. Additional checks exercise navigation focus,
-mobile dialogs, CMS preview, mappool hover/details, IRC security UI, landscape and
-200%-equivalent reflow (half-width layout at twice the pixel density).
-Screenshot fixtures are QA evidence, not shipped demo content.
+Authored content is not rewritten to match layout: hero paragraphs become content,
+hidden blocks stay hidden, first configured dates may appear in identity and
+additional timeline content follows. Links already in navigation need not repeat
+as visible CTA buttons, but remain saved/editable. Stage banners are independent.
+Do not ship reference artwork/private tournament fixtures as default branding.
 
-Keep the existing browser suite for publication isolation, canonical map grouping,
-hover geometry, mobile copy/dismissal, referee permissions and live workflow
-regressions. Theme contrast has dedicated unit tests. Review actual screenshots
-when changing shared layout; passing a width check alone is not a visual audit.
+## Public Mappool Contract
 
-Production Docker/browser verification is required as well as development mode.
-Live osu! OAuth, uncached provider data and real Bancho sessions need authorized
-deployment credentials; no such live checks are implied by visual tests.
+Keep compact horizontal cards, not tall covers. Current geometry: 72px mobile,
+64px from 640px; one column below 640px, two until 1100px, then three. Categories
+remain separate canonical groups, with centered incomplete rows of equal-width
+cards. No large NM/HD/HR/DT/FM/TB section headings. Slot badges remain visible.
 
-## Verification Record
+Group surface is **behind** cards: 10px padding, subtle configured category tint
+(currently 4%), 1px more opaque matching border (24%), rounded corners and 12px
+inter-group gap. Card backgrounds are opaque; group tint must not wash over artwork
+or text. Keep image/dark readability shade confined to each card. Do not turn the
+group into a new colored card layout or lose custom categories.
 
-Verified on 20 October 2026, using Chromium and isolated databases:
+Cards show artist/title, difficulty, badge, actual artwork and visible 44px info
+button. Titles truncate gracefully. Desktop fine-pointer hover opens a portaled,
+collision-aware detail overlay; it never increases row height or shifts neighbors.
+Detail width/max-height and scroll containers prevent edge clipping/viewport overflow.
+Touch tap follows the beatmap link; info opens a separate dismissible sheet/dialog
+without navigation. No hover-only mobile behavior. Details show full title/difficulty,
+mapper, stars, BPM, duration, ID and copy feedback; honor safe areas, focus, Escape,
+outside/Close dismissal and ordinary page scrolling.
 
-- Formatting, ESLint and TypeScript passed.
-- 135 unit tests, 51 PostgreSQL integration tests and 16 browser workflow tests passed.
-- Production Docker build and container health passed; the admin data route is
-  present in the standalone route manifest.
-- 196 distinct route/width combinations passed (28 routes at seven widths),
-  with no unexpected HTTP errors, page overflow or console errors. Navigation,
-  settings-tab retention/save, modal bounds/focus, copy/detail interactions,
-  simulated network failure/recovery, landscape and 200%-equivalent reflow were
-  also exercised. Mobile match actions do not require sideways scrolling.
-- Mobile layout shift measured 0.0096 for the fixture homepage and 0 for its
-  mappool. No external font requests were made. These are fixture measurements,
-  not a performance guarantee for arbitrary uploaded content.
+## Organizer And Referee Workspaces
 
-Before screenshots cover 25 routes at desktop/mobile sizes. The final matrix
-also covers the populated stage index, referee dashboard and sheet-data view.
-For the same isolated fixture, the overview shortened from 1854 to 1195px at
-1366px width, the mobile homepage editor from 3992 to 1946px, and the default
-mobile settings view from 8557 to 1479px. Settings remain available in their tabs;
-the measurements do not imply removed fields or deleted content.
+Primary organizer navigation: Overview, Website, Stages & mappools, Teams & players,
+Matches, Staff, Settings. Each opens actual work, not a link-directory dashboard.
+Subsections are scoped normal links and permission-aware. The chooser remains
+platform-level and hides tournament editing menus until selection.
 
-Screenshots/reports remain local QA artifacts under `.data/visual`, not repository
-assets. Provider credentials and other browsers were not verified. No production
-deployment, database migration or installation-content rewrite was performed.
+Website groups Homepage, Rules, Tournament info, Appearance, Navigation & text,
+Media library. Appearance/tab previews use actual public components, not a fake
+illustration. Staff separates Public listing from Website access and Roles &
+permissions. Settings holds technical/export/audit/sheet tools. Overview uses real
+setup tasks/draft reminders; optional tasks cannot block publication, and checklist
+collapses for published tournaments. No invented metrics or activity widgets.
+
+Keep Save/Preview/Publish visible, destructive/history/advanced controls secondary,
+and publication a restrained explicit state. Show backend-confirmed success/error,
+unsaved status and guarded discard/navigation. Disclosure reduces clutter without
+hiding necessary settings. Keep existing stored field values when switching tabs.
+
+Pool editing uses compact rows/thumbnail/slot/ID/category and one-click copy. Less
+common settings expand. Reorder controls must describe persistent slot changes,
+not misleading motion reversed on Save. Bulk stage/pool/staff/schedule controls
+show selection scope, mixed values, enabled patch fields, preview and stale errors.
+Filtering clears hidden selections where implemented; never silently apply beyond
+the reviewed rows. Planning, review, approval and publication remain distinguishable.
+
+Matches is the single canonical list, All Matches default with optional My/Live/
+Upcoming/Completed/Unassigned filters. Keep search visible on mobile and collapse
+secondary filters. Rows retain readable time, stable number, teams, assignment,
+state and actions without horizontal page scroll. Referee/View labels reflect
+actual capabilities, not just assignment text.
+
+Referee desktop uses match/score/current action, compact central pool/pick-ban board,
+and commands/history/rules. Sticky scoreboard and bounded scroll panes are functional,
+not decorative. Responsive layout keeps current action/maps reachable. Show clearly
+whether editing assigned match or observing read-only; polls must not overwrite
+unsaved work. Copy controls and command dispatch are not execution confirmations.
+
+## Accessibility And States
+
+Use semantic headings/forms, visible labels/focus, aria-current for navigation,
+named dialogs, focus trap/return and keyboard-operable menus/reordering. Pair status
+color with text/symbol, never color alone. Confirm irreversible actions; don't hide
+security warnings in tooltips. Keep buttons/text within parents at 320px and zoom.
+Use compact skeleton/empty rows, real next steps and recoverable visible errors,
+not blank sections or large generic empty-state cards. Notifications must not move
+table geometry or conceal the current match action.
+
+## Verification
+
+Use isolated synthetic fixtures and current E2E/rollout harnesses, following
+[ARCHITECTURE.md](ARCHITECTURE.md#development-and-tests). Inspect actual screenshots;
+DOM width assertions alone are not a visual audit. Evidence stays in ignored .data.
+
+Required viewport checks: 1920 desktop, 1366 laptop, 768 tablet, 390 mobile and 320
+narrow mobile; add 375/1024, landscape and zoom-equivalent reflow for shared changes.
+Test light/dark/system and several saved accents, missing/real artwork, short/long
+names, empty/populated collections, dialogs/errors and responsive navigation.
+Verify touch/keyboard/focus, no page overflow, stable card dimensions/order, first/
+last/edge hover overlays, mobile details/copy/dismiss and reduced motion.
+
+Shared-profile changes must verify persistent nodes/one banner request/no duplicate
+navigation and no draft override on public pages. CMS changes need actual save,
+preview, publication isolation and unsaved handling. Referee/qualifier changes need
+permission-aware views, live polling and preserved histories. Test development and
+standalone production; Docker verification is required when changing its delivery.
+Historic results live in [PLAN.md](PLAN.md#verification-baseline); mocks/visual checks
+do not establish live OAuth, remote S3, real Bancho or every browser's compatibility.

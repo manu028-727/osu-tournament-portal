@@ -104,7 +104,7 @@ export function checkNetworkSafety({ pools, networks }, client) {
   ];
   if (subnets.some((subnet) => subnet && includesAddress(subnet, client)))
     throw new Error(
-      'A Docker address pool or existing network overlaps your SSH client. Nothing was started. Reserve a Docker-only range first; see docs/SELF-HOSTING.md#network-safety.',
+      'A Docker address pool or existing network overlaps your SSH client. Nothing was started. Reserve a Docker-only range first; see docs/ARCHITECTURE.md#network-safety.',
     );
 }
 
