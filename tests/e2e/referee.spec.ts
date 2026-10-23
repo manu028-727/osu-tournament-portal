@@ -387,19 +387,22 @@ test('guided BO9 completes protects, Blue-first ABBA, corrections, refresh and a
     data: { state: 'PUBLISHED', draftRevisionId: rev.id, publishedRevisionId: rev.id },
   });
   await page.goto('/t/test-cup/admin/stages');
-  await page.getByRole('button', { name: `Edit ${stage.name}`, exact: true }).click();
-  await page.getByText('Advanced stage settings', { exact: true }).click();
+  await page
+    .getByRole('button', { name: `Edit advanced settings for ${stage.name}`, exact: true })
+    .click();
+  const stageDialog = page.getByRole('dialog');
+  await stageDialog.getByText('Action sequence and team order', { exact: true }).click();
+  await stageDialog.getByText('Effective team order', { exact: true }).click();
   for (const order of ['AB', 'ABAB', 'ABBA']) {
-    await page.getByLabel('Ban order', { exact: true }).selectOption(order);
+    await stageDialog.getByRole('combobox', { name: 'Ban order', exact: true }).selectOption(order);
     await expect(
-      page.getByText(
-        order
-          .split('')
-          .map((s) => `${s} bans`)
-          .join(' → '),
-        { exact: true },
+      stageDialog.getByRole('listitem').filter({ hasText: /^\d+\. (Red|Blue) ban$/ }),
+    ).toHaveText(
+      Array.from(
+        { length: 4 },
+        (_, index) => `${index + 3}. ${order[index % order.length] === 'A' ? 'Red' : 'Blue'} ban`,
       ),
-    ).toBeVisible();
+    );
   }
   await page.getByRole('button', { name: 'Save stage', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Stage settings saved' })).toBeVisible();

@@ -7,19 +7,81 @@ const ids = z
   .refine((v) => new Set(v).size === v.length, 'Duplicate selection.');
 const notes = z.string().max(4000).default('');
 const base = z.object({ id, baseVersion: z.number().int().positive() });
+const createFields = z.object({
+  code: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9][A-Za-z0-9 _.-]{0,79}$/),
+  stageId: id,
+  teamIds: ids,
+  refereeIds: ids,
+  scheduledAt: z.iso.datetime().nullable(),
+  notes,
+});
+const selectedLobbies = z
+  .array(base)
+  .min(1)
+  .max(100)
+  .refine(
+    (rows) => new Set(rows.map((row) => row.id)).size === rows.length,
+    'Select each lobby only once.',
+  );
 export const qualifierActionOptions = [
-  z.object({
+  createFields.extend({
     type: z.literal('qualifier.create'),
-    code: z
-      .string()
-      .trim()
-      .regex(/^[A-Za-z0-9][A-Za-z0-9 _.-]{0,79}$/),
-    stageId: id,
-    teamIds: ids.min(1),
-    refereeIds: ids,
-    scheduledAt: z.iso.datetime().nullable(),
-    notes,
   }),
+  z.object({
+    type: z.literal('qualifier.batch.create'),
+    sessions: z
+      .array(createFields)
+      .min(1)
+      .max(50)
+      .refine(
+        (rows) => new Set(rows.map((row) => row.code)).size === rows.length,
+        'Each new lobby needs a unique code.',
+      ),
+  }),
+  z
+    .object({
+      type: z.literal('qualifier.bulk.schedule'),
+      lobbies: selectedLobbies,
+      scheduledAt: z.iso.datetime().nullable().optional(),
+      shiftMinutes: z
+        .number()
+        .int()
+        .min(-525600)
+        .max(525600)
+        .refine((v) => v !== 0)
+        .optional(),
+      refereeIds: ids.optional(),
+      notes: z.string().max(4000).optional(),
+    })
+    .superRefine((action, ctx) => {
+      if (action.scheduledAt !== undefined && action.shiftMinutes !== undefined)
+        ctx.addIssue({ code: 'custom', message: 'Choose a start time or a time shift, not both.' });
+      if (
+        action.scheduledAt === undefined &&
+        action.shiftMinutes === undefined &&
+        action.refereeIds === undefined &&
+        action.notes === undefined
+      )
+        ctx.addIssue({ code: 'custom', message: 'Choose at least one field to update.' });
+    }),
+  z
+    .object({
+      type: z.literal('qualifier.participants.move'),
+      fromLobbyId: id.nullable(),
+      sourceVersion: z.number().int().positive().optional(),
+      toLobbyId: id,
+      baseVersion: z.number().int().positive(),
+      teamIds: ids.min(1),
+    })
+    .superRefine((action, ctx) => {
+      if (action.fromLobbyId === action.toLobbyId)
+        ctx.addIssue({ code: 'custom', message: 'Choose a different destination lobby.' });
+      if (action.fromLobbyId && action.sourceVersion === undefined)
+        ctx.addIssue({ code: 'custom', message: 'The source lobby version is required.' });
+    }),
   base.extend({
     type: z.literal('qualifier.schedule'),
     scheduledAt: z.iso.datetime().nullable(),

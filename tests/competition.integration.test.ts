@@ -23,6 +23,7 @@ import {
   type CompetitionArchiveWitness,
 } from '../src/lib/competition-service';
 import { groupStandings } from '../src/lib/competition-engine';
+import { DEFAULT_MATCH_RULES } from '../src/lib/match-rules';
 
 assertTestDatabase(process.env.DATABASE_URL);
 const rollback = new Error('competition test rollback');
@@ -166,6 +167,97 @@ async function finish(f: Fixture, id: string, lowerWinsFinal = false) {
 }
 afterAll(() => db.$disconnect());
 describe('native competition PostgreSQL persistence', () => {
+  it('changes gameplay stage for a complete unstarted round and protects operational history', () =>
+    isolated(async (f) => {
+      const created = await apply(f, create(f, 4));
+      const initial = await bracket(f, created.id);
+      const stage = await f.tx.tournamentStage.create({
+        data: {
+          tournamentId: f.tournamentId,
+          name: 'Later gameplay',
+          slug: 'later',
+          kind: 'ELIMINATION',
+        },
+      });
+      const round = initial.rounds.find((item) =>
+        initial.nodes.some((node) => node.roundId === item.id && node.matchId),
+      )!;
+      const originals = initial.nodes.flatMap((node) => (node.match ? [node.match] : []));
+      const changed = await apply(f, {
+        type: 'competition.rounds.stage',
+        id: created.id,
+        baseVersion: initial.version,
+        roundIds: [round.id],
+        stageId: stage.id,
+      });
+      const updated = await bracket(f, created.id);
+      expect(updated.rounds.find((item) => item.id === round.id)!.stageId).toBe(stage.id);
+      for (const original of originals)
+        expect(await f.tx.match.findUniqueOrThrow({ where: { id: original.id } })).toMatchObject({
+          id: original.id,
+          matchNumber: original.matchNumber,
+          stageId: stage.id,
+          version: original.version + 1,
+        });
+      await confirm(f, originals[0].id);
+      await expect(
+        apply(f, {
+          type: 'competition.rounds.stage',
+          id: created.id,
+          baseVersion: (await bracket(f, changed.id)).version,
+          roundIds: [round.id],
+          stageId: f.stageId,
+        }),
+      ).rejects.toThrow('operational history');
+      expect((await f.tx.match.findUniqueOrThrow({ where: { id: originals[0].id } })).stageId).toBe(
+        stage.id,
+      );
+    }));
+  it('links an existing completed match without replacing its result or identifier', () =>
+    isolated(async (f) => {
+      const input = { ...create(f, 2), manualMatches: true },
+        created = await apply(f, input),
+        initial = await bracket(f, created.id);
+      expect(initial.nodes.filter((node) => node.matchId)).toHaveLength(0);
+      const node = initial.nodes.find((item) => item.state === 'READY')!;
+      const sideA = node.slots.find((slot) => slot.side === 'A')!.teamId!;
+      const sideB = node.slots.find((slot) => slot.side === 'B')!.teamId!;
+      const existing = await f.tx.match.create({
+        data: {
+          tournamentId: f.tournamentId,
+          matchNumber: 77,
+          code: 'historic-final',
+          stageId: f.stageId,
+          teamAId: sideA,
+          teamBId: sideB,
+          participants: { A: { id: sideA }, B: { id: sideB } },
+          rules: DEFAULT_MATCH_RULES,
+          status: 'COMPLETED',
+          scoreA: 2,
+          scoreB: 1,
+          winnerSide: 'A',
+          completedAt: new Date(),
+        },
+      });
+      await apply(f, {
+        type: 'competition.link-match',
+        id: created.id,
+        baseVersion: created.version,
+        nodeId: node.id,
+        matchId: existing.id,
+        matchVersion: existing.version,
+      });
+      const linked = await bracket(f, created.id),
+        final = linked.nodes.find((item) => item.id === node.id)!;
+      expect(final.matchId).toBe(existing.id);
+      expect(final.match?.matchNumber).toBe(77);
+      expect(final.match?.code).toBe('historic-final');
+      expect(final.match?.scoreA).toBe(2);
+      expect(final.match?.scoreB).toBe(1);
+      expect(final.match?.winnerSide).toBe('A');
+      expect(await f.tx.match.count({ where: { tournamentId: f.tournamentId } })).toBe(1);
+    }));
+
   it('persists SE8, advances only confirmation, and creates exactly seven native matches', () =>
     isolated(async (f) => {
       const input = create(f),

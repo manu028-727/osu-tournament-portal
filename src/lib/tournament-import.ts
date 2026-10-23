@@ -25,6 +25,7 @@ import { competitionActionSchema } from './competition-validation';
 import { qualifierPolicySchema } from './qualifier-policy';
 import { rebindImportedQualifierStandings } from './qualifier-standings-service';
 import { rebindImportedCompetition, validateCompetitionArchive } from './competition-service';
+import { restoreArchiveMatchNumbers } from './match-numbering';
 
 export const importSlug = z
   .string()
@@ -220,6 +221,12 @@ const insertionOrder: ArchiveTable[] = [
   'media',
   'stages',
   'categories',
+  'poolPlans',
+  'poolSkillsets',
+  'poolWarnings',
+  'poolCandidates',
+  'poolTags',
+  'poolReviews',
   'pages',
   'pageRevisions',
   'blocks',
@@ -363,12 +370,18 @@ export async function importTournament(
         for (const row of archive.data.identities)
           ids.set(row.id as string, users.find((user) => user.osuId === row.osuId)!.id);
         const mapped = remapJson(archive.data, ids, archive, slug) as ArchiveData;
+        const matchNumberSequence = restoreArchiveMatchNumbers(
+          mapped.matches,
+          mapped.bracketNodes,
+          mapped.tournament[0].matchNumberSequence,
+        );
         const tournament = {
           ...mapped.tournament[0],
           id: tournamentId,
           slug,
           published: false,
           version: 1,
+          matchNumberSequence,
         };
         // Archive publication never overrides the unpublished tournament-level safety gate.
         await insert(tx, 'tournament', [

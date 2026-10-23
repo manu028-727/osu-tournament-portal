@@ -567,9 +567,10 @@ export async function rebindImportedCompetition(
 function withStandings<T extends CompetitionBracketData & { config: Prisma.JsonValue }>(
   bracket: T,
 ): T & Pick<CompetitionBracketData, 'standings'> {
-  const config = bracket.config as { advancePerGroup?: number };
+  const config = bracket.config as { advancePerGroup?: number; manualMatches?: boolean };
   return {
     ...bracket,
+    manualMatches: !!config.manualMatches,
     standings: groupStandings(
       bracket.nodes,
       bracket.rounds,
@@ -582,7 +583,7 @@ function withStandings<T extends CompetitionBracketData & { config: Prisma.JsonV
 export async function competitionOptions(actor: Actor): Promise<CompetitionOptions> {
   assertPermission(actor, 'matches.manage');
   const tournamentId = tenant(actor);
-  const [stages, teams, standings, groups, nodes] = await Promise.all([
+  const [stages, teams, standings, groups, nodes, linkableMatches] = await Promise.all([
     db.tournamentStage.findMany({
       where: { tournamentId, archivedAt: null, kind: { notIn: ['QUALIFIERS', 'QUALIFIER'] } },
       orderBy: { position: 'asc' },
@@ -604,6 +605,29 @@ export async function competitionOptions(actor: Actor): Promise<CompetitionOptio
       orderBy: { createdAt: 'asc' },
     }),
     allNodes(db, tournamentId),
+    db.match.findMany({
+      where: {
+        tournamentId,
+        bracketNode: { is: null },
+        status: { not: 'CANCELLED' },
+        teamAId: { not: null },
+        teamBId: { not: null },
+      },
+      orderBy: [{ scheduledAt: 'asc' }, { matchNumber: 'asc' }],
+      select: {
+        id: true,
+        matchNumber: true,
+        version: true,
+        code: true,
+        stageId: true,
+        status: true,
+        scoreA: true,
+        scoreB: true,
+        teamA: { select: { id: true, name: true } },
+        teamB: { select: { id: true, name: true } },
+        stage: { select: { name: true } },
+      },
+    }),
   ]);
   return {
     stages: stages.map((s) => ({
@@ -612,6 +636,27 @@ export async function competitionOptions(actor: Actor): Promise<CompetitionOptio
       ready: s.mappool?.state === 'PUBLISHED' && !!s.mappool.publishedRevisionId,
     })),
     teams,
+    linkableMatches: linkableMatches.flatMap((match) =>
+      match.teamA && match.teamB
+        ? [
+            {
+              id: match.id,
+              matchNumber: match.matchNumber,
+              version: match.version,
+              code: match.code,
+              stageId: match.stageId,
+              stageName: match.stage.name,
+              status: match.status,
+              teamAId: match.teamA.id,
+              teamAName: match.teamA.name,
+              teamBId: match.teamB.id,
+              teamBName: match.teamB.name,
+              scoreA: match.scoreA,
+              scoreB: match.scoreB,
+            },
+          ]
+        : [],
+    ),
     standings,
     groupSources: groups.flatMap((group) => {
       try {
@@ -805,7 +850,7 @@ async function persistRecalculation(
   const tournament = await tx.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
   const brackets = await tx.bracket.findMany({
     where: { tournamentId },
-    select: { id: true, name: true, published: true },
+    select: { id: true, name: true, published: true, config: true },
   });
   const rounds = await tx.bracketRound.findMany({
     where: { tournamentId },
@@ -879,9 +924,10 @@ async function persistRecalculation(
       });
       changed = true;
     }
-    if (!node.matchId && node.state === 'READY') {
-      const round = rounds.find((r) => r.id === node.roundId)!,
-        bracket = brackets.find((b) => b.id === node.bracketId)!;
+    const bracket = brackets.find((b) => b.id === node.bracketId)!;
+    const manualMatches = (bracket.config as { manualMatches?: boolean }).manualMatches;
+    if (!node.matchId && node.state === 'READY' && !manualMatches) {
+      const round = rounds.find((r) => r.id === node.roundId)!;
       const rules = matchRulesSchema.parse({
         ...inheritedRules(round.stage.matchRules || settings.matchRules, settings.gameplayScoring),
         gameMode: tournament.gameMode,
@@ -1020,12 +1066,9 @@ export async function applyCompetitionAction(
       where: { tournamentId, bracketId: bracket.id },
       select: { id: true, key: true, position: true, lane: true },
     });
-    const allocated = await reserveBracketMatchNumbers(
-      tx,
-      tournamentId,
-      newBracketNodes,
-      numberingRounds,
-    );
+    const allocated = a.manualMatches
+      ? new Map<string, number>()
+      : await reserveBracketMatchNumbers(tx, tournamentId, newBracketNodes, numberingRounds);
     for (const node of newBracketNodes)
       node.matchNumber = allocated.get(node.id) ?? node.matchNumber ?? null;
     await persistRecalculation(tx, tournamentId, before, after, actor.id, true);
@@ -1051,6 +1094,188 @@ export async function applyCompetitionAction(
       where: { tournamentId, bracketNode: { bracketId: a.id, tournamentId } },
       data: { published: a.published },
     });
+  } else if (a.type === 'competition.rounds.stage') {
+    const rounds = await tx.bracketRound.findMany({
+      where: { tournamentId, bracketId: a.id, id: { in: a.roundIds } },
+      include: {
+        nodes: {
+          include: { match: { include: { _count: { select: { actions: true, results: true } } } } },
+        },
+      },
+    });
+    if (rounds.length !== a.roundIds.length)
+      throw new AppError('Choose rounds from this bracket.', 404);
+    const stage = await tx.tournamentStage.findFirst({
+      where: {
+        id: a.stageId,
+        tournamentId,
+        archivedAt: null,
+        kind: { notIn: ['QUALIFIERS', 'QUALIFIER'] },
+      },
+      include: { mappool: true },
+    });
+    if (!stage) throw new AppError('Choose an active head-to-head stage.');
+    const settings = await tx.tournamentSettings.findUniqueOrThrow({ where: { tournamentId } });
+    const tournament = await tx.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
+    const rules = inheritedRules(
+      stage.matchRules || settings.matchRules,
+      settings.gameplayScoring,
+      tournament.gameMode,
+    );
+    const matches = rounds.flatMap((round) =>
+      round.nodes.flatMap((node) => (node.match ? [node.match] : [])),
+    );
+    for (const match of matches) {
+      if (
+        match.status !== 'SCHEDULED' ||
+        match.startedAt ||
+        match._count.actions ||
+        match._count.results
+      )
+        throw new AppError(
+          `Match ${match.matchNumber} has operational history. Its round stage cannot be changed.`,
+          409,
+        );
+      const participants = match.participants as {
+        [side: string]: { format?: string; members?: { substitute?: boolean }[] };
+      };
+      if (
+        ['A', 'B'].some(
+          (side) =>
+            (participants[side]?.members?.filter((member) => !member.substitute).length || 0) <
+            rules.teamSize,
+        )
+      )
+        throw new AppError(
+          `Match ${match.matchNumber} needs ${rules.teamSize} starting players per side for this stage.`,
+        );
+    }
+    for (const match of matches) {
+      if (match.stageId === stage.id) continue;
+      const updatedMatch = await tx.match.updateMany({
+        where: {
+          id: match.id,
+          tournamentId,
+          version: match.version,
+          status: 'SCHEDULED',
+          startedAt: null,
+        },
+        data: {
+          stageId: stage.id,
+          rules: json(rules),
+          poolRevisionId:
+            stage.mappool?.state === 'PUBLISHED' ? stage.mappool.publishedRevisionId : null,
+          version: { increment: 1 },
+        },
+      });
+      if (updatedMatch.count !== 1)
+        throw new AppError('A round match changed. Reload before applying.', 409);
+      await tx.matchEvent.create({
+        data: {
+          matchId: match.id,
+          actorId: actor.id,
+          version: match.version + 1,
+          kind: 'competition.stage',
+          data: { before: match.stageId, after: stage.id },
+        },
+      });
+    }
+    await tx.bracketRound.updateMany({
+      where: { tournamentId, bracketId: a.id, id: { in: a.roundIds } },
+      data: { stageId: stage.id },
+    });
+    const config = competitionStoredConfigSchema.parse(bracket.config);
+    await tx.bracket.updateMany({
+      where: { id: a.id, tournamentId },
+      data: {
+        config: json({
+          ...config,
+          roundStages: {
+            ...config.roundStages,
+            ...Object.fromEntries(rounds.map((round) => [round.key, stage.id])),
+          },
+        }),
+      },
+    });
+  } else if (a.type === 'competition.link-match') {
+    if (!(bracket.config as { manualMatches?: boolean }).manualMatches)
+      throw new AppError('Enable manual-match mode when creating the bracket to link history.');
+    const before = await allNodes(tx, tournamentId);
+    const node = before.find((item) => item.id === a.nodeId && item.bracketId === a.id);
+    if (!node || node.matchId) throw new AppError('Choose an empty bracket position.', 409);
+    if (node.state !== 'READY' || node.slots.some((slot) => !slot.resolved || !slot.teamId))
+      throw new AppError('Both participants must be resolved before linking a match.', 409);
+    const round = await tx.bracketRound.findFirst({
+      where: { id: node.roundId, bracketId: a.id, tournamentId },
+      select: { stageId: true },
+    });
+    if (!round) throw new AppError('Bracket round not found.', 404);
+    const match = await tx.match.findFirst({
+      where: {
+        id: a.matchId,
+        tournamentId,
+        bracketNode: { is: null },
+        status: { not: 'CANCELLED' },
+      },
+      select: {
+        id: true,
+        stageId: true,
+        teamAId: true,
+        teamBId: true,
+        status: true,
+        version: true,
+        matchNumber: true,
+      },
+    });
+    const sideA = node.slots.find((slot) => slot.side === 'A')!;
+    const sideB = node.slots.find((slot) => slot.side === 'B')!;
+    if (!match) throw new AppError('That match is missing, cancelled, or already linked.', 404);
+    if (match.version !== a.matchVersion)
+      throw new AppError('The existing match changed. Reload before linking it.', 409);
+    if (
+      match.stageId !== round.stageId ||
+      match.teamAId !== (a.reverseSides ? sideB.teamId : sideA.teamId) ||
+      match.teamBId !== (a.reverseSides ? sideA.teamId : sideB.teamId)
+    )
+      throw new AppError(
+        'The existing match must use this round’s stage and the exact same participants on sides A and B.',
+        409,
+      );
+    if (a.reverseSides) {
+      for (const [destination, source] of [
+        [sideA, sideB],
+        [sideB, sideA],
+      ])
+        await tx.bracketSlot.updateMany({
+          where: { nodeId: node.id, tournamentId, side: destination.side },
+          data: {
+            teamId: source.teamId,
+            resolved: source.resolved,
+            mode: source.sourceNodeId ? source.mode : 'MANUAL',
+            sourceNodeId: source.sourceNodeId,
+            outcome: source.outcome,
+          },
+        });
+    }
+    const linked = await tx.bracketNode.updateMany({
+      where: { id: node.id, tournamentId, bracketId: a.id, matchId: null },
+      data: {
+        matchId: match.id,
+        matchNumber: match.matchNumber,
+        state: match.status === 'COMPLETED' ? 'COMPLETED' : 'READY',
+      },
+    });
+    if (linked.count !== 1)
+      throw new AppError('This bracket position changed. Reload and retry.', 409);
+    const current = await allNodes(tx, tournamentId);
+    await persistRecalculation(
+      tx,
+      tournamentId,
+      before,
+      recalculateCompetition(current),
+      actor.id,
+      true,
+    );
   } else if (a.type === 'competition.group.resolve') {
     if (bracket.format !== 'GROUPS') throw new AppError('Choose a group-stage competition.');
     const entries = await tx.bracketEntry.findMany({ where: { tournamentId, bracketId: a.id } });

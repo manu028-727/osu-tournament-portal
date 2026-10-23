@@ -11,6 +11,8 @@ import {
   RefreshCw,
   Trash2,
   Link2,
+  CalendarClock,
+  ClipboardPaste,
 } from 'lucide-react';
 import { DeleteMatchDialog, type DeleteMatchSelection } from './delete-match-dialog';
 import { Button } from '../ui/button';
@@ -25,6 +27,11 @@ export { matchTime } from '@/lib/match-display';
 import { MatchRulesFields } from './match-rules-fields';
 import { RefereeSheetImporter } from './referee-sheet-importer';
 import { StageReconciliation } from './stage-reconciliation';
+import {
+  matchesBulkScheduleSchema,
+  matchesBatchScheduleSchema,
+} from '@/lib/matches-bulk-validation';
+import { parseMatchSchedulePaste } from '@/lib/matches-schedule-paste';
 import {
   action,
   Field,
@@ -45,6 +52,8 @@ export const MATCH_STATUS_LABELS = {
   DISPUTED: 'Disputed',
   CANCELLED: 'Cancelled',
 };
+type BulkField =
+  'referees' | 'time' | 'stage' | 'streamer' | 'commentators' | 'notes' | 'published';
 export function MatchesDashboard({ actor }: { actor: Actor }) {
   const [filters, setFilters] = useState({
     stage: '',
@@ -64,11 +73,25 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
   ].filter(Boolean).length;
   const [deleting, setDeleting] = useState<DeleteMatchSelection | null>(null);
   const [selectedMatches, setSelectedMatches] = useState<Set<string>>(() => new Set());
+  const selectionAnchor = useRef<string | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkMode, setBulkMode] = useState<'referees' | 'set-time' | 'shift-time'>('referees');
+  const [bulkFields, setBulkFields] = useState<Set<BulkField>>(() => new Set(['referees']));
+  const [bulkTimeMode, setBulkTimeMode] = useState<'set' | 'shift' | 'clear'>('set');
+  const [bulkStage, setBulkStage] = useState('');
+  const [bulkStreamer, setBulkStreamer] = useState('');
+  const [bulkCommentators, setBulkCommentators] = useState('');
+  const [bulkNotes, setBulkNotes] = useState('');
+  const [bulkPublished, setBulkPublished] = useState(false);
+  const [bulkVersions, setBulkVersions] = useState<Record<string, number>>({});
+  const [bulkDirty, setBulkDirty] = useState(false);
   const [bulkReferees, setBulkReferees] = useState<string[]>([]);
   const [bulkTime, setBulkTime] = useState('');
   const [bulkShift, setBulkShift] = useState(60);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const [pastePreview, setPastePreview] = useState<ReturnType<
+    typeof parseMatchSchedulePaste
+  > | null>(null);
   const params = new URLSearchParams();
   for (const key of ['stage', 'status', 'assigned', 'q'] as const)
     if (filters[key]) params.set(key, filters[key]);
@@ -112,11 +135,12 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
     [rules, setRules] = useState<MatchRules | null>(null),
     [baseHash, setBaseHash] = useState(''),
     [dirty, setDirty] = useState(false);
-  useUnsaved(dirty);
-  usePolling(reload, 10000, !create && !ruleEditor && !edit && !lobby);
+  useUnsaved(dirty || (bulkOpen && bulkDirty) || (pasteOpen && !!pasteText.trim()));
+  usePolling(reload, 10000, !create && !ruleEditor && !edit && !lobby && !bulkOpen && !pasteOpen);
   const options = data?.options;
   useEffect(() => {
     setSelectedMatches(new Set());
+    selectionAnchor.current = null;
   }, [filterKey]);
   useEffect(() => {
     if (
@@ -170,6 +194,47 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
   };
   if (!data) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
   const bulkRows = data.matches.filter((match) => selectedMatches.has(match.id));
+  const eligibleBulkRows = data.matches.filter((match) => match.status === 'SCHEDULED');
+  const selectMatch = (id: string, checked: boolean, shift: boolean) => {
+    let ids = [id];
+    if (shift && selectionAnchor.current) {
+      const start = data.matches.findIndex((match) => match.id === selectionAnchor.current),
+        end = data.matches.findIndex((match) => match.id === id);
+      if (start >= 0 && end >= 0)
+        ids = data.matches
+          .slice(Math.min(start, end), Math.max(start, end) + 1)
+          .filter((match) => match.status === 'SCHEDULED')
+          .map((match) => match.id);
+    }
+    setSelectedMatches((current) => {
+      const next = new Set(current);
+      for (const value of ids) {
+        if (checked) next.add(value);
+        else next.delete(value);
+      }
+      return next;
+    });
+    selectionAnchor.current = id;
+  };
+  const bulkStale =
+    bulkOpen &&
+    (bulkRows.length !== Object.keys(bulkVersions).length ||
+      bulkRows.some((match) => bulkVersions[match.id] !== match.version));
+  const bulkInvalid = bulkStale || bulkRows.some((match) => match.status !== 'SCHEDULED');
+  const mixed = (value: (match: MatchSummary) => unknown) =>
+    new Set(bulkRows.map((match) => JSON.stringify(value(match)))).size > 1;
+  const plannedTime = (match: MatchSummary) =>
+    !bulkFields.has('time')
+      ? match.scheduledAt
+      : bulkTimeMode === 'clear'
+        ? null
+        : bulkTimeMode === 'set'
+          ? bulkTime
+            ? new Date(bulkTime).toISOString()
+            : null
+          : match.scheduledAt && Number.isFinite(bulkShift)
+            ? new Date(new Date(match.scheduledAt).getTime() + bulkShift * 60_000).toISOString()
+            : null;
   const paths = options?.paths?.filter((p) => p.stageIds.includes(stageId)) || [];
   const path = paths.find((p) => p.id === pathId) || (paths.length === 1 ? paths[0] : null);
   const eligibleTeams =
@@ -426,21 +491,35 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
       </div>
       {can(actor, 'matches.manage') && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border bg-card px-3 py-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setPasteOpen(true);
+              setPastePreview(null);
+            }}
+          >
+            <ClipboardPaste size={16} />
+            Paste schedule
+          </Button>
           <label className="flex min-h-10 items-center gap-2 text-sm">
             <input
               type="checkbox"
               aria-label="Select all visible matches"
               checked={
-                data.matches.length > 0 &&
-                data.matches.every((match) => selectedMatches.has(match.id))
+                eligibleBulkRows.length > 0 &&
+                eligibleBulkRows.every((match) => selectedMatches.has(match.id))
               }
+              disabled={!eligibleBulkRows.length}
               onChange={(event) =>
                 setSelectedMatches(
-                  event.target.checked ? new Set(data.matches.map((match) => match.id)) : new Set(),
+                  event.target.checked
+                    ? new Set(eligibleBulkRows.map((match) => match.id))
+                    : new Set(),
                 )
               }
             />
-            Select visible
+            Select scheduled
           </label>
           <span className="text-sm text-muted">{selectedMatches.size} selected</span>
           {selectedMatches.size > 0 && (
@@ -453,7 +532,25 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                   bulkRows.some((match) => match.status !== 'SCHEDULED')
                 }
                 onClick={() => {
-                  setBulkMode('referees');
+                  setBulkFields(new Set(['referees']));
+                  setBulkTimeMode('set');
+                  setBulkStage(mixed((match) => match.stage.id) ? '' : bulkRows[0]?.stage.id || '');
+                  setBulkStreamer(
+                    mixed((match) => matchCredits(match.source).streamer)
+                      ? ''
+                      : matchCredits(bulkRows[0]?.source).streamer,
+                  );
+                  setBulkCommentators(
+                    mixed((match) => matchCredits(match.source).commentators)
+                      ? ''
+                      : matchCredits(bulkRows[0]?.source).commentators.join('\n'),
+                  );
+                  setBulkNotes(mixed((match) => match.notes) ? '' : bulkRows[0]?.notes || '');
+                  setBulkPublished(bulkRows.every((match) => match.published));
+                  setBulkVersions(
+                    Object.fromEntries(bulkRows.map((match) => [match.id, match.version])),
+                  );
+                  setBulkDirty(false);
                   setBulkReferees([]);
                   setBulkTime('');
                   setBulkShift(60);
@@ -486,14 +583,14 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                       <input
                         type="checkbox"
                         aria-label={`Select match ${m.matchNumber}`}
+                        disabled={m.status !== 'SCHEDULED'}
                         checked={selectedMatches.has(m.id)}
                         onChange={(event) =>
-                          setSelectedMatches((current) => {
-                            const next = new Set(current);
-                            if (event.target.checked) next.add(m.id);
-                            else next.delete(m.id);
-                            return next;
-                          })
+                          selectMatch(
+                            m.id,
+                            event.target.checked,
+                            event.nativeEvent instanceof MouseEvent && event.nativeEvent.shiftKey,
+                          )
                         }
                       />
                       Select
@@ -557,14 +654,14 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                         <input
                           type="checkbox"
                           aria-label={`Select match ${m.matchNumber}`}
+                          disabled={m.status !== 'SCHEDULED'}
                           checked={selectedMatches.has(m.id)}
                           onChange={(event) =>
-                            setSelectedMatches((current) => {
-                              const next = new Set(current);
-                              if (event.target.checked) next.add(m.id);
-                              else next.delete(m.id);
-                              return next;
-                            })
+                            selectMatch(
+                              m.id,
+                              event.target.checked,
+                              event.nativeEvent instanceof MouseEvent && event.nativeEvent.shiftKey,
+                            )
                           }
                         />
                       </td>
@@ -580,9 +677,22 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                         {m.stage.name}
                         {m.bracket ? ` · ${m.bracket}` : ''}
                       </p>
-                      <p className="whitespace-nowrap text-xs text-muted">
-                        {matchTime(m.scheduledAt)}
-                      </p>
+                      {matchAccess(actor, m).schedule && m.status === 'SCHEDULED' ? (
+                        <button
+                          type="button"
+                          className="mt-1 inline-flex min-h-8 items-center gap-1.5 rounded-md text-xs text-primary hover:underline"
+                          title="Edit scheduled time"
+                          aria-label={`Edit time for match ${m.matchNumber}`}
+                          onClick={() => begin(m)}
+                        >
+                          <CalendarClock size={14} />
+                          {matchTime(m.scheduledAt)}
+                        </button>
+                      ) : (
+                        <p className="whitespace-nowrap text-xs text-muted">
+                          {matchTime(m.scheduledAt)}
+                        </p>
+                      )}
                       {m.lobbyUrl && (
                         <a
                           href={m.lobbyUrl}
@@ -602,6 +712,18 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                       {m.scoreA} : {m.scoreB}
                     </td>
                     <td>
+                      {matchAccess(actor, m).schedule && m.status === 'SCHEDULED' && (
+                        <button
+                          type="button"
+                          className="mb-1 inline-flex min-h-8 items-center gap-1 rounded-md text-xs text-primary hover:underline"
+                          title="Edit referee assignments"
+                          aria-label={`Edit referees for match ${m.matchNumber}`}
+                          onClick={() => begin(m)}
+                        >
+                          <Users size={14} />
+                          Assign
+                        </button>
+                      )}
                       {matchCredits(m.source).referee && (
                         <p className="text-xs">{matchCredits(m.source).referee} · Sheet</p>
                       )}
@@ -611,6 +733,16 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                           {r.primary ? ' · Lead' : ''}
                         </p>
                       ))}
+                      {matchCredits(m.source).streamer && (
+                        <p className="mt-1 text-xs text-muted">
+                          Stream: {matchCredits(m.source).streamer}
+                        </p>
+                      )}
+                      {!!matchCredits(m.source).commentators.length && (
+                        <p className="text-xs text-muted">
+                          Comms: {matchCredits(m.source).commentators.join(', ')}
+                        </p>
+                      )}
                     </td>
                     <td>
                       <MatchStatusBadge status={m.status}>
@@ -635,24 +767,96 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
       )}
       <Modal
         open={bulkOpen}
-        onOpenChange={setBulkOpen}
+        onOpenChange={(open) => {
+          if (open || !bulkDirty || window.confirm('Discard unsaved bulk match changes?'))
+            setBulkOpen(open);
+        }}
         title={`Bulk edit ${bulkRows.length} matches`}
-        description="Only scheduled matches are editable here. Changes apply atomically; stale rows or scheduling conflicts reject the whole operation."
+        wide
       >
-        <div className="space-y-4">
-          <Field label="Operation">
-            <select
-              value={bulkMode}
-              onChange={(event) => setBulkMode(event.target.value as typeof bulkMode)}
-            >
-              <option value="referees">Assign referees</option>
-              <option value="set-time">Set the same scheduled time</option>
-              <option value="shift-time">Shift each scheduled time</option>
-            </select>
-          </Field>
-          {bulkMode === 'referees' && options && (
+        <form
+          className="space-y-4"
+          onChange={() => setBulkDirty(true)}
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (bulkInvalid) return;
+            void run(async () => {
+              const patch = matchesBulkScheduleSchema.parse({
+                type: 'matches.bulk.schedule',
+                matches: bulkRows.map(({ id }) => ({ id, baseVersion: bulkVersions[id] })),
+                ...(bulkFields.has('referees') ? { refereeIds: bulkReferees } : {}),
+                ...(bulkFields.has('stage') ? { stageId: bulkStage } : {}),
+                ...(bulkFields.has('streamer') ? { streamer: bulkStreamer } : {}),
+                ...(bulkFields.has('commentators')
+                  ? {
+                      commentators: bulkCommentators
+                        .split('\n')
+                        .map((name) => name.trim())
+                        .filter(Boolean),
+                    }
+                  : {}),
+                ...(bulkFields.has('notes') ? { notes: bulkNotes } : {}),
+                ...(bulkFields.has('published') ? { published: bulkPublished } : {}),
+                ...(bulkFields.has('time')
+                  ? bulkTimeMode === 'shift'
+                    ? { shiftMinutes: bulkShift }
+                    : {
+                        scheduledAt:
+                          bulkTimeMode === 'clear' ? null : new Date(bulkTime).toISOString(),
+                      }
+                  : {}),
+              });
+              await action(patch);
+              setBulkOpen(false);
+              setSelectedMatches(new Set());
+              setBulkDirty(false);
+              await reload();
+            }, 'Bulk match changes saved.');
+          }}
+        >
+          <fieldset className="flex flex-wrap gap-x-5 gap-y-2">
+            <legend className="mb-2 font-semibold">Change selected fields</legend>
+            {(
+              [
+                ['referees', 'Referees'],
+                ['time', 'Date and time'],
+                ['stage', 'Stage'],
+                ['streamer', 'Streamer'],
+                ['commentators', 'Commentators'],
+                ['notes', 'Notes'],
+                ['published', 'Publication'],
+              ] as const
+            ).map(([key, label]) => (
+              <label key={key} className="flex min-h-10 items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={bulkFields.has(key)}
+                  onChange={(event) =>
+                    setBulkFields((current) => {
+                      const next = new Set(current);
+                      if (event.target.checked) next.add(key);
+                      else next.delete(key);
+                      return next;
+                    })
+                  }
+                />
+                {label}
+              </label>
+            ))}
+          </fieldset>
+          {bulkInvalid && (
+            <p role="alert">
+              A selected match changed or is no longer scheduled. Close and review the selection.
+            </p>
+          )}
+          {bulkFields.has('referees') && options && (
             <fieldset className="max-h-56 space-y-2 overflow-auto rounded-lg border p-3">
-              <legend className="px-1 text-sm font-semibold">Replace referee assignments</legend>
+              <legend className="px-1 text-sm font-semibold">
+                Replace referee assignments
+                {mixed((match) => match.assignments.map((ref) => ref.userId).sort())
+                  ? ' (Mixed)'
+                  : ''}
+              </legend>
               {options.referees.map((referee) => (
                 <label key={referee.id} className="flex min-h-10 items-center gap-2 text-sm">
                   <input
@@ -672,81 +876,283 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
               <p className="text-xs text-muted">Leaving all unchecked clears assignments.</p>
             </fieldset>
           )}
-          {bulkMode === 'set-time' && (
-            <Field label="Scheduled time (your timezone; blank clears it)">
+          {bulkFields.has('time') && (
+            <Field label="Schedule change">
+              <select
+                value={bulkTimeMode}
+                onChange={(event) => setBulkTimeMode(event.target.value as typeof bulkTimeMode)}
+              >
+                <option value="set">Set the same start time</option>
+                <option value="shift">Shift existing times</option>
+                <option value="clear">Clear start times</option>
+              </select>
+            </Field>
+          )}
+          {bulkFields.has('time') && bulkTimeMode === 'set' && (
+            <Field label="Scheduled time (your timezone)">
               <input
+                required
                 type="datetime-local"
                 value={bulkTime}
                 onChange={(event) => setBulkTime(event.target.value)}
               />
             </Field>
           )}
-          {bulkMode === 'shift-time' && (
+          {bulkFields.has('time') && bulkTimeMode === 'shift' && (
             <Field label="Shift minutes (negative moves earlier)">
               <input
                 type="number"
                 min={-10080}
                 max={10080}
                 step={15}
-                value={bulkShift}
-                onChange={(event) => setBulkShift(Number(event.target.value))}
+                required
+                value={Number.isFinite(bulkShift) ? bulkShift : ''}
+                onChange={(event) => setBulkShift(event.target.valueAsNumber)}
               />
             </Field>
           )}
-          {bulkMode === 'shift-time' && bulkRows.some((match) => !match.scheduledAt) && (
-            <p role="alert" className="text-sm text-amber-200">
-              Every selected match needs a scheduled time before it can be shifted.
-            </p>
-          )}
-          <div className="max-h-40 overflow-auto border-y py-2 text-sm">
-            {bulkRows.slice(0, 12).map((match) => (
-              <p key={match.id} className="py-1">
-                <span className="font-semibold">Match {match.matchNumber}</span> ·{' '}
-                {match.participants.A.name} vs {match.participants.B.name} ·{' '}
-                {matchTime(match.scheduledAt)}
+          {bulkFields.has('time') &&
+            bulkTimeMode === 'shift' &&
+            bulkRows.some((match) => !match.scheduledAt) && (
+              <p role="alert" className="text-sm text-amber-200">
+                Every selected match needs a scheduled time before it can be shifted.
               </p>
-            ))}
-            {bulkRows.length > 12 && (
-              <p className="pt-1 text-xs text-muted">and {bulkRows.length - 12} more matches</p>
+            )}
+          <div className="grid-fields">
+            {bulkFields.has('stage') && (
+              <Field label={`Target stage${mixed((match) => match.stage.id) ? ' (Mixed)' : ''}`}>
+                <select
+                  required
+                  value={bulkStage}
+                  onChange={(event) => setBulkStage(event.target.value)}
+                >
+                  <option value="">Select stage</option>
+                  {options?.stages
+                    .filter((stage) => stage.published && stage.kind !== 'QUALIFIERS')
+                    .map((stage) => (
+                      <option key={stage.id} value={stage.id}>
+                        {stage.name}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+            )}
+            {bulkFields.has('streamer') && (
+              <Field
+                label={`Streamer${mixed((match) => matchCredits(match.source).streamer) ? ' (Mixed)' : ''}`}
+              >
+                <input
+                  maxLength={120}
+                  value={bulkStreamer}
+                  onChange={(event) => setBulkStreamer(event.target.value)}
+                />
+              </Field>
+            )}
+            {bulkFields.has('commentators') && (
+              <Field
+                label={`Commentators, one per line${mixed((match) => matchCredits(match.source).commentators) ? ' (Mixed)' : ''}`}
+              >
+                <textarea
+                  rows={3}
+                  value={bulkCommentators}
+                  onChange={(event) => setBulkCommentators(event.target.value)}
+                />
+              </Field>
+            )}
+            {bulkFields.has('notes') && (
+              <Field label={`Match notes${mixed((match) => match.notes) ? ' (Mixed)' : ''}`}>
+                <textarea
+                  maxLength={4000}
+                  rows={3}
+                  value={bulkNotes}
+                  onChange={(event) => setBulkNotes(event.target.value)}
+                />
+              </Field>
+            )}
+            {bulkFields.has('published') && (
+              <Field label={`Publication${mixed((match) => match.published) ? ' (Mixed)' : ''}`}>
+                <select
+                  value={String(bulkPublished)}
+                  onChange={(event) => setBulkPublished(event.target.value === 'true')}
+                >
+                  <option value="false">Private</option>
+                  <option value="true">Public</option>
+                </select>
+              </Field>
             )}
           </div>
+          <div className="max-h-56 overflow-auto border-y py-2 text-sm">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Match</th>
+                  <th>Stage</th>
+                  <th>Scheduled time</th>
+                  <th>Referees</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bulkRows.map((match) => (
+                  <tr key={match.id}>
+                    <td>
+                      <span className="font-semibold">Match {match.matchNumber}</span>
+                      <p className="text-xs text-muted">
+                        {match.participants.A.name} vs {match.participants.B.name}
+                      </p>
+                    </td>
+                    <td>
+                      {bulkFields.has('stage')
+                        ? options?.stages.find((stage) => stage.id === bulkStage)?.name ||
+                          'Select stage'
+                        : match.stage.name}
+                    </td>
+                    <td>{matchTime(plannedTime(match))}</td>
+                    <td>
+                      {bulkFields.has('referees')
+                        ? bulkReferees
+                            .map((id) => options?.referees.find((ref) => ref.id === id)?.username)
+                            .join(', ') || 'Unassigned'
+                        : match.assignments.map((ref) => ref.user.username).join(', ') ||
+                          'Unassigned'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setBulkOpen(false)}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                if (!bulkDirty || window.confirm('Discard unsaved bulk match changes?'))
+                  setBulkOpen(false);
+              }}
+            >
               Cancel
             </Button>
             <Button
+              type="submit"
               disabled={
                 busy ||
                 !bulkRows.length ||
-                bulkRows.some(
-                  (match) =>
-                    match.status !== 'SCHEDULED' ||
-                    (bulkMode === 'shift-time' && !match.scheduledAt),
-                )
-              }
-              onClick={() =>
-                void run(async () => {
-                  await action({
-                    type: 'matches.bulk.schedule',
-                    matches: bulkRows.map(({ id, version }) => ({ id, baseVersion: version })),
-                    ...(bulkMode === 'referees'
-                      ? { refereeIds: bulkReferees }
-                      : bulkMode === 'set-time'
-                        ? {
-                            scheduledAt: bulkTime ? new Date(bulkTime).toISOString() : null,
-                          }
-                        : { shiftMinutes: bulkShift }),
-                  });
-                  setBulkOpen(false);
-                  setSelectedMatches(new Set());
-                  await reload();
-                }, 'Bulk match changes saved.')
+                !bulkFields.size ||
+                bulkInvalid ||
+                (bulkFields.has('time') &&
+                  bulkTimeMode === 'shift' &&
+                  (!Number.isInteger(bulkShift) ||
+                    !bulkShift ||
+                    bulkRows.some((match) => !match.scheduledAt)))
               }
             >
               Apply to {bulkRows.length} matches
             </Button>
           </div>
-        </div>
+        </form>
+      </Modal>
+      <Modal
+        open={pasteOpen}
+        onOpenChange={(open) => {
+          if (open || !pasteText.trim() || window.confirm('Discard the pasted schedule?'))
+            setPasteOpen(open);
+        }}
+        title="Paste match schedule"
+        wide
+      >
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!pastePreview) {
+              setPastePreview(
+                parseMatchSchedulePaste(pasteText, data.matches, options?.referees || []),
+              );
+              return;
+            }
+            if (pastePreview.errors.length || !pastePreview.rows.length) return;
+            void run(async () => {
+              const body = matchesBatchScheduleSchema.parse({
+                type: 'matches.batch.schedule',
+                matches: pastePreview.rows,
+              });
+              await action(body);
+              setPasteOpen(false);
+              setPasteText('');
+              setPastePreview(null);
+              setSelectedMatches(new Set());
+              await reload();
+            }, 'Pasted schedule saved.');
+          }}
+        >
+          <Field label="Schedule TSV or CSV">
+            <textarea
+              rows={8}
+              value={pasteText}
+              onChange={(event) => {
+                setPasteText(event.target.value);
+                setPastePreview(null);
+              }}
+              placeholder={
+                'match_number\tscheduled_at\treferee\n1\t2026-10-24 18:00\tReferee username'
+              }
+            />
+          </Field>
+          <p className="text-sm text-muted">
+            Blank cells keep existing values; - clears a time or assignment. Dates without a
+            timezone use your browser timezone.
+          </p>
+          {!!pastePreview?.errors.length && (
+            <ul
+              role="alert"
+              className="max-h-40 list-inside list-disc overflow-auto text-sm text-red-200"
+            >
+              {pastePreview.errors.map((error, index) => (
+                <li key={index}>{error}</li>
+              ))}
+            </ul>
+          )}
+          {!!pastePreview?.rows.length && (
+            <div className="max-h-64 overflow-auto">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Match</th>
+                    <th>Current time</th>
+                    <th>New time</th>
+                    <th>Referees</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pastePreview.rows.map((row) => (
+                    <tr key={row.id}>
+                      <td>Match {row.matchNumber}</td>
+                      <td>{matchTime(row.previousTime)}</td>
+                      <td>
+                        {row.scheduledAt === undefined ? 'Unchanged' : matchTime(row.scheduledAt)}
+                      </td>
+                      <td>
+                        {row.refereeIds === undefined
+                          ? 'Unchanged'
+                          : row.refereeIds
+                              .map((id) => options?.referees.find((ref) => ref.id === id)?.username)
+                              .join(', ') || 'Unassigned'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <SaveButton
+            busy={busy}
+            disabled={
+              !pasteText.trim() ||
+              (!!pastePreview && (!!pastePreview.errors.length || !pastePreview.rows.length))
+            }
+          >
+            {pastePreview ? `Apply ${pastePreview.rows.length} schedule rows` : 'Preview schedule'}
+          </SaveButton>
+        </form>
       </Modal>
       <DeleteMatchDialog match={deleting} onClose={() => setDeleting(null)} onDeleted={reload} />
       <Modal

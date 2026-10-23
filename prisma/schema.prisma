@@ -14,6 +14,8 @@ enum PublicationState {
 }
 
 model User {
+  poolSuggestions      PoolCandidate[]       @relation("PoolSuggestions")
+  poolReviews          PoolReview[]          @relation("PoolReviews")
   platformAdmin        Boolean               @default(false)
   id                   String                @id @default(cuid())
   osuId                Int                   @unique
@@ -110,6 +112,10 @@ model RolePermission {
 }
 
 model Tournament {
+  poolCandidates      PoolCandidate[]
+  poolPlans           PoolPlan[]
+  poolSkillsets       PoolSkillset[]
+  poolArtistWarnings  PoolArtistWarning[]
   slug                String              @unique
   published           Boolean             @default(false)
   timezone            String              @default("UTC")
@@ -212,6 +218,8 @@ model ContentBlock {
 }
 
 model TournamentStage {
+  poolPlan           PoolPlan?
+  poolCandidates     PoolCandidate[]
   kind               String              @default("CUSTOM")
   archivedAt         DateTime?
   nextStageId        String?
@@ -310,11 +318,110 @@ model MappoolSlot {
 }
 
 model Beatmap {
-  id        Int           @id
-  mode      String
-  metadata  Json
-  fetchedAt DateTime      @default(now())
-  slots     MappoolSlot[]
+  poolCandidates PoolCandidate[]
+  id             Int             @id
+  mode           String
+  metadata       Json
+  fetchedAt      DateTime        @default(now())
+  slots          MappoolSlot[]
+}
+
+model PoolPlan {
+  id           String          @id @default(cuid())
+  tournamentId String
+  tournament   Tournament      @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  stageId      String          @unique
+  stage        TournamentStage @relation(fields: [stageId, tournamentId], references: [id, tournamentId], onDelete: Cascade)
+  slots        Json            @default("[]")
+  minStars     Float?
+  maxStars     Float?
+  reviewState  String          @default("DRAFT")
+  version      Int             @default(1)
+  updatedAt    DateTime        @updatedAt
+
+  @@unique([id, tournamentId])
+  @@unique([stageId, tournamentId])
+}
+
+model PoolCandidate {
+  warningResolution Json?
+  id                String             @id @default(cuid())
+  tournamentId      String
+  tournament        Tournament         @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  stageId           String?
+  stage             TournamentStage?   @relation(fields: [stageId, tournamentId], references: [id, tournamentId], onDelete: Restrict)
+  beatmapId         Int
+  beatmap           Beatmap            @relation(fields: [beatmapId], references: [id], onDelete: Restrict)
+  metadata          Json
+  category          String
+  status            String             @default("SUGGESTED")
+  notes             String             @default("")
+  submitterId       String?
+  submitter         User?              @relation("PoolSuggestions", fields: [submitterId], references: [id], onDelete: SetNull)
+  selectedSlot      String?
+  version           Int                @default(1)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  tags              PoolCandidateTag[]
+  reviews           PoolReview[]
+
+  @@unique([id, tournamentId])
+  @@unique([tournamentId, beatmapId])
+  @@index([tournamentId, stageId, status])
+}
+
+model PoolSkillset {
+  id           String             @id @default(cuid())
+  tournamentId String
+  tournament   Tournament         @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  name         String
+  group        String             @default("")
+  tags         PoolCandidateTag[]
+
+  @@unique([id, tournamentId])
+  @@unique([tournamentId, name])
+}
+
+model PoolCandidateTag {
+  tournamentId String
+  candidateId  String
+  skillsetId   String
+  primary      Boolean       @default(true)
+  candidate    PoolCandidate @relation(fields: [candidateId, tournamentId], references: [id, tournamentId], onDelete: Cascade)
+  skillset     PoolSkillset  @relation(fields: [skillsetId, tournamentId], references: [id, tournamentId], onDelete: Restrict)
+
+  @@id([candidateId, skillsetId])
+}
+
+model PoolReview {
+  id           String        @id @default(cuid())
+  tournamentId String
+  candidateId  String
+  candidate    PoolCandidate @relation(fields: [candidateId, tournamentId], references: [id, tournamentId], onDelete: Cascade)
+  reviewerId   String
+  reviewer     User          @relation("PoolReviews", fields: [reviewerId], references: [id], onDelete: Restrict)
+  fit          Int?
+  difficulty   Int?
+  flags        String        @default("")
+  notes        String        @default("")
+  completed    Boolean       @default(false)
+  version      Int           @default(1)
+  updatedAt    DateTime      @updatedAt
+
+  @@unique([candidateId, reviewerId])
+}
+
+model PoolArtistWarning {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  artist       String
+  artistKey    String
+  severity     String     @default("WARN")
+  reason       String
+  source       String     @default("")
+
+  @@unique([tournamentId, artistKey])
 }
 
 model StaffMember {

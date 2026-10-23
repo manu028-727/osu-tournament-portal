@@ -10,6 +10,10 @@ import { qualifierPolicySchema } from './qualifier-policy';
 import { competitionActionSchema } from './competition-validation';
 import { qualifierStandingsActionSchema } from './qualifier-standings-validation';
 import { stageReconciliationActionSchema } from './stage-reconciliation';
+import { poolingActionOptions, poolPlanSchema } from './pooling-validation';
+import { stageWorkflowActionSchemas } from './stage-workflows-validation';
+import { matchesSchedulingActionOptions } from './matches-bulk-validation';
+import { staffBulkActionSchema } from './staff-bulk-validation';
 export const id = z.string().min(1).max(100);
 export const label = z.string().trim().min(1).max(120);
 export const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -54,35 +58,15 @@ export const slotSchema = z.object({
 });
 const base = z.object({ type: z.string() });
 export const actionSchema = z.discriminatedUnion('type', [
+  ...poolingActionOptions,
+  ...stageWorkflowActionSchemas,
   ...competitionActionSchema.options,
   ...qualifierStandingsActionSchema.options,
   stageReconciliationActionSchema,
   ...teamActionOptions,
   ...matchActionOptions,
-  base
-    .extend({
-      type: z.literal('matches.bulk.schedule'),
-      matches: z
-        .array(z.object({ id, baseVersion: z.number().int().positive() }))
-        .min(1)
-        .max(100)
-        .refine((matches) => new Set(matches.map((match) => match.id)).size === matches.length),
-      scheduledAt: z.iso.datetime().nullable().optional(),
-      shiftMinutes: z.number().int().min(-10080).max(10080).optional(),
-      refereeIds: z
-        .array(id)
-        .max(10)
-        .refine((ids) => new Set(ids).size === ids.length)
-        .optional(),
-    })
-    .refine(
-      (action) =>
-        !(action.scheduledAt !== undefined && action.shiftMinutes !== undefined) &&
-        (action.scheduledAt !== undefined ||
-          action.shiftMinutes !== undefined ||
-          action.refereeIds !== undefined),
-      'Choose a time change or referee assignment.',
-    ),
+  ...matchesSchedulingActionOptions,
+  staffBulkActionSchema,
   ...qualifierActionOptions,
   base.extend({
     type: z.literal('page.save'),
@@ -102,6 +86,10 @@ export const actionSchema = z.discriminatedUnion('type', [
   }),
   base.extend({
     type: z.literal('stage.save'),
+    baseConfigurationToken: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
     id: id.optional(),
     name: label,
     slug: z
@@ -125,6 +113,7 @@ export const actionSchema = z.discriminatedUnion('type', [
     baseRevisionId: id.nullable(),
     notes: z.string().max(3000),
     slots: z.array(slotSchema).max(100),
+    plan: poolPlanSchema.optional(),
   }),
   base.extend({ type: z.literal('pool.publish'), id, revisionId: id }),
   base.extend({ type: z.literal('pool.unpublish'), id }),

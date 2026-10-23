@@ -9,6 +9,61 @@ export function numericMatchIdentifier(value: string): number | null {
   return Number.isSafeInteger(number) && number > 0 && number <= MAX_MATCH_NUMBER ? number : null;
 }
 
+export function restoreArchiveMatchNumbers(
+  matches: { id?: unknown; code?: unknown; matchNumber?: unknown }[],
+  nodes: { matchId?: unknown; matchNumber?: unknown }[],
+  previousSequence: unknown = 0,
+) {
+  const valid = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= MAX_MATCH_NUMBER;
+  const used = new Set<number>();
+  const reserved = new Set(
+    nodes.flatMap((node) => (valid(node.matchNumber) ? [node.matchNumber] : [])),
+  );
+  for (const match of matches) {
+    if (match.matchNumber == null) continue;
+    if (!valid(match.matchNumber) || used.has(match.matchNumber))
+      throw new AppError('Archived match numbers must be positive and unique.');
+    used.add(match.matchNumber);
+  }
+  const sourceCounts = new Map<number, number>();
+  for (const match of matches) {
+    const number = numericMatchIdentifier(String(match.code));
+    if (number) sourceCounts.set(number, (sourceCounts.get(number) || 0) + 1);
+  }
+  for (const match of matches) {
+    if (match.matchNumber != null) continue;
+    const nodeNumber = nodes.find((node) => node.matchId === match.id)?.matchNumber;
+    const number = valid(nodeNumber) ? nodeNumber : numericMatchIdentifier(String(match.code));
+    if (
+      number &&
+      !used.has(number) &&
+      (!reserved.has(number) || nodeNumber === number) &&
+      (valid(nodeNumber) || sourceCounts.get(number) === 1)
+    ) {
+      match.matchNumber = number;
+      used.add(number);
+    }
+  }
+  let sequence = valid(previousSequence) ? previousSequence : 0;
+  for (const number of [...used, ...reserved]) sequence = Math.max(sequence, number);
+  for (const match of matches) {
+    if (match.matchNumber != null) continue;
+    if (++sequence > MAX_MATCH_NUMBER)
+      throw new AppError('Archived match numbers exceed the supported range.');
+    match.matchNumber = sequence;
+  }
+  for (const node of nodes) {
+    const match = matches.find((match) => match.id === node.matchId);
+    if (match && node.matchNumber == null) node.matchNumber = match.matchNumber;
+    if (match && node.matchNumber !== match.matchNumber)
+      throw new AppError(
+        'An archived bracket position has a different number from its linked match.',
+      );
+  }
+  return sequence;
+}
+
 export type NumberableNode = {
   id: string;
   bracketId: string;

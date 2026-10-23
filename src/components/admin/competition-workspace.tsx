@@ -25,6 +25,7 @@ import type {
   CompetitionOptions,
 } from '@/lib/competition-types';
 import { action, Field, LoadingState, Modal, usePolling, useResource, useTask } from './shared';
+import { BracketRoundTools } from './bracket-rounds';
 
 export function CompetitionWorkspace({ actor }: { actor: Actor }) {
   const scope = useTournamentScope();
@@ -67,6 +68,14 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
         <div className="flex flex-wrap items-center gap-2">
           {editable && bracket && (
             <>
+              {data.options && (
+                <BracketRoundTools
+                  key={bracket.id}
+                  bracket={bracket}
+                  options={data.options}
+                  save={save}
+                />
+              )}
               {bracket.format === 'GROUPS' && bracket.standings?.some((row) => row.tied) && (
                 <Button
                   variant="outline"
@@ -231,6 +240,7 @@ function CreateCompetition({
     groupCount: 1,
     advancePerGroup: 2,
     roundStages: {},
+    manualMatches: false,
   }));
   const [plan, setPlan] = useState<CompetitionPlan | null>(null),
     [cutoff, setCutoff] = useState(16);
@@ -412,6 +422,21 @@ function CreateCompetition({
             Grand Finals reset
           </label>
         )}
+        <label className="flex items-start gap-2 rounded-lg border p-3 text-sm">
+          <input
+            type="checkbox"
+            checked={form.manualMatches}
+            onChange={(event) => change({ manualMatches: event.target.checked })}
+            className="mt-1"
+          />
+          <span>
+            <span className="block font-medium">Link existing matches</span>
+            <span className="text-xs text-muted">
+              Build the bracket without creating replacement matches. Attach existing records to
+              resolved positions while preserving their scores, referee actions, and match IDs.
+            </span>
+          </span>
+        </label>
         <fieldset>
           <legend className="mb-2 text-sm font-semibold">
             Participants ({form.teamIds.length})
@@ -651,10 +676,21 @@ function EditCompetitionNode({
     ),
     [allow, setAllow] = useState(false),
     [reason, setReason] = useState('');
+  const [existingMatchId, setExistingMatchId] = useState('');
   const { run, busy } = useTask();
   const protectedMatch =
     !!node.match && (node.match.status !== 'SCHEDULED' || !!node.match.startedAt);
   const base = { id: bracket.id, baseVersion: bracket.version, nodeId: node.id, side };
+  const stageId = bracket.rounds.find((round) => round.id === node.roundId)?.stageId;
+  const slotA = node.slots.find((slot) => slot.side === 'A');
+  const slotB = node.slots.find((slot) => slot.side === 'B');
+  const linkableMatches = (options?.linkableMatches || []).filter(
+    (match) =>
+      match.stageId === stageId &&
+      ((match.teamAId === slotA?.teamId && match.teamBId === slotB?.teamId) ||
+        (match.teamAId === slotB?.teamId && match.teamBId === slotA?.teamId)),
+  );
+  const selectedMatch = linkableMatches.find((match) => match.id === existingMatchId);
   return (
     <Modal
       title={
@@ -677,6 +713,57 @@ function EditCompetitionNode({
               Open match
             </Link>
           </Button>
+        )}
+        {bracket.manualMatches && !node.matchId && node.state === 'READY' && (
+          <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
+            <Field label="Existing match">
+              <select
+                value={existingMatchId}
+                onChange={(event) => setExistingMatchId(event.target.value)}
+              >
+                <option value="">Choose an unlinked match</option>
+                {linkableMatches.map((match) => (
+                  <option key={match.id} value={match.id}>
+                    Match {match.matchNumber} · {match.teamAName} vs {match.teamBName} ·{' '}
+                    {match.status.toLowerCase()} · {match.scoreA}-{match.scoreB}
+                    {match.teamAId !== slotA?.teamId ? ' · reversed sides' : ''}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {selectedMatch && selectedMatch.teamAId !== slotA?.teamId && (
+              <p className="text-xs text-muted">
+                Bracket sides will be swapped to match the original red and blue teams.
+              </p>
+            )}
+            {linkableMatches.length ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy || !selectedMatch}
+                onClick={() =>
+                  void run(async () => {
+                    await save({
+                      type: 'competition.link-match',
+                      id: bracket.id,
+                      baseVersion: bracket.version,
+                      nodeId: node.id,
+                      matchId: existingMatchId,
+                      matchVersion: selectedMatch!.version,
+                      reverseSides: selectedMatch!.teamAId !== slotA?.teamId,
+                    });
+                    close();
+                  })
+                }
+              >
+                Link existing match
+              </Button>
+            ) : (
+              <p className="text-xs text-muted">
+                No unlinked matches have this stage and these participants.
+              </p>
+            )}
+          </div>
         )}
         {protectedMatch ? (
           <p className="text-sm text-muted">Participants are protected after a match starts.</p>

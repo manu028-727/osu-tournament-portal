@@ -32,6 +32,8 @@ export function PoolSlotTable({
   onCopy,
   onBulkRemove,
   onBulkCategory,
+  onBulkTransfer,
+  transferDisabled,
 }: {
   slots: EditorSlot[];
   categories: (SortCategory & { color: string })[];
@@ -44,6 +46,8 @@ export function PoolSlotTable({
   onCopy: (text: string) => void;
   onBulkRemove: (ids: string[]) => void;
   onBulkCategory: (ids: string[], category: string) => void;
+  onBulkTransfer?: (names: string[]) => void;
+  transferDisabled?: boolean;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -92,6 +96,32 @@ export function PoolSlotTable({
               >
                 Copy IDs
               </button>
+              {onBulkTransfer && (
+                <button
+                  type="button"
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 hover:bg-[var(--surface-hover)]"
+                  disabled={
+                    disabled ||
+                    transferDisabled ||
+                    !slots.some((slot) => selected.has(slot.editorId) && slot.beatmapId > 0)
+                  }
+                  title={
+                    transferDisabled
+                      ? 'Save draft changes before transferring maps'
+                      : 'Copy or move saved maps to another stage'
+                  }
+                  onClick={() =>
+                    onBulkTransfer(
+                      slots
+                        .filter((slot) => selected.has(slot.editorId) && slot.beatmapId > 0)
+                        .map((slot) => slot.name),
+                    )
+                  }
+                >
+                  <Copy size={14} />
+                  Copy / move to stage
+                </button>
+              )}
               <label className="ml-auto flex items-center gap-2">
                 <span className="text-xs text-muted">Change mod</span>
                 <select

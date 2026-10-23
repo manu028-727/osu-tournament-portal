@@ -16,6 +16,19 @@ Each playable `BracketNode` stores its reserved `matchNumber`. The number is cop
 
 The migration preserves unambiguous positive numeric match codes. Duplicate numeric spellings and nonnumeric codes retain their original source `code` and receive distinct numbers in creation order. Existing bracket matches inherit their match number; unmaterialized playable nodes reserve numbers after historical matches, ordered by bracket creation and configured round/position. No match IDs, actions, scores, or results are rewritten.
 
-UI/API consumers should display `MatchSummary.matchNumber` and `CompetitionNode.matchNumber` as `Match N`. `CompetitionMatch.matchNumber` carries the same value when the node has materialized. Match search accepts the number as well as the existing code and team names. Existing code and internal-ID deep links remain valid.
+UI/API consumers should display `MatchSummary.matchNumber` and `CompetitionNode.matchNumber` as `Match N`. `CompetitionMatch.matchNumber` carries the same value when the node has materialized. Match search accepts the number as well as the existing code and team names. Public numeric URLs identify only `matchNumber`; nonnumeric source-code URLs and internal-ID organizer links remain valid. Numeric legacy codes cannot shadow a different match's stable number.
 
 Because tournament numbers are now assigned by the database trigger, production schema deployment must apply this migration before starting code generated from the updated Prisma schema.
+
+## Build a bracket from existing match history
+
+1. Open **Matches**, switch to **Bracket**, and select **Create bracket**.
+2. Choose the actual bracket format and seed order. Enable **Link existing matches**.
+3. Preview the bracket and assign the correct gameplay stage to each round before generating it. This mode creates positions without creating replacement matches or allocating new match numbers.
+4. Starting with the earliest round, open a ready position and choose its existing match. Candidates must belong to the same tournament and stage and contain the same two participants. A reversed red/blue order is identified explicitly; linking swaps the bracket's incoming sides while preserving the match's original sides and actions.
+5. Click **Link existing match**. Completed results resolve the following positions. Repeat through the played rounds, then link the existing scheduled Grand Finals fixtures when their participants are resolved.
+6. Referee and confirm the linked upcoming match normally. The bracket advances from that same Match record.
+
+Existing match numbers, multiplayer links, player scores, actions, and result history remain in their original records. A match can occupy only one bracket position. Version checks reject stale links, and protected downstream matches require reconciliation rather than replacement. **Round stages** can assign a stage to multiple unstarted rounds; rounds containing operational history cannot be reassigned.
+
+Tournament exports now include match numbers, bracket reservations, and the allocation counter. Older archives without these fields keep unambiguous numeric source codes when possible, and receive safe new numbers for the remaining records during import.

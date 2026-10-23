@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { PrismaClient } from '../../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
 const db = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.TEST_DATABASE_URL }),
 });
@@ -14,7 +14,7 @@ test.beforeAll(async () => {
   userId = (
     await db.user.create({
       data: {
-        osuId: 989300001,
+        osuId: randomInt(1_900_000_000, 2_000_000_000),
         username: prefix,
         avatarUrl: 'https://a.ppy.sh/1',
         profileUrl: '',
@@ -39,7 +39,7 @@ test.afterAll(async () => {
     await db.role.deleteMany({ where: { tournamentId: t.id } });
     await db.tournament.delete({ where: { id: t.id } });
   }
-  await db.user.delete({ where: { id: userId } });
+  if (userId) await db.user.delete({ where: { id: userId } });
   await db.$disconnect();
 });
 test('directory OAuth links use document navigation instead of a client-router fetch', async ({

@@ -8,12 +8,20 @@ import { canAccessSection } from '@/lib/workspace';
 import { teamInclude } from '@/lib/teams-service';
 import { matchData, matchOptions } from '@/lib/matches-service';
 import { qualifierData } from '@/lib/qualifiers-service';
-import { matchRulesSchema } from '@/lib/match-rules';
-import { inheritedRules } from '@/lib/gameplay-scoring';
 import { scoringImpact } from '@/lib/gameplay-scoring-service';
 import { competitionData, previewCompetitionCorrection } from '@/lib/competition-service';
 import { qualifierStandingsData } from '@/lib/qualifier-standings-service';
 import { stageReconciliationPreview } from '@/lib/stage-reconciliation-service';
+import { poolingData } from '@/lib/pooling-service';
+import { stageWorkflowData } from '@/lib/stage-workflows';
+const auditSummary = {
+  id: true,
+  action: true,
+  entityType: true,
+  entityId: true,
+  createdAt: true,
+  actor: { select: { username: true } },
+} as const;
 export async function GET(request: Request) {
   try {
     const actor = await requireTournamentActor();
@@ -23,6 +31,9 @@ export async function GET(request: Request) {
       section = url.searchParams.get('section');
     let data: unknown;
     switch (section) {
+      case 'pooling':
+        data = await poolingData(actor);
+        break;
       case 'competition':
         data = await competitionData(actor);
         break;
@@ -56,20 +67,7 @@ export async function GET(request: Request) {
         break;
       case 'stages': {
         if (!canAccessSection(actor, 'stages')) throw new AppError('Forbidden.', 403);
-        const settings = (await getTournament()).settings!;
-        const stages = await db.tournamentStage.findMany({ orderBy: { position: 'asc' } });
-        data = {
-          stages: stages.map((s) => ({
-            ...s,
-            matchRules:
-              s.matchRules && settings.gameplayScoring
-                ? inheritedRules(s.matchRules, settings.gameplayScoring)
-                : s.matchRules,
-          })),
-          defaults: settings.gameplayScoring
-            ? inheritedRules(settings.matchRules, settings.gameplayScoring)
-            : matchRulesSchema.parse(settings.matchRules),
-        };
+        data = await stageWorkflowData(db, actor);
         break;
       }
       case 'qualifiers':
@@ -148,6 +146,7 @@ export async function GET(request: Request) {
           stages: await db.tournamentStage.findMany({
             orderBy: { position: 'asc' },
             include: {
+              ...(drafts ? { poolPlan: true } : {}),
               mappool: {
                 select: {
                   id: true,
@@ -231,7 +230,7 @@ export async function GET(request: Request) {
         data = await db.auditLog.findMany({
           orderBy: { createdAt: 'desc' },
           take: 150,
-          include: { actor: { select: { username: true } } },
+          select: auditSummary,
         });
         break;
       case 'overview': {
@@ -269,7 +268,7 @@ export async function GET(request: Request) {
             ? await db.auditLog.findMany({
                 take: 8,
                 orderBy: { createdAt: 'desc' },
-                include: { actor: { select: { username: true } } },
+                select: auditSummary,
               })
             : [],
           stages: await db.tournamentStage.findMany({

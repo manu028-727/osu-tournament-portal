@@ -65,6 +65,8 @@ storage and an optional Bancho IRC gateway are also supported.
 - [Interface design and visual testing](docs/DESIGN.md)
 - [Optional IRC and credential security](docs/IRC.md)
 - [Competition workflows, migration and verification](docs/COMPETITION-OVERHAUL.md)
+- [Organizer bulk editing, stages, pooling and scheduling](docs/ORGANIZER-WORKFLOW-AUDIT.md)
+- [Stable match numbers and linking historical brackets](docs/MATCH-NUMBERING.md)
 - [Qualifier calculations and seeding](docs/QUALIFIER-SEEDING.md)
 - [Contributing](CONTRIBUTING.md) and [security reporting](SECURITY.md)
 

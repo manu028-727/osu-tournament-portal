@@ -412,8 +412,10 @@ describe.sequential('persistent authorization and publishing workflows', () => {
     ).rejects.toThrow('permission');
     expect(poolerRole).toBeTruthy();
   });
-  it('protects the last Owner with a transaction lock', async () => {
+  it('demotes another Owner while protecting the caller’s ownership', async () => {
     const playerRole = await db.role.findUniqueOrThrow({ where: { systemKey: 'Player' } });
+    const role = await db.role.findUniqueOrThrow({ where: { systemKey: 'Owner' } });
+    const ownersBefore = await db.userRole.count({ where: { roleId: role.id } });
     await executeAction(owner, {
       type: 'user.roles',
       userId: secondOwner.id,
@@ -422,8 +424,8 @@ describe.sequential('persistent authorization and publishing workflows', () => {
     await expect(
       executeAction(owner, { type: 'user.roles', userId: owner.id, roleIds: [playerRole.id] }),
     ).rejects.toThrow('own roles');
-    const role = await db.role.findUniqueOrThrow({ where: { systemKey: 'Owner' } });
-    expect(await db.userRole.count({ where: { roleId: role.id } })).toBe(1);
+    expect(await db.userRole.count({ where: { roleId: role.id } })).toBe(ownersBefore - 1);
+    expect(await db.userRole.count({ where: { roleId: role.id, userId: owner.id } })).toBe(1);
   });
   it('persists settings, audits and opaque sessions in PostgreSQL', async () => {
     const raw = token();

@@ -4,6 +4,7 @@ import { ZipFile } from 'yazl';
 import { createHash } from 'node:crypto';
 import type { Readable } from 'node:stream';
 import { AppError } from './permissions';
+import { poolPlanSchema } from './pooling-validation';
 
 export const ARCHIVE_FORMAT = 'osu-tournament-portal';
 export const ARCHIVE_VERSION = 1;
@@ -29,7 +30,7 @@ const def = (
 export const ARCHIVE_TABLES = {
   tournament: def(
     'tournament',
-    'id:s slug:s name:s acronym:s description:s status:s gameMode:s published:b timezone:s format:s archivedAt:d? startsAt:d? endsAt:d? version:i createdAt:d updatedAt:d',
+    'id:s slug:s name:s acronym:s description:s status:s gameMode:s published:b timezone:s format:s archivedAt:d? startsAt:d? endsAt:d? version:i matchNumberSequence:i? createdAt:d updatedAt:d',
   ),
   settings: def(
     'tournamentSettings',
@@ -91,6 +92,39 @@ export const ARCHIVE_TABLES = {
     ['revision'],
   ),
   beatmaps: def('beatmap', 'id:i mode:s metadata:j fetchedAt:d'),
+  poolPlans: def(
+    'poolPlan',
+    'id:s tournamentId:s stageId:s slots:j minStars:n? maxStars:n? reviewState:s version:i updatedAt:d',
+    { tournamentId: 'tournament', stageId: 'stages' },
+  ),
+  poolSkillsets: def('poolSkillset', 'id:s tournamentId:s name:s group:s', {
+    tournamentId: 'tournament',
+  }),
+  poolWarnings: def(
+    'poolArtistWarning',
+    'id:s tournamentId:s artist:s artistKey:s severity:s reason:s source:s',
+    { tournamentId: 'tournament' },
+  ),
+  poolCandidates: def(
+    'poolCandidate',
+    'id:s tournamentId:s stageId:s? beatmapId:i metadata:j category:s status:s notes:s submitterId:s? selectedSlot:s? warningResolution:j? version:i createdAt:d updatedAt:d',
+    {
+      tournamentId: 'tournament',
+      stageId: 'stages',
+      beatmapId: 'beatmaps',
+      submitterId: 'identities',
+    },
+  ),
+  poolTags: def('poolCandidateTag', 'tournamentId:s candidateId:s skillsetId:s primary:b', {
+    tournamentId: 'tournament',
+    candidateId: 'poolCandidates',
+    skillsetId: 'poolSkillsets',
+  }),
+  poolReviews: def(
+    'poolReview',
+    'id:s tournamentId:s candidateId:s reviewerId:s fit:i? difficulty:i? flags:s notes:s completed:b version:i updatedAt:d',
+    { tournamentId: 'tournament', candidateId: 'poolCandidates', reviewerId: 'identities' },
+  ),
   staffCategories: def('staffCategory', 'id:s tournamentId:s name:s description:s position:i', {
     tournamentId: 'tournament',
   }),
@@ -117,7 +151,7 @@ export const ARCHIVE_TABLES = {
   ),
   matches: def(
     'match',
-    'id:s tournamentId:s code:s stageId:s teamAId:s? teamBId:s? poolRevisionId:s? participants:j rules:j status:s scheduledAt:d? published:b bracket:s resultMode:s sourceKey:s? source:j? version:i scoreA:i scoreB:i winnerSide:s? forfeitSide:s? rollA:i? rollB:i? firstPickSide:s? firstBanSide:s? firstProtectSide:s? lobbyUrl:s multiplayerId:i? multiplayerSync:j? multiplayerSyncedAt:d? multiplayerError:s? notes:s timerKind:s? timerRemainingSeconds:i timerStartedAt:d? startedAt:d? submittedAt:d? completedAt:d? createdAt:d updatedAt:d',
+    'id:s tournamentId:s code:s matchNumber:i? stageId:s teamAId:s? teamBId:s? poolRevisionId:s? participants:j rules:j status:s scheduledAt:d? published:b bracket:s resultMode:s sourceKey:s? source:j? version:i scoreA:i scoreB:i winnerSide:s? forfeitSide:s? rollA:i? rollB:i? firstPickSide:s? firstBanSide:s? firstProtectSide:s? lobbyUrl:s multiplayerId:i? multiplayerSync:j? multiplayerSyncedAt:d? multiplayerError:s? notes:s timerKind:s? timerRemainingSeconds:i timerStartedAt:d? startedAt:d? submittedAt:d? completedAt:d? createdAt:d updatedAt:d',
     {
       tournamentId: 'tournament',
       stageId: 'stages',
@@ -206,7 +240,7 @@ export const ARCHIVE_TABLES = {
   ),
   bracketNodes: def(
     'bracketNode',
-    'id:s tournamentId:s bracketId:s roundId:s key:s position:i matchId:s? state:s',
+    'id:s tournamentId:s bracketId:s roundId:s key:s position:i matchNumber:i? matchId:s? state:s',
     {
       tournamentId: 'tournament',
       bracketId: 'brackets',
@@ -289,6 +323,16 @@ const primitive: Record<string, z.ZodType> = {
   j: z.json(),
 };
 const enumFields: Record<string, readonly [string, ...string[]]> = {
+  'poolPlans.reviewState': ['DRAFT', 'REVIEW', 'APPROVED'],
+  'poolCandidates.status': [
+    'SUGGESTED',
+    'REVIEW',
+    'PLAYTESTING',
+    'ACCEPTED',
+    'REJECTED',
+    'SELECTED',
+  ],
+  'poolWarnings.severity': ['WARN', 'BANNED'],
   'settings.gameplayScoring': ['SCORE_V1', 'SCORE_V2', 'LAZER'],
   'qualifierLobbies.gameplayScoring': ['SCORE_V1', 'SCORE_V2', 'LAZER'],
   'qualifierScores.actualScoring': ['SCORE_V1', 'SCORE_V2', 'LAZER'],
@@ -334,6 +378,15 @@ function fieldSchema(table: ArchiveTable, name: string, type: string, nullable: 
     schema = z.string().min(1).max(100);
   if (type === 's' && /^(?:color|primaryColor|accentColor)$/.test(name))
     schema = z.string().regex(/^#[a-fA-F0-9]{6}$/);
+  if (name === 'matchNumber') schema = z.number().int().positive().max(2147483647);
+  if (name === 'matchNumberSequence') schema = z.number().int().min(0).max(2147483647);
+  if (table === 'poolReviews' && ['fit', 'difficulty'].includes(name))
+    schema = z.number().int().min(1).max(5);
+  if (table === 'poolWarnings' && name === 'source')
+    schema = z
+      .string()
+      .max(2048)
+      .refine((value) => !value || /^https?:\/\//.test(value), 'Unsafe warning source URL.');
   const defaults: Record<string, unknown> = {
     'qualifierScores.run': 1,
     'qualifierScores.representation': 'LEGACY',
@@ -371,6 +424,12 @@ const tablesSchema = z
             'bracketNodes',
             'bracketSlots',
             'bracketEntries',
+            'poolPlans',
+            'poolSkillsets',
+            'poolWarnings',
+            'poolCandidates',
+            'poolTags',
+            'poolReviews',
           ].includes(table)
             ? records.default([])
             : records,
@@ -452,6 +511,13 @@ export function validateArchiveData(input: unknown): ArchiveData {
     throw new AppError('Archive contains too many records.');
   if (data.tournament.length !== 1 || data.settings.length !== 1)
     throw new AppError('Archive must contain one tournament and its settings.');
+  for (const plan of data.poolPlans)
+    poolPlanSchema.parse({
+      slots: plan.slots,
+      minStars: plan.minStars ?? null,
+      maxStars: plan.maxStars ?? null,
+      baseVersion: plan.version,
+    });
   const indices = new Map<ArchiveTable, Map<unknown, ArchiveRow>>();
   const globalIds = new Set<string>();
   for (const table of tableNames) {
@@ -549,7 +615,13 @@ export function validateArchiveData(input: unknown): ArchiveData {
     staffAssignments: [['memberId', 'categoryId']],
     teams: [['slug']],
     rosters: [['osuId'], ['teamId', 'position']],
-    matches: [['code']],
+    matches: [['code'], ['matchNumber']],
+    poolPlans: [['stageId']],
+    poolSkillsets: [['name']],
+    poolWarnings: [['artistKey']],
+    poolCandidates: [['beatmapId']],
+    poolTags: [['candidateId', 'skillsetId']],
+    poolReviews: [['candidateId', 'reviewerId']],
     actions: [['matchId', 'sequence']],
     mapResults: [['actionId']],
     playerScores: [['resultId', 'osuId']],
@@ -565,7 +637,7 @@ export function validateArchiveData(input: unknown): ArchiveData {
     qualifierStandings: [['stageId', 'version']],
     brackets: [['generationKey']],
     bracketRounds: [['bracketId', 'key']],
-    bracketNodes: [['bracketId', 'key']],
+    bracketNodes: [['bracketId', 'key'], ['matchNumber']],
     bracketSlots: [['nodeId', 'side']],
     bracketEntries: [
       ['bracketId', 'teamId'],
@@ -577,6 +649,7 @@ export function validateArchiveData(input: unknown): ArchiveData {
     for (const fields of combinations) {
       const seen = new Set<string>();
       for (const row of data[table as ArchiveTable]) {
+        if (fields.some((field) => row[field] == null)) continue;
         const key = JSON.stringify(fields.map((field) => row[field]));
         if (seen.has(key)) throw new AppError(`Duplicate ${table} fields: ${fields.join(', ')}.`);
         seen.add(key);

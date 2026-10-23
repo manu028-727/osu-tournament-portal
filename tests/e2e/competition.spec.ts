@@ -166,6 +166,7 @@ const test = base.extend<{ competition: CompetitionFixture }>({
             seed: index,
             format: 'INDIVIDUAL',
             status: 'APPROVED',
+            published: true,
             members: { create: { osuId, captain: true, position: 0 } },
           },
         });
@@ -233,6 +234,7 @@ const test = base.extend<{ competition: CompetitionFixture }>({
             await tx.bracketEntry.deleteMany({ where });
             await tx.bracket.deleteMany({ where });
             await tx.match.deleteMany({ where });
+            await tx.poolCandidate.deleteMany({ where });
             await tx.qualifierStanding.deleteMany({ where });
             await tx.qualifierLobby.deleteMany({ where });
             await tx.mappool.updateMany({
@@ -247,6 +249,8 @@ const test = base.extend<{ competition: CompetitionFixture }>({
               data: { draftRevisionId: null, publishedRevisionId: null },
             });
             await tx.auditLog.deleteMany({ where });
+            await tx.staffMember.deleteMany({ where });
+            await tx.staffCategory.deleteMany({ where });
             await tx.role.deleteMany({ where });
             await tx.tournament.delete({ where: { id: tournament.id } });
           },
@@ -293,6 +297,7 @@ function bracketInput(
     groupCount: 1,
     advancePerGroup: 2,
     roundStages: {},
+    manualMatches: false,
     ...extra,
   };
 }
@@ -420,6 +425,7 @@ async function screenshotLayouts(
   testInfo: TestInfo,
   label: string,
   region: Locator,
+  scrollableTables = false,
 ) {
   for (const theme of ['light', 'dark'] as const) {
     await context.addCookies([
@@ -465,6 +471,7 @@ async function screenshotLayouts(
         layout.viewport,
       );
       for (const select of await region.getByRole('combobox').all()) {
+        if (scrollableTables) continue;
         if (!(await select.isVisible())) continue;
         const rect = await select.boundingBox();
         expect(rect!.width).toBeGreaterThan(0);
@@ -475,6 +482,354 @@ async function screenshotLayouts(
   }
   await page.setViewportSize({ width: 1366, height: 900 });
 }
+
+test('bulk stage rules, persistent empty pool plans and suggestion reviews work through the organizer UI', async ({
+  page,
+  context,
+  competition: f,
+}, testInfo) => {
+  test.setTimeout(180000);
+  page.setDefaultTimeout(15000);
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  const later = await f.post({
+    type: 'stage.save',
+    name: 'Later round',
+    slug: 'later',
+    description: '',
+    position: 1,
+    startsAt: null,
+    kind: 'ELIMINATION',
+    matchRules: null,
+  });
+  await page.goto(`${f.root}/admin/mappools?view=stages`);
+  await page.getByRole('checkbox', { name: 'Select Elimination', exact: true }).check();
+  await page.getByRole('checkbox', { name: 'Select Later round', exact: true }).check();
+  await page
+    .getByRole('region', { name: 'Bulk stage editing' })
+    .getByRole('combobox', { name: 'Best of', exact: true })
+    .selectOption('3');
+  await uiAction(page, 'stage.rules.patch', () =>
+    page.getByRole('button', { name: 'Apply to 2 stages', exact: true }).click(),
+  );
+  expect(
+    (await db.tournamentStage.findUniqueOrThrow({ where: { id: later.id } })).matchRules,
+  ).toMatchObject({ bestOf: 3 });
+  await screenshotLayouts(page, context, testInfo, 'stage-bulk', page.getByRole('main'), true);
+  await page.goto(`${f.root}/admin/mappools?stage=${later.id}`);
+  await page.getByRole('button', { name: 'Build slot plan', exact: true }).click();
+  let dialog = page.getByRole('dialog');
+  await dialog.getByLabel('NM · NM', { exact: true }).fill('2');
+  await dialog.getByRole('button', { name: 'Create slots', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await uiAction(page, 'pool.save', () =>
+    page.getByRole('button', { name: 'Save draft', exact: true }).click(),
+  );
+  await expect(page.getByRole('button', { name: 'Save draft', exact: true })).toBeDisabled();
+  await page.reload();
+  expect((await db.poolPlan.findUniqueOrThrow({ where: { stageId: later.id } })).slots).toEqual([
+    { name: 'NM1', category: 'NM' },
+    { name: 'NM2', category: 'NM' },
+  ]);
+  const currentPool = await db.mappool.findUniqueOrThrow({
+    where: { stageId: f.stageId },
+    include: { publishedRevision: { include: { slots: true } } },
+  });
+  const map = currentPool.publishedRevision!.slots[0];
+  await page.goto(`${f.root}/admin/mappools?view=pooling`);
+  await page.getByRole('button', { name: 'Suggest maps', exact: true }).click();
+  dialog = page.getByRole('dialog');
+  await dialog
+    .getByLabel('Beatmap IDs or URLs', { exact: true })
+    .fill(`https://osu.ppy.sh/beatmaps/${map.beatmapId}`);
+  await dialog.getByLabel('Suggested stage', { exact: true }).selectOption(later.id);
+  await dialog.getByLabel('Mod category', { exact: true }).selectOption('NM');
+  await dialog.getByRole('button', { name: 'Preview suggestions', exact: true }).click();
+  await expect(
+    dialog.getByText('1 new · 0 already suggested · 0 unavailable', { exact: true }),
+  ).toBeVisible();
+  await uiAction(page, 'pooling.suggest', () =>
+    dialog.getByRole('button', { name: 'Submit 1 suggestions', exact: true }).click(),
+  );
+  await expect(dialog).toHaveCount(0);
+  await uiAction(page, 'pooling.bulk', () =>
+    page.getByLabel('Status for Competition NM1', { exact: true }).selectOption('ACCEPTED'),
+  );
+  await page.getByRole('button', { name: 'Review Competition NM1', exact: true }).click();
+  dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Pool fit', { exact: true }).selectOption('4');
+  await dialog.getByLabel('Difficulty', { exact: true }).selectOption('3');
+  await dialog
+    .getByLabel('Feedback / suggested replacements', { exact: true })
+    .fill('Verified through the organizer browser workflow.');
+  await uiAction(page, 'pooling.review.save', () =>
+    dialog.getByRole('button', { name: 'Save completed review', exact: true }).click(),
+  );
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole('button', { name: 'Select Competition NM1 into pool', exact: true }).click();
+  dialog = page.getByRole('dialog');
+  await uiAction(page, 'pooling.select', () =>
+    dialog.getByRole('button', { name: 'Select into draft', exact: true }).click(),
+  );
+  await expect(dialog).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('cell', { name: 'Selected NM1', exact: true })).toBeVisible();
+  const candidate = await db.poolCandidate.findFirstOrThrow({
+    where: { tournamentId: f.id },
+    include: { reviews: true },
+  });
+  expect(candidate.reviews[0].notes).toContain('browser workflow');
+  const destination = await db.mappool.findUniqueOrThrow({
+    where: { stageId: later.id },
+    include: { draftRevision: { include: { slots: true } } },
+  });
+  expect(destination.publishedRevisionId).toBeNull();
+  expect(destination.draftRevision!.slots).toHaveLength(1);
+  await screenshotLayouts(page, context, testInfo, 'pooling-reviews', page.getByRole('main'), true);
+  expect(errors).toEqual([]);
+});
+
+test('an existing completed match can be linked with reversed bracket sides and its history intact', async ({
+  page,
+  competition: f,
+}) => {
+  const existing = await f.post({
+    type: 'match.create',
+    code: '1',
+    stageId: f.stageId,
+    teamAId: f.entrants[1].id,
+    teamBId: f.entrants[0].id,
+    refereeIds: [],
+    notes: '',
+  });
+  await playToSubmission(f, existing.id);
+  await confirm(f, existing.id);
+  const before = await db.match.findUniqueOrThrow({ where: { id: existing.id } });
+  const history = await db.matchMapAction.count({ where: { matchId: existing.id } });
+  const created = await f.post(
+    bracketInput(f, 'Historical bracket', {
+      manualMatches: true,
+      teamIds: f.entrants.slice(0, 2).map((entrant) => entrant.id),
+    }),
+  );
+  const initial = await bracket(created.id),
+    node = initial.nodes.find((item) => item.state === 'READY')!;
+  expect(initial.nodes.every((item) => !item.matchId && item.matchNumber === null)).toBe(true);
+  await openBracket(page, f, created.id);
+  await page
+    .getByLabel('Bracket canvas', { exact: true })
+    .getByRole('button', { name: node.key, exact: true })
+    .click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Existing match', { exact: true }).selectOption(existing.id);
+  await expect(dialog.getByText('Bracket sides will be swapped', { exact: false })).toBeVisible();
+  await uiAction(page, 'competition.link-match', () =>
+    dialog.getByRole('button', { name: 'Link existing match', exact: true }).click(),
+  );
+  await expect(dialog).toHaveCount(0);
+  const linked = await db.bracketNode.findUniqueOrThrow({ where: { id: node.id } });
+  expect(linked.matchId).toBe(before.id);
+  expect(linked.matchNumber).toBe(before.matchNumber);
+  expect(await db.match.findUniqueOrThrow({ where: { id: before.id } })).toMatchObject({
+    version: before.version,
+    scoreA: before.scoreA,
+    scoreB: before.scoreB,
+    lobbyUrl: before.lobbyUrl,
+  });
+  expect(await db.matchMapAction.count({ where: { matchId: before.id } })).toBe(history);
+  expect(await db.match.count({ where: { tournamentId: f.id } })).toBe(1);
+});
+
+test('bulk pool releases preserve revisions and audit responses never expose draft payloads', async ({
+  page,
+  competition: f,
+}) => {
+  const pool = await db.mappool.findUniqueOrThrow({
+    where: { stageId: f.stageId },
+    include: { draftRevision: { include: { slots: true } } },
+  });
+  const draft = await f.post<{ revisionId: string }>({
+    type: 'pool.save',
+    id: pool.id,
+    baseRevisionId: pool.draftRevisionId,
+    notes: 'Private pooling note',
+    slots: pool.draftRevision!.slots.map(({ name, category, beatmapId }) => ({
+      name,
+      category,
+      beatmapId,
+    })),
+  });
+  await page.goto(`${f.root}/admin/mappools`);
+  await page.getByRole('button', { name: 'Pool releases', exact: true }).click();
+  let dialog = page.getByRole('dialog', { name: 'Pool releases', exact: true });
+  await dialog.getByRole('checkbox', { name: 'Release Elimination', exact: true }).check();
+  await uiAction(page, 'pooling.pools.release', () =>
+    dialog.getByRole('button', { name: 'Publish 1 pools', exact: true }).click(),
+  );
+  await expect(dialog).toHaveCount(0);
+  expect((await db.mappool.findUniqueOrThrow({ where: { id: pool.id } })).publishedRevisionId).toBe(
+    draft.revisionId,
+  );
+  await page.getByRole('button', { name: 'Pool releases', exact: true }).click();
+  dialog = page.getByRole('dialog', { name: 'Pool releases', exact: true });
+  await dialog.getByLabel('Release action', { exact: true }).selectOption('UNPUBLISH');
+  await dialog.getByRole('checkbox', { name: 'Release Elimination', exact: true }).check();
+  await uiAction(page, 'pooling.pools.release', () =>
+    dialog.getByRole('button', { name: 'Unpublish 1 pools', exact: true }).click(),
+  );
+  await expect(dialog).toHaveCount(0);
+  expect(await db.mappool.findUniqueOrThrow({ where: { id: pool.id } })).toMatchObject({
+    state: 'UNPUBLISHED',
+    publishedRevisionId: null,
+    draftRevisionId: draft.revisionId,
+  });
+  const audit = await f.data<Record<string, unknown>[]>('audit');
+  expect(audit.length).toBeGreaterThan(0);
+  expect(audit.every((entry) => !('details' in entry))).toBe(true);
+  expect(
+    await db.auditLog.count({ where: { tournamentId: f.id, action: 'pooling.pools.release' } }),
+  ).toBe(2);
+});
+
+test('bulk qualifier sessions inherit stage policy and support scheduling and entrant transfers', async ({
+  page,
+  context,
+  competition: f,
+}, testInfo) => {
+  page.setDefaultTimeout(15000);
+  const stage = await f.post({
+    type: 'stage.save',
+    name: 'Qualifiers',
+    slug: 'qualifiers',
+    kind: 'QUALIFIERS',
+    description: '',
+    position: 1,
+    startsAt: null,
+    matchRules: null,
+    qualifierPolicy: {
+      runs: 2,
+      runSelection: 'BEST_COMPLETE_RUN',
+      method: 'RAW_SCORE',
+      requiredPlayers: 1,
+    },
+  });
+  const maps = await db.mappoolSlot.findMany({
+    where: { revision: { mappool: { stageId: f.stageId } } },
+    take: 2,
+  });
+  await publishPool(
+    f.id,
+    stage.id,
+    maps.map((map) => map.beatmapId),
+  );
+  await page.goto(`${f.root}/admin/referee/qualifiers`);
+  await page.getByRole('button', { name: 'Create several sessions', exact: true }).click();
+  let dialog = page.getByRole('dialog', { name: 'Create qualifier sessions', exact: true });
+  await dialog.getByLabel('Qualifier stage', { exact: true }).selectOption(stage.id);
+  await dialog.getByLabel('Number of sessions', { exact: true }).fill('2');
+  await dialog
+    .getByLabel('First session time (your timezone)', { exact: true })
+    .fill('2030-06-12T10:00');
+  await dialog.getByRole('button', { name: 'Preview sessions', exact: true }).click();
+  await uiAction(page, 'qualifier.batch.create', () =>
+    dialog.getByRole('button', { name: 'Create 2 sessions', exact: true }).click(),
+  );
+  await expect(dialog).toHaveCount(0);
+  const lobbies = await db.qualifierLobby.findMany({
+    where: { tournamentId: f.id },
+    orderBy: { code: 'asc' },
+  });
+  expect(lobbies).toHaveLength(2);
+  expect(lobbies[0].policy).toMatchObject({ runs: 2, requiredPlayers: 1 });
+  await page
+    .getByRole('checkbox', { name: 'Select all visible scheduled qualifier sessions', exact: true })
+    .check();
+  await page.getByRole('button', { name: 'Edit schedule and assignments', exact: true }).click();
+  dialog = page.getByRole('dialog', { name: 'Bulk qualifier schedule', exact: true });
+  await dialog.getByLabel('Schedule', { exact: true }).selectOption('shift');
+  await dialog.getByLabel('Shift (minutes)', { exact: true }).fill('60');
+  await uiAction(page, 'qualifier.bulk.schedule', () =>
+    dialog.getByRole('button', { name: 'Apply to 2 sessions', exact: true }).click(),
+  );
+  await expect(dialog).toHaveCount(0);
+  expect(
+    (
+      await db.qualifierLobby.findUniqueOrThrow({ where: { id: lobbies[0].id } })
+    ).scheduledAt!.getTime() - lobbies[0].scheduledAt!.getTime(),
+  ).toBe(3600000);
+  await page.getByRole('button', { name: 'Assign entrants', exact: true }).click();
+  dialog = page.getByRole('dialog', { name: 'Assign qualifier entrants', exact: true });
+  await dialog.getByLabel('To', { exact: true }).selectOption(lobbies[0].id);
+  await dialog.getByRole('checkbox', { name: f.entrants[0].name, exact: true }).check();
+  await uiAction(page, 'qualifier.participants.move', () =>
+    dialog.getByRole('button', { name: 'Assign 1 entrants', exact: true }).click(),
+  );
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole('button', { name: 'Assign entrants', exact: true }).click();
+  dialog = page.getByRole('dialog', { name: 'Assign qualifier entrants', exact: true });
+  await dialog.getByLabel('From', { exact: true }).selectOption(lobbies[0].id);
+  await dialog.getByLabel('To', { exact: true }).selectOption(lobbies[1].id);
+  await dialog.getByRole('checkbox', { name: f.entrants[0].name, exact: true }).check();
+  await uiAction(page, 'qualifier.participants.move', () =>
+    dialog.getByRole('button', { name: 'Assign 1 entrants', exact: true }).click(),
+  );
+  await expect(dialog).toHaveCount(0);
+  await page.reload();
+  expect(await db.qualifierEntry.count({ where: { lobbyId: lobbies[0].id } })).toBe(0);
+  expect(await db.qualifierEntry.count({ where: { lobbyId: lobbies[1].id } })).toBe(1);
+  await screenshotLayouts(
+    page,
+    context,
+    testInfo,
+    'qualifier-scheduling',
+    page.getByRole('main'),
+    true,
+  );
+});
+
+test('public staff categories and visibility can be edited together without granting access', async ({
+  page,
+  context,
+  competition: f,
+}, testInfo) => {
+  const category = await db.staffCategory.create({
+    data: { tournamentId: f.id, name: 'Commentators' },
+  });
+  for (const entrant of f.entrants.slice(0, 2))
+    await db.staffMember.create({
+      data: {
+        tournamentId: f.id,
+        osuId: entrant.osuId,
+        username: entrant.name,
+        avatarUrl: '',
+        profileUrl: '',
+      },
+    });
+  const rolesBefore = await db.userRole.count({ where: { tournamentId: f.id } });
+  await page.goto(`${f.root}/admin/staff`);
+  await page.getByRole('checkbox', { name: 'Select all 2 matching staff', exact: true }).check();
+  await page.getByRole('button', { name: 'Edit positions', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Public visibility', { exact: true }).selectOption('HIDE');
+  await dialog.getByLabel('Public staff category', { exact: true }).selectOption('ADD');
+  await dialog.getByLabel('Category', { exact: true }).selectOption(category.id);
+  await uiAction(page, 'staff.bulk', () =>
+    dialog.getByRole('button', { name: 'Apply to 2 staff', exact: true }).click(),
+  );
+  await expect(dialog).toHaveCount(0);
+  await page.reload();
+  expect(
+    await db.staffMember.count({
+      where: {
+        tournamentId: f.id,
+        visible: false,
+        assignments: { some: { categoryId: category.id } },
+      },
+    }),
+  ).toBe(2);
+  expect(await db.userRole.count({ where: { tournamentId: f.id } })).toBe(rolesBefore);
+  await screenshotLayouts(page, context, testInfo, 'staff-bulk', page.getByRole('main'), true);
+});
 
 test('SE8 preview, native List/Bracket identity, confirmed advancement and public layouts', async ({
   page,
@@ -533,7 +888,7 @@ test('SE8 preview, native List/Bracket identity, confirmed advancement and publi
       .getByLabel('Bracket canvas', { exact: true })
       .getByRole('button', { name: `${node.key} ${match.code}`, exact: true })
       .click();
-    const editor = page.getByRole('dialog', { name: match.code, exact: true });
+    const editor = page.getByRole('dialog', { name: `Match ${match.matchNumber}`, exact: true });
     const nativeLink = editor.getByRole('link', { name: 'Open match', exact: true });
     await expect(nativeLink).toHaveAttribute('href', `${f.root}/admin/referee/${match.id}`);
     await nativeLink.click();
@@ -688,8 +1043,9 @@ test('SE8 preview, native List/Bracket identity, confirmed advancement and publi
       .getByRole('button', { name: `${node.key} ${match.code}`, exact: true })
       .click();
     await expect(publicPage).toHaveURL(
-      `${new URL(page.url()).origin}${f.root}/matches/${match.code}`,
+      `${new URL(page.url()).origin}${f.root}/matches/${match.matchNumber}`,
     );
+    await expect(publicPage.getByRole('region', { name: 'Match action history' })).toBeVisible();
     const denied = await guests.request.post(`/api/admin/action?tournament=${f.slug}`, {
       headers: { Origin: new URL(page.url()).origin },
       data: {

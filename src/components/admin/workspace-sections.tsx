@@ -8,6 +8,7 @@ import { MediaLibrary } from './media';
 import { StaffEditor } from './staff-editor';
 import { RolesEditor, UsersEditor } from './access';
 import { PoolEditor } from './pool-editor';
+import { PoolingWorkspace } from './pooling-workspace';
 import { StagesEditor } from './stages-editor';
 import { AuditLogs, SheetData } from './overview';
 
@@ -94,6 +95,13 @@ export function PoolsWorkspace({
 }) {
   const views = [
     { value: 'pools', label: 'Mappools', allowed: canAccessSection(actor, 'mappools') },
+    {
+      value: 'pooling',
+      label: 'Suggestions & playtesting',
+      allowed: (['mappools.edit', 'mappools.view_drafts', 'mappools.publish'] as const).some(
+        (permission) => can(actor, permission),
+      ),
+    },
     { value: 'stages', label: 'Stage settings', allowed: canAccessSection(actor, 'stages') },
   ].filter((item) => item.allowed);
   const selected = views.find((item) => item.value === view)?.value || views[0]?.value;
@@ -104,7 +112,9 @@ export function PoolsWorkspace({
         active={selected}
         links={views.map((item) => ({ ...item, href: `/admin/mappools?view=${item.value}` }))}
       />
-      {selected === 'stages' ? (
+      {selected === 'pooling' ? (
+        <PoolingWorkspace actor={actor} />
+      ) : selected === 'stages' ? (
         <StagesEditor
           key={`${stage}-${newStage}`}
           actor={actor}

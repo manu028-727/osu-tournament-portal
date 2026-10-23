@@ -24,6 +24,7 @@ import { FreeModCalculator } from './freemod-calculator';
 import { MATCH_STATUS_LABELS } from './matches-dashboard';
 import { useTournamentTime } from '@/components/tournament-scope';
 import { QualifierCaptureDialog } from './qualifier-capture';
+import { QualifierLobbyList } from './qualifier-bulk-tools';
 type StatusCommand = Extract<QualifierAction, { type: 'qualifier.status' }>['command'];
 export function QualifiersWorkspace({
   actor,
@@ -39,8 +40,6 @@ export function QualifiersWorkspace({
     `qualifiers${id ? `&id=${encodeURIComponent(id)}` : ''}`,
   );
   const { busy, run, notify } = useTask();
-  const [filter, setFilter] = useState(''),
-    [q, setQ] = useState('');
   const [create, setCreate] = useState(false),
     [newLobby, setNewLobby] = useState({
       code: '',
@@ -200,75 +199,7 @@ export function QualifiersWorkspace({
               before creating qualifier sessions.
             </p>
           )}
-          <div className="mb-5 grid gap-3 sm:grid-cols-2">
-            <Field label="Find qualifier lobby">
-              <input type="search" value={q} onChange={(e) => setQ(e.target.value)} />
-            </Field>
-            <Field label="Qualifier view">
-              <select value={filter} onChange={(e) => setFilter(e.target.value)}>
-                <option value="">All Matches</option>
-                <option value="me">My Assigned Matches</option>
-                <option value="unassigned">Unassigned Matches</option>
-                {Object.entries(MATCH_STATUS_LABELS).map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-          <p className="mb-3 text-sm text-muted">
-            {data.lobbies.length} lobbies ·{' '}
-            {data.lobbies.filter((l) => l.status === 'IN_PROGRESS').length} in progress
-          </p>
-          <div className="overflow-auto">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Lobby</th>
-                  <th>Stage</th>
-                  <th>Entrants</th>
-                  <th>Schedule</th>
-                  <th>Referees</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.lobbies
-                  .filter(
-                    (l) =>
-                      (!filter ||
-                        (filter === 'me'
-                          ? l.assignments.some((r) => r.userId === actor.id)
-                          : filter === 'unassigned'
-                            ? !l.assignments.length
-                            : l.status === filter)) &&
-                      `${l.code} ${l.stage.name} ${l.participants.map((t) => t.name).join(' ')}`
-                        .toLowerCase()
-                        .includes(q.toLowerCase()),
-                  )
-                  .map((l) => (
-                    <tr key={l.id}>
-                      <td>
-                        <Link className="text-primary" href={`/admin/referee/qualifiers/${l.id}`}>
-                          {l.code}
-                        </Link>
-                      </td>
-                      <td>{l.stage.name}</td>
-                      <td>{l.participants.map((t) => t.name).join(', ')}</td>
-                      <td>{matchTime(l.scheduledAt)}</td>
-                      <td>
-                        {l.assignments.map((r) => r.user.username).join(', ') || 'Unassigned'}
-                      </td>
-                      <td>{MATCH_STATUS_LABELS[l.status]}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-          {!data.lobbies.length && (
-            <p className="py-8 text-muted">No qualifier lobbies scheduled.</p>
-          )}
+          <QualifierLobbyList actor={actor} data={data} reload={reload} />
         </>
       ) : (
         <>

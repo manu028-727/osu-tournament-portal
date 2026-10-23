@@ -36,8 +36,24 @@ import {
   type QualifierStandingsAction,
 } from './qualifier-standings-service';
 import { applyStageReconciliation } from './stage-reconciliation-service';
+import {
+  applyPoolingAction,
+  assertPoolingPermission,
+  poolingPermission,
+  preparePoolingAction,
+  savePoolPlan,
+  publishPoolDraft,
+} from './pooling-service';
+import type { PoolingAction } from './pooling-validation';
+import { applyStageWorkflowAction, stageConfigurationToken } from './stage-workflows';
+import { applyStaffBulkAction } from './staff-bulk';
 export function actionPermission(a: AdminAction): PermissionKey {
-  if (a.type === 'matches.bulk.schedule') return 'matches.manage';
+  if (a.type === 'stage.duplicate') return 'mappools.create';
+  if (a.type === 'stage.rules.patch' || a.type === 'stage.rules.apply') return 'matches.manage';
+  if (a.type === 'stage.reorder') return 'mappools.edit';
+  if (a.type.startsWith('pooling.')) return poolingPermission(a as PoolingAction);
+  if (a.type === 'matches.bulk.schedule' || a.type === 'matches.batch.schedule')
+    return 'matches.manage';
   if (
     a.type.startsWith('competition.') ||
     a.type.startsWith('qualifier.standings.') ||
@@ -61,7 +77,8 @@ export function actionPermission(a: AdminAction): PermissionKey {
   return 'mappools.edit';
 }
 function assertActionPermission(actor: Actor | null, action: AdminAction): asserts actor is Actor {
-  if (
+  if (action.type.startsWith('pooling.')) assertPoolingPermission(actor, action as PoolingAction);
+  else if (
     action.type.startsWith('qualifier.') &&
     !action.type.startsWith('qualifier.standings.') &&
     action.type !== 'qualifier.policy.save'
@@ -89,6 +106,9 @@ export async function executeAction(
           tournament.gameMode,
         )
       : null;
+  const poolingPrepared = a.type.startsWith('pooling.')
+    ? await preparePoolingAction({ ...originalActor, tournamentId }, a as PoolingAction)
+    : null;
   if (fetched?.errors.length)
     throw new AppError(fetched.errors.map((e) => `${e.id}: ${e.error}`).join(' '));
   const existingStaff =
@@ -118,13 +138,36 @@ export async function executeAction(
       let result: unknown = { ok: true };
       let entityId = tournamentId;
       switch (a.type) {
+        case 'stage.rules.patch':
+        case 'stage.rules.apply':
+        case 'stage.reorder':
+        case 'stage.duplicate':
+          result = await applyStageWorkflowAction(tx, actor, a);
+          break;
+        case 'pooling.plan.save':
+        case 'pooling.pool.transfer':
+        case 'pooling.pools.release':
+        case 'pooling.plan.review':
+        case 'pooling.suggest':
+        case 'pooling.bulk':
+        case 'pooling.review.save':
+        case 'pooling.select':
+        case 'pooling.skillset.save':
+        case 'pooling.skillset.delete':
+        case 'pooling.warning.save':
+        case 'pooling.warning.delete':
+          result = await applyPoolingAction(tx, actor, a, poolingPrepared);
+          break;
         case 'matches.bulk.schedule':
+        case 'matches.batch.schedule':
           result = await applyBulkScheduleAction(tx, actor, tournamentId, a);
           entityId = 'bulk';
           break;
         case 'competition.create':
         case 'competition.preview':
         case 'competition.publish':
+        case 'competition.link-match':
+        case 'competition.rounds.stage':
         case 'competition.sync':
         case 'competition.slot':
         case 'competition.route':
@@ -144,13 +187,16 @@ export async function executeAction(
           result = await applyStageReconciliation(tx, actor, a);
           break;
         case 'qualifier.create':
+        case 'qualifier.batch.create':
+        case 'qualifier.bulk.schedule':
+        case 'qualifier.participants.move':
         case 'qualifier.schedule':
         case 'qualifier.lobby':
         case 'qualifier.score':
         case 'qualifier.score.remove':
         case 'qualifier.status': {
           result = await applyQualifierAction(tx, actor, a);
-          entityId = (result as { id: string }).id;
+          entityId = (result as { id?: string }).id || 'bulk';
           break;
         }
         case 'match.create':
@@ -274,11 +320,16 @@ export async function executeAction(
           entityId = a.slug;
           break;
         case 'stage.save': {
-          const { type, id, matchRules, qualifierPolicy, ...fields } = a;
+          const { type, id, matchRules, qualifierPolicy, baseConfigurationToken, ...fields } = a;
           void type;
           const beforeStage = id
             ? await tx.tournamentStage.findUniqueOrThrow({ where: { id } })
             : null;
+          if (
+            baseConfigurationToken &&
+            (!beforeStage || stageConfigurationToken(beforeStage) !== baseConfigurationToken)
+          )
+            throw new AppError('This stage changed. Reload and review before saving.', 409);
           if (qualifierPolicy !== undefined) assertPermission(actor, 'matches.manage');
           const kind = a.kind || beforeStage?.kind || 'CUSTOM';
           if (kind === 'QUALIFIERS' && matchRules)
@@ -364,6 +415,11 @@ export async function executeAction(
           break;
         }
         case 'stage.delete':
+          if (await tx.poolCandidate.count({ where: { stageId: a.id } }))
+            throw new AppError(
+              'Move this stage’s suggestions to another stage or archive the stage to preserve their reviews.',
+              409,
+            );
           if (await tx.bracketRound.count({ where: { stageId: a.id } }))
             throw new AppError(
               'This stage is assigned to a competition bracket. Archive it instead of deleting its history.',
@@ -389,6 +445,12 @@ export async function executeAction(
           entityId = pool.id;
           if (pool.draftRevisionId !== a.baseRevisionId)
             throw new AppError('A newer mappool draft exists. Reload before saving.', 409);
+          if (a.plan) await savePoolPlan(tx, actor, pool.stageId, a.plan);
+          else
+            await tx.poolPlan.updateMany({
+              where: { stageId: pool.stageId },
+              data: { reviewState: 'DRAFT', version: { increment: 1 } },
+            });
           const categories = await tx.modCategory.findMany();
           const problems = poolSlotErrors(a.slots, categories);
           if (problems.length) throw new AppError(problems.join(' '));
@@ -423,25 +485,8 @@ export async function executeAction(
           break;
         }
         case 'pool.publish': {
-          const pool = await tx.mappool.findUniqueOrThrow({
-            where: { id: a.id },
-            include: { draftRevision: { include: { slots: true } } },
-          });
-          entityId = pool.id;
-          if (pool.draftRevisionId !== a.revisionId || !pool.draftRevision?.slots.length)
-            throw new AppError('Review and save a non-empty current draft before publishing.', 409);
-          if (
-            pool.draftRevision.slots.some(
-              (s) => (s.metadata as { mode?: string }).mode !== tournament.gameMode,
-            )
-          )
-            throw new AppError(
-              'This draft contains beatmaps from a different game mode. Edit and save it again.',
-            );
-          await tx.mappool.update({
-            where: { id: pool.id },
-            data: { state: 'PUBLISHED', publishedRevisionId: pool.draftRevisionId },
-          });
+          await publishPoolDraft(tx, actor, a.id, a.revisionId);
+          entityId = a.id;
           break;
         }
         case 'pool.unpublish':
@@ -461,8 +506,34 @@ export async function executeAction(
           break;
         }
         case 'category.delete':
+          {
+            const category = await tx.modCategory.findUniqueOrThrow({ where: { id: a.id } });
+            const plans = await tx.poolPlan.findMany();
+            if (
+              (await tx.poolCandidate.count({ where: { category: category.acronym } })) ||
+              plans.some(
+                (plan) =>
+                  Array.isArray(plan.slots) &&
+                  plan.slots.some(
+                    (slot) =>
+                      slot &&
+                      typeof slot === 'object' &&
+                      !Array.isArray(slot) &&
+                      slot.category === category.acronym,
+                  ),
+              )
+            )
+              throw new AppError(
+                'This category is used by suggestions or a pool plan. Reassign those entries before deleting it.',
+                409,
+              );
+          }
           await tx.modCategory.delete({ where: { id: a.id } });
           entityId = a.id;
+          break;
+        case 'staff.bulk':
+          result = await applyStaffBulkAction(tx, actor, a);
+          entityId = 'bulk';
           break;
         case 'staff.category.save': {
           const { type, id, ...data } = a;
@@ -729,6 +800,11 @@ export async function executeAction(
         }
         case 'media.delete':
           throw new AppError('Use the media deletion endpoint.');
+        default: {
+          const unsupported: never = a;
+          void unsupported;
+          throw new AppError('This administrative action is not implemented.', 400);
+        }
       }
       if (
         !a.type.startsWith('competition.') &&
@@ -743,7 +819,14 @@ export async function executeAction(
             tournamentId,
             entityType: a.type.split('.')[0],
             entityId,
-            details: a.type === 'match.delete' ? { code: a.confirmCode, reason: a.reason } : {},
+            details:
+              a.type === 'match.delete'
+                ? { code: a.confirmCode, reason: a.reason }
+                : a.type.startsWith('pooling.') ||
+                    a.type.startsWith('matches.') ||
+                    a.type === 'staff.bulk'
+                  ? JSON.parse(JSON.stringify(a))
+                  : {},
           },
         });
       return result;

@@ -88,7 +88,11 @@ export async function collectTournament(client: TransferClient, tournamentId: st
   for (const [table, field, values] of [
     ['identities', 'id', [...userIds]],
     ['participants', 'osuId', [...participantIds]],
-    ['beatmaps', 'id', [...new Set(data.slots.map((row) => row.beatmapId))]],
+    [
+      'beatmaps',
+      'id',
+      [...new Set([...data.slots, ...data.poolCandidates].map((row) => row.beatmapId))],
+    ],
   ] as const) {
     data[table] = await archiveDelegate(client, table).findMany({
       where: { [field]: { in: values } },

@@ -70,10 +70,7 @@ export function MatchList({ matches }: { matches: PublicMatch[] }) {
             {matches.map((m) => (
               <tr key={m.id} data-match-status={m.status}>
                 <td className="min-w-32">
-                  <Link
-                    className="font-semibold text-primary"
-                    href={`/matches/${m.matchNumber}`}
-                  >
+                  <Link className="font-semibold text-primary" href={`/matches/${m.matchNumber}`}>
                     Match {m.matchNumber}
                     {m.code !== String(m.matchNumber) && (
                       <span className="ml-2 text-xs text-muted">Ref {m.code}</span>

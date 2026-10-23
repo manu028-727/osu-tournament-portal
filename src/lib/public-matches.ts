@@ -24,14 +24,9 @@ export async function publicMatches(
       { OR: [{ teamBId: null }, { teamB: { published: true, status: 'APPROVED' } }] },
       ...(filters.code
         ? [
-            {
-              OR: [
-                { code: filters.code },
-                ...(numericMatchIdentifier(filters.code)
-                  ? [{ matchNumber: numericMatchIdentifier(filters.code)! }]
-                  : []),
-              ],
-            },
+            numericMatchIdentifier(filters.code)
+              ? { matchNumber: numericMatchIdentifier(filters.code)! }
+              : { code: filters.code },
           ]
         : []),
       ...(filters.teamId

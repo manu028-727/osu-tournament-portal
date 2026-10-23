@@ -7,7 +7,6 @@ import {
   matchScope,
   rosterSnapshot,
   matchOptions,
-  eligibleRefereeFor,
   lobbyInfo,
   type MatchParticipants,
 } from './matches-service';
@@ -18,6 +17,13 @@ import type { QualifierAction } from './qualifiers-validation';
 import { inheritedRules, historicalScoring, assertScoreRepresentation } from './gameplay-scoring';
 import { qualifierPolicySchema } from './qualifier-policy';
 import { assertQualifierMutable } from './qualifier-standings-service';
+import {
+  applyQualifierBulkSchedule,
+  applyQualifierParticipantMove,
+  assertQualifierAvailability,
+  assertQualifierCapacity,
+  qualifierNeverStarted,
+} from './qualifiers-bulk';
 const json = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value));
 const include = {
   stage: { select: { id: true, name: true } },
@@ -36,10 +42,13 @@ const include = {
 export function qualifierPermission(a: QualifierAction): PermissionKey {
   if (
     a.type === 'qualifier.create' ||
+    a.type === 'qualifier.batch.create' ||
+    a.type === 'qualifier.participants.move' ||
     (a.type === 'qualifier.status' && ['CONFIRM', 'REOPEN', 'CANCEL'].includes(a.command))
   )
     return 'matches.manage';
-  if (a.type === 'qualifier.schedule') return 'matches.assign_referees';
+  if (a.type === 'qualifier.schedule' || a.type === 'qualifier.bulk.schedule')
+    return 'matches.assign_referees';
   if (a.type === 'qualifier.score' || a.type === 'qualifier.score.remove')
     return 'matches.update_scores';
   if (a.type === 'qualifier.status' && a.command === 'SUBMIT') return 'matches.submit_results';
@@ -77,6 +86,39 @@ export async function qualifierData(actor: Actor, url: URL) {
     orderBy: [{ scheduledAt: { sort: 'asc', nulls: 'last' } }, { code: 'asc' }],
   });
   if (id && !records.length) throw new AppError('Qualifier lobby not found.', 404);
+  let options = null;
+  if (can(actor, 'matches.manage') || can(actor, 'matches.assign_referees')) {
+    const defaults = await matchOptions(actor);
+    const [stages, teams] = await Promise.all([
+      db.tournamentStage.findMany({
+        where: { kind: 'QUALIFIERS', archivedAt: null },
+        select: { id: true, qualifierPolicy: true, matchRules: true },
+      }),
+      db.team.findMany({
+        where: { status: 'APPROVED' },
+        select: { id: true, members: { select: { substitute: true } } },
+      }),
+    ]);
+    options = {
+      ...defaults,
+      teams: defaults.teams.map((team) => ({
+        ...team,
+        startingPlayers:
+          teams.find((row) => row.id === team.id)?.members.filter((member) => !member.substitute)
+            .length ?? 0,
+      })),
+      qualifierStages: stages.map((stage) => ({
+        id: stage.id,
+        policy: qualifierPolicySchema.parse(
+          stage.qualifierPolicy || {
+            requiredPlayers: stage.matchRules
+              ? matchRulesSchema.parse(stage.matchRules).teamSize
+              : defaults.defaults.teamSize,
+          },
+        ),
+      })),
+    };
+  }
   return {
     lobbies: records.map((lobby) => ({
       ...lobby,
@@ -85,61 +127,53 @@ export async function qualifierData(actor: Actor, url: URL) {
         lobby.policy || { requiredPlayers: matchRulesSchema.parse(lobby.rules).teamSize },
       ),
       access: matchAccess(actor, lobby),
+      canTransfer: qualifierNeverStarted(lobby),
       ...(!can(actor, 'matches.view_history') && !can(actor, 'matches.manage')
         ? { events: [] }
         : {}),
     })),
-    options:
-      can(actor, 'matches.manage') || can(actor, 'matches.assign_referees')
-        ? await matchOptions(actor)
-        : null,
+    options,
   };
-}
-async function checkRefs(
-  tx: Prisma.TransactionClient,
-  ids: string[],
-  date: Date | null,
-  lobbyId?: string,
-  tournamentId = 'main',
-) {
-  const eligible = await tx.user.count({
-    where: {
-      id: { in: ids },
-      AND: [eligibleRefereeFor(tournamentId)],
-    },
-  });
-  if (eligible !== ids.length)
-    throw new AppError('Assign users with referee operational permissions.');
-  if (
-    date &&
-    ((await tx.qualifierAssignment.findFirst({
-      where: {
-        userId: { in: ids },
-        lobby: {
-          ...(lobbyId ? { id: { not: lobbyId } } : {}),
-          scheduledAt: date,
-          status: { notIn: ['CANCELLED', 'COMPLETED'] },
-        },
-      },
-    })) ||
-      (await tx.matchAssignment.findFirst({
-        where: {
-          userId: { in: ids },
-          match: { scheduledAt: date, status: { notIn: ['CANCELLED', 'COMPLETED'] } },
-        },
-      })))
-  )
-    throw new AppError('A referee is already scheduled at this time.', 409);
 }
 export async function applyQualifierAction(
   tx: Prisma.TransactionClient,
   actor: Actor,
   a: QualifierAction,
-) {
+): Promise<{
+  id: string;
+  version?: number;
+  created?: number;
+  updated?: number;
+  moved?: number;
+  lobbies?: { id: string; code: string }[];
+}> {
   const tournamentId = actor.tournamentId || 'main';
   tx = scopedDb(tx, tournamentId);
   assertQualifierPermission(actor, a);
+  // Use the admin mutation lock even when called directly by a transactional importer.
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(78214321)`;
+  if (a.type === 'qualifier.bulk.schedule')
+    return applyQualifierBulkSchedule(tx, actor, tournamentId, a);
+  if (a.type === 'qualifier.participants.move')
+    return applyQualifierParticipantMove(tx, actor, tournamentId, a);
+  if (a.type === 'qualifier.batch.create') {
+    const lobbies = [];
+    for (const session of a.sessions) {
+      const result = await applyQualifierAction(tx, actor, {
+        type: 'qualifier.create',
+        ...session,
+      });
+      lobbies.push({ id: result.id, code: session.code });
+    }
+    return { id: 'bulk', created: lobbies.length, lobbies };
+  }
   if (a.type === 'qualifier.create') {
+    if (
+      await tx.qualifierLobby.findUnique({
+        where: { tournamentId_code: { tournamentId, code: a.code } },
+      })
+    )
+      throw new AppError(`Lobby code ${a.code} is already in use. Choose a different code.`, 409);
     const stage = await tx.tournamentStage.findUniqueOrThrow({
       where: { id: a.stageId },
       include: { mappool: { include: { publishedRevision: { include: { slots: true } } } } },
@@ -173,7 +207,7 @@ export async function applyQualifierAction(
       include: teamInclude,
     });
     if (teams.length !== a.teamIds.length) throw new AppError('Select approved entrants.');
-    const solo = teams.every((team) => team.format === 'INDIVIDUAL');
+    const solo = teams.length > 0 && teams.every((team) => team.format === 'INDIVIDUAL');
     if (
       (!solo && teams.some((team) => team.format === 'INDIVIDUAL')) ||
       teams.length > (solo ? 16 : 8)
@@ -205,10 +239,20 @@ export async function applyQualifierAction(
     if (teams.length * policy.requiredPlayers > 16)
       throw new AppError('Split these entrants into sessions of at most sixteen active players.');
     const date = a.scheduledAt ? new Date(a.scheduledAt) : null;
-    await checkRefs(tx, a.refereeIds, date, undefined, tournamentId);
     const participants = a.teamIds.map((id) =>
       rosterSnapshot(teams.find((team) => team.id === id)!),
     );
+    assertQualifierCapacity(participants, policy);
+    await assertQualifierAvailability(tx, tournamentId, [
+      {
+        id: '',
+        code: a.code,
+        stageId: stage.id,
+        scheduledAt: date,
+        refereeIds: a.refereeIds,
+        participants,
+      },
+    ]);
     return tx.qualifierLobby.create({
       data: {
         code: a.code,
@@ -230,6 +274,7 @@ export async function applyQualifierAction(
   if (
     !can(actor, 'matches.manage') &&
     !can(actor, 'matches.manage_all') &&
+    !(a.type === 'qualifier.schedule' && can(actor, 'matches.assign_referees')) &&
     !lobby.assignments.some((r) => r.userId === actor.id)
   )
     throw new AppError('This qualifier lobby is not assigned to you.', 403);
@@ -245,7 +290,21 @@ export async function applyQualifierAction(
     if (lobby.status !== 'SCHEDULED')
       throw new AppError('Only scheduled qualifier lobbies can be rescheduled.', 409);
     const date = a.scheduledAt ? new Date(a.scheduledAt) : null;
-    await checkRefs(tx, a.refereeIds, date, lobby.id, tournamentId);
+    await assertQualifierAvailability(
+      tx,
+      tournamentId,
+      [
+        {
+          id: lobby.id,
+          code: lobby.code,
+          stageId: lobby.stageId,
+          scheduledAt: date,
+          refereeIds: a.refereeIds,
+          participants,
+        },
+      ],
+      [lobby.id],
+    );
     await tx.qualifierAssignment.deleteMany({ where: { lobbyId: lobby.id } });
     await tx.qualifierAssignment.createMany({
       data: a.refereeIds.map((userId) => ({ lobbyId: lobby.id, userId })),
@@ -329,6 +388,9 @@ export async function applyQualifierAction(
     if (a.command === 'START' && (!lobby.scheduledAt || !lobby.assignments.length))
       throw new AppError('Set a schedule and referee before starting.');
     if (a.command === 'START') {
+      if (!participants.length)
+        throw new AppError('Assign entrants before starting this qualifier session.');
+      assertQualifierCapacity(participants, policy);
       const settings = await tx.tournamentSettings.findUniqueOrThrow({ where: { tournamentId } });
       if (!historicalScoring(rules) || historicalScoring(rules) !== settings.gameplayScoring)
         throw new AppError(

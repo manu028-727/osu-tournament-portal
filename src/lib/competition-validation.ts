@@ -15,11 +15,30 @@ export const competitionCreateFields = {
   sourceStandingId: id.optional(),
   sourceBracketId: id.optional(),
   roundStages: z.record(z.string(), id).default({}),
+  manualMatches: z.boolean().default(false),
 };
 export const competitionActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('competition.create'), ...competitionCreateFields }),
   z.object({ type: z.literal('competition.preview'), ...competitionCreateFields }),
   z.object({ type: z.literal('competition.publish'), ...base, published: z.boolean() }),
+  z.object({
+    type: z.literal('competition.rounds.stage'),
+    ...base,
+    roundIds: z
+      .array(id)
+      .min(1)
+      .max(128)
+      .refine((ids) => new Set(ids).size === ids.length),
+    stageId: id,
+  }),
+  z.object({
+    type: z.literal('competition.link-match'),
+    ...base,
+    nodeId: id,
+    matchId: id,
+    matchVersion: z.number().int().positive(),
+    reverseSides: z.boolean().default(false),
+  }),
   z.object({
     type: z.literal('competition.sync'),
     ...base,

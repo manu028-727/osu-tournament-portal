@@ -271,6 +271,9 @@ test('a fresh organizer configures, publishes and operates one tournament throug
   await expect(dialog.getByLabel('Match code')).toHaveValue('2');
   await dialog.getByLabel('Team A / red').selectOption({ label: 'UX Team 2' });
   await dialog.getByLabel('Team B / blue').selectOption({ label: 'UX Team 3' });
+  await dialog
+    .getByLabel('Scheduled time (your timezone)')
+    .fill(new Date(Date.now() + 86400000).toISOString().slice(0, 16));
   await dialog.getByRole('button', { name: 'Save match' }).click();
   await expect(dialog).toHaveCount(0);
   await page.getByRole('checkbox', { name: 'Select match 1' }).check();

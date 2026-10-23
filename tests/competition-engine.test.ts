@@ -13,6 +13,7 @@ import {
   bracketNumberingOrder,
   numberBracketNodes,
   numericMatchIdentifier,
+  restoreArchiveMatchNumbers,
 } from '../src/lib/match-numbering';
 import type { CompetitionNode, CompetitionRound } from '../src/lib/competition-types';
 
@@ -63,6 +64,29 @@ function complete(node: CompetitionNode, winnerSide: 'A' | 'B' = 'A', status = '
 }
 
 describe('stable tournament match numbering', () => {
+  it('restores transferred numbers and preserves unambiguous legacy numeric codes', () => {
+    const matches = [
+      { id: 'a', code: 'historic', matchNumber: 11 as unknown },
+      { id: 'b', code: '2', matchNumber: undefined as unknown },
+      { id: 'c', code: 'custom', matchNumber: undefined as unknown },
+    ];
+    const nodes = [
+      { matchId: 'a', matchNumber: undefined as unknown },
+      { matchId: null, matchNumber: 15 as unknown },
+    ];
+    expect(restoreArchiveMatchNumbers(matches, nodes, 15)).toBe(16);
+    expect(matches.map((match) => match.matchNumber)).toEqual([11, 2, 16]);
+    expect(nodes[0].matchNumber).toBe(11);
+    expect(() =>
+      restoreArchiveMatchNumbers(
+        [
+          { id: 'a', code: 'x', matchNumber: 3 },
+          { id: 'b', code: 'y', matchNumber: 3 },
+        ],
+        [],
+      ),
+    ).toThrow('unique');
+  });
   it('parses only positive signed-database integers and keeps source formatting separate', () => {
     expect(numericMatchIdentifier('001')).toBe(1);
     expect(numericMatchIdentifier('2147483647')).toBe(2147483647);

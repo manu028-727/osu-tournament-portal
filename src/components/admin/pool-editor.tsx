@@ -12,6 +12,7 @@ import {
   SlidersHorizontal,
   ArrowUpRight,
   ListFilter,
+  Check,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { StateBadge, Badge } from '../ui/badge';
@@ -34,6 +35,8 @@ import {
 } from './shared';
 import { PoolSlotTable, type EditorSlot } from './pool-slot-table';
 import { movePoolSlot, nextSlotName, poolSlotErrors, sortPoolSlots } from '@/lib/mappool-order';
+import type { PoolPlanView } from '@/lib/pooling-types';
+import { PoolReleaseManager } from './pool-release-manager';
 type Category = { id: string; name: string; acronym: string; color: string; position: number };
 type Pool = {
   id: string;
@@ -52,9 +55,21 @@ type Stage = {
   startsAt: string | null;
   bannerImageId?: string | null;
   mappool: Pool | null;
+  poolPlan: PoolPlanView | null;
 };
 type Data = { stages: Stage[]; categories: Category[] };
+const hasPoolSource = (stage: Stage) =>
+  !!(
+    stage.poolPlan?.slots.length ||
+    stage.mappool?.draftRevision?.slots.length ||
+    stage.mappool?.publishedRevision?.slots.length
+  );
 type Slot = EditorSlot;
+const slotErrors = (slots: Slot[], categories: Category[]) =>
+  poolSlotErrors(
+    slots.map((slot) => ({ ...slot, beatmapId: slot.beatmapId === 0 ? 1 : slot.beatmapId })),
+    categories,
+  );
 export function PoolEditor({
   actor,
   initialStageId = '',
@@ -79,6 +94,12 @@ export function PoolEditor({
     [copyMode, setCopyMode] = useState<'structure' | 'contents'>('structure'),
     [distributionOpen, setDistributionOpen] = useState(false),
     [distribution, setDistribution] = useState<Record<string, number>>({}),
+    [minStars, setMinStars] = useState(''),
+    [maxStars, setMaxStars] = useState(''),
+    [transferSlots, setTransferSlots] = useState<string[] | null>(null),
+    [transferTarget, setTransferTarget] = useState(''),
+    [transferMode, setTransferMode] = useState<'COPY' | 'MOVE'>('COPY'),
+    [transferReplace, setTransferReplace] = useState(false),
     [preview, setPreview] = useState(false),
     [categoriesOpen, setCategoriesOpen] = useState(false),
     [categoryDraft, setCategoryDraft] = useState<Partial<Category>>({});
@@ -98,20 +119,25 @@ export function PoolEditor({
   }, [data, active]);
   useEffect(() => {
     const revision = pool?.draftRevision || pool?.publishedRevision;
-    setSlots(
+    const filled =
       revision?.slots.map((s) => ({
         name: s.name,
         category: s.category,
         beatmapId: s.beatmapId,
         editorId: s.id || crypto.randomUUID(),
-      })) || [],
-    );
+      })) || [];
+    const empty = (stage?.poolPlan?.slots || [])
+      .filter((planned) => !filled.some((slot) => slot.name === planned.name))
+      .map((planned) => ({ ...planned, beatmapId: 0, editorId: crypto.randomUUID() }));
+    setSlots(sortPoolSlots([...filled, ...empty], data?.categories));
+    setMinStars(stage?.poolPlan?.minStars?.toString() || '');
+    setMaxStars(stage?.poolPlan?.maxStars?.toString() || '');
     setNotes(revision?.notes || '');
     setBase(pool?.draftRevisionId || null);
     setMetadata(Object.fromEntries((revision?.slots || []).map((s) => [s.beatmapId, s.metadata])));
     setErrors({});
     setDirty(false);
-  }, [pool]);
+  }, [pool, stage?.poolPlan, data?.categories]);
   useUnsaved(dirty);
   const lookup = async (next: Slot[]) => {
     const ids = next.map((s) => s.beatmapId).filter((id) => id > 0);
@@ -151,9 +177,16 @@ export function PoolEditor({
   const copyPool = () => {
     const source = data!.stages.find((candidate) => candidate.id === copySource);
     const revision = source?.mappool?.draftRevision || source?.mappool?.publishedRevision;
-    if (!source || !revision) throw new Error('Choose a stage with a saved mappool.');
+    if (!source || (!revision && !source.poolPlan))
+      throw new Error('Choose a stage with a saved pool or plan.');
+    if (copyMode === 'contents' && !revision)
+      throw new Error('The source stage has no saved beatmaps.');
+    const sourceSlots =
+      copyMode === 'structure' && source.poolPlan?.slots.length
+        ? source.poolPlan.slots.map((slot) => ({ ...slot, beatmapId: 0 }))
+        : revision?.slots || [];
     const copied = sortPoolSlots(
-      revision.slots.map((slot) => ({
+      sourceSlots.map((slot) => ({
         name: slot.name,
         category: slot.category,
         beatmapId: copyMode === 'contents' ? slot.beatmapId : 0,
@@ -165,17 +198,19 @@ export function PoolEditor({
     setSlots(copied);
     setMetadata(
       copyMode === 'contents'
-        ? Object.fromEntries(revision.slots.map((slot) => [slot.beatmapId, slot.metadata]))
+        ? Object.fromEntries(revision!.slots.map((slot) => [slot.beatmapId, slot.metadata]))
         : {},
     );
     setErrors({});
-    setNotes(copyMode === 'contents' ? revision.notes : '');
+    setNotes(copyMode === 'contents' ? revision!.notes : '');
+    setMinStars(source.poolPlan?.minStars?.toString() || '');
+    setMaxStars(source.poolPlan?.maxStars?.toString() || '');
     setDirty(true);
     setCopyOpen(false);
   };
   const save = () =>
     run(async () => {
-      const problems = poolSlotErrors(slots, data!.categories);
+      const problems = slotErrors(slots, data!.categories);
       if (problems.length) throw new Error(problems.join(' '));
       const ordered = sortPoolSlots(slots, data!.categories);
       await action({
@@ -183,10 +218,18 @@ export function PoolEditor({
         id: pool!.id,
         baseRevisionId: base,
         notes,
-        slots: ordered.map(({ editorId, ...slot }) => {
-          void editorId;
-          return slot;
-        }),
+        plan: {
+          baseVersion: stage?.poolPlan?.version ?? null,
+          slots: ordered.map(({ name, category }) => ({ name, category })),
+          minStars: minStars === '' ? null : Number(minStars),
+          maxStars: maxStars === '' ? null : Number(maxStars),
+        },
+        slots: ordered
+          .filter((slot) => slot.beatmapId > 0)
+          .map(({ editorId, ...slot }) => {
+            void editorId;
+            return slot;
+          }),
       });
       await reload();
     }, 'Mappool draft saved.');
@@ -247,6 +290,13 @@ export function PoolEditor({
               )}
             </div>
             <div className="flex gap-2">
+              {publisher && (
+                <PoolReleaseManager
+                  stages={data.stages}
+                  disabled={busy || dirty}
+                  onSaved={reload}
+                />
+              )}
               {editable && (
                 <Button asChild size="sm" variant="ghost" disabled={dirty}>
                   <Link href={`/admin/mappools?view=stages&stage=${stage.id}&return=pool`}>
@@ -284,13 +334,13 @@ export function PoolEditor({
                       busy ||
                       dirty ||
                       !data.stages.some(
-                        (candidate) => candidate.id !== stage.id && candidate.mappool,
+                        (candidate) => candidate.id !== stage.id && hasPoolSource(candidate),
                       )
                     }
                     onClick={() => {
                       setCopySource(
                         data.stages.find(
-                          (candidate) => candidate.id !== stage.id && candidate.mappool,
+                          (candidate) => candidate.id !== stage.id && hasPoolSource(candidate),
                         )?.id || '',
                       );
                       setCopyMode('structure');
@@ -427,8 +477,89 @@ export function PoolEditor({
               )}
             </div>
           </div>
+          <div className="mb-3 flex flex-wrap items-end gap-3 border-b pb-3">
+            <p className="mr-auto self-center text-sm text-muted">
+              {slots.filter((slot) => slot.beatmapId > 0).length}/{slots.length} filled
+              {' · '}
+              {stage.poolPlan?.reviewState.toLowerCase().replaceAll('_', ' ') || 'draft'}
+            </p>
+            <Field label="SR target min">
+              <input
+                aria-label="SR target minimum"
+                className="w-28"
+                type="number"
+                min={0}
+                max={30}
+                step={0.1}
+                value={minStars}
+                disabled={!editable || busy}
+                onChange={(event) => {
+                  setMinStars(event.target.value);
+                  setDirty(true);
+                }}
+              />
+            </Field>
+            <Field label="SR target max">
+              <input
+                aria-label="SR target maximum"
+                className="w-28"
+                type="number"
+                min={0}
+                max={30}
+                step={0.1}
+                value={maxStars}
+                disabled={!editable || busy}
+                onChange={(event) => {
+                  setMaxStars(event.target.value);
+                  setDirty(true);
+                }}
+              />
+            </Field>
+            {stage.poolPlan && editable && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy || dirty || stage.poolPlan.reviewState === 'REVIEW'}
+                onClick={() =>
+                  void run(async () => {
+                    await action({
+                      type: 'pooling.plan.review',
+                      stageId: stage.id,
+                      baseVersion: stage.poolPlan!.version,
+                      state: 'REVIEW',
+                    });
+                    await reload();
+                  }, 'Pool ready for review.')
+                }
+              >
+                <Send size={14} />
+                Request review
+              </Button>
+            )}
+            {stage.poolPlan && publisher && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy || dirty || stage.poolPlan.reviewState === 'APPROVED'}
+                onClick={() =>
+                  void run(async () => {
+                    await action({
+                      type: 'pooling.plan.review',
+                      stageId: stage.id,
+                      baseVersion: stage.poolPlan!.version,
+                      state: 'APPROVED',
+                    });
+                    await reload();
+                  }, 'Pool approved.')
+                }
+              >
+                <Check size={14} />
+                Approve
+              </Button>
+            )}
+          </div>
           <div className="space-y-3">
-            {poolSlotErrors(slots, data.categories).map((problem, index) => (
+            {slotErrors(slots, data.categories).map((problem, index) => (
               <p key={problem + index} role="alert" className="text-sm text-red-300">
                 {problem}
               </p>
@@ -442,7 +573,7 @@ export function PoolEditor({
                 disabled={!editable || busy}
                 onUpdate={update}
                 onMove={(id, direction) => {
-                  if (poolSlotErrors(slots, data.categories).length) {
+                  if (slotErrors(slots, data.categories).length) {
                     notify('Resolve invalid or duplicate slots before moving maps.', true);
                     return;
                   }
@@ -463,6 +594,16 @@ export function PoolEditor({
                   setSlots((current) => current.filter((slot) => !removed.has(slot.editorId)));
                   setDirty(true);
                 }}
+                transferDisabled={dirty || !(pool.draftRevision || pool.publishedRevision)}
+                onBulkTransfer={(names) => {
+                  setTransferSlots(names);
+                  setTransferTarget(
+                    data.stages.find((candidate) => candidate.id !== stage.id && candidate.mappool)
+                      ?.id || '',
+                  );
+                  setTransferMode('COPY');
+                  setTransferReplace(false);
+                }}
                 onBulkCategory={(ids, category) => {
                   const selected = new Set(ids);
                   const working = slots.map((slot) => ({ ...slot }));
@@ -475,7 +616,7 @@ export function PoolEditor({
                     );
                     working[index] = { ...current, category, name };
                   }
-                  const problems = poolSlotErrors(working, data.categories);
+                  const problems = slotErrors(working, data.categories);
                   if (problems.length) {
                     notify(problems[0], true);
                     return;
@@ -512,6 +653,14 @@ export function PoolEditor({
                   BPM
                   {' · '}Avg {Math.floor(average('length')! / 60)}:
                   {String(Math.round(average('length')!) % 60).padStart(2, '0')} drain
+                  {' · '}SR {Math.min(...populatedMaps.map((map) => map.stars)).toFixed(2)}–
+                  {Math.max(...populatedMaps.map((map) => map.stars)).toFixed(2)}
+                  {((minStars !== '' && average('stars')! < Number(minStars)) ||
+                    (maxStars !== '' && average('stars')! > Number(maxStars))) && (
+                    <span className="ml-2 text-amber-400">
+                      Average outside the suggested target
+                    </span>
+                  )}
                 </>
               )}
               {' · '}Saving creates an independent draft revision
@@ -555,22 +704,32 @@ export function PoolEditor({
               const imported = parseImport(bulk, defaultMod);
               const lines = bulk.split(/\r?\n/).filter((s) => s.trim());
               const next = [...slots];
-              imported.forEach((slot, i) =>
-                next.push({
-                  ...slot,
-                  name: /^(?:\d+|https?:\/\/)/i.test(lines[i].trim())
-                    ? nextSlotName(next, defaultMod)
-                    : slot.name,
-                  editorId: crypto.randomUUID(),
-                }),
-              );
-              const named = next.slice(slots.length);
+              imported.forEach((slot, index) => {
+                const plain = /^(?:\d+|https?:\/\/)/i.test(lines[index].trim());
+                const empty = next.findIndex(
+                  (current) =>
+                    !current.beatmapId &&
+                    (plain ? current.category === defaultMod : current.name === slot.name),
+                );
+                if (empty >= 0) next[empty] = { ...next[empty], beatmapId: slot.beatmapId };
+                else {
+                  if (!plain && next.some((current) => current.name === slot.name))
+                    throw new Error(
+                      `${slot.name} is already filled. Replace it explicitly in the table.`,
+                    );
+                  next.push({
+                    ...slot,
+                    name: plain ? nextSlotName(next, defaultMod) : slot.name,
+                    editorId: crypto.randomUUID(),
+                  });
+                }
+              });
               if (next.length > 100) throw new Error('A mappool can contain at most 100 maps.');
-              if (named.some((s) => !data.categories.some((c) => c.acronym === s.category)))
+              if (next.some((s) => !data.categories.some((c) => c.acronym === s.category)))
                 throw new Error(
                   'A slot uses an unknown mod category. Create it first or adjust the slot name.',
                 );
-              const problems = poolSlotErrors(next, data.categories);
+              const problems = slotErrors(next, data.categories);
               if (problems.length) throw new Error(problems.join(' '));
               await lookup(next);
               setSlots(next);
@@ -609,7 +768,7 @@ export function PoolEditor({
           <Field label="Source stage">
             <select value={copySource} onChange={(event) => setCopySource(event.target.value)}>
               {data.stages
-                .filter((candidate) => candidate.id !== stage?.id && candidate.mappool)
+                .filter((candidate) => candidate.id !== stage?.id && hasPoolSource(candidate))
                 .map((candidate) => (
                   <option key={candidate.id} value={candidate.id}>
                     {candidate.name}
@@ -662,6 +821,84 @@ export function PoolEditor({
         </div>
       </Modal>
       <Modal
+        open={!!transferSlots}
+        onOpenChange={(open) => {
+          if (!open) setTransferSlots(null);
+        }}
+        title="Transfer selected maps"
+      >
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(async () => {
+              const destination = data.stages.find((candidate) => candidate.id === transferTarget);
+              const revision = pool?.draftRevision || pool?.publishedRevision;
+              if (!pool || !revision || !destination?.mappool)
+                throw new Error('Choose a destination with a mappool.');
+              await action({
+                type: 'pooling.pool.transfer',
+                sourcePoolId: pool.id,
+                sourceRevisionId: revision.id,
+                targetStageId: destination.id,
+                targetBaseRevisionId: destination.mappool.draftRevisionId,
+                slotNames: transferSlots || [],
+                mode: transferMode,
+                replace: transferReplace,
+              });
+              setTransferSlots(null);
+              await reload();
+            }, 'Selected maps transferred into independent drafts.');
+          }}
+        >
+          <p className="text-sm text-muted">{transferSlots?.join(', ')}</p>
+          <Field label="Destination stage">
+            <select
+              required
+              value={transferTarget}
+              onChange={(event) => setTransferTarget(event.target.value)}
+            >
+              <option value="">Choose stage</option>
+              {data.stages
+                .filter((candidate) => candidate.id !== stage?.id && candidate.mappool)
+                .map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.name}
+                  </option>
+                ))}
+            </select>
+          </Field>
+          <Field label="Operation">
+            <select
+              value={transferMode}
+              onChange={(event) => setTransferMode(event.target.value as 'COPY' | 'MOVE')}
+            >
+              <option value="COPY">Copy to destination draft</option>
+              <option value="MOVE">Move between drafts</option>
+            </select>
+          </Field>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={transferReplace}
+              onChange={(event) => setTransferReplace(event.target.checked)}
+            />
+            Replace matching destination slots
+          </label>
+          <p className="text-xs text-muted">
+            Published versions remain visible until the revised drafts are published.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={() => setTransferSlots(null)}>
+              Cancel
+            </Button>
+            <SaveButton busy={busy} disabled={!transferTarget}>
+              Transfer {transferSlots?.length} maps
+            </SaveButton>
+          </div>
+        </form>
+      </Modal>
+      <Modal
         open={distributionOpen}
         onOpenChange={setDistributionOpen}
         title="Build mappool slot plan"
@@ -687,7 +924,7 @@ export function PoolEditor({
             ))}
           </div>
           <p className="text-xs text-muted">
-            Fill every slot with a beatmap before saving the draft.
+            Empty slots can be saved as a draft. Fill the plan before publishing.
           </p>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setDistributionOpen(false)}>

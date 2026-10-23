@@ -55,6 +55,7 @@ export type CompetitionBracketData = {
   format: string;
   version: number;
   published: boolean;
+  manualMatches?: boolean;
   sourceStandingId?: string | null;
   rounds: CompetitionRound[];
   nodes: CompetitionNode[];
@@ -83,6 +84,21 @@ export type CompetitionOptions = {
     name: string;
     seeds: { teamId: string; seed: number }[];
     sourceHash: string;
+  }[];
+  linkableMatches?: {
+    id: string;
+    matchNumber: number;
+    version: number;
+    code: string;
+    stageId: string;
+    stageName: string;
+    status: string;
+    teamAId: string;
+    teamAName: string;
+    teamBId: string;
+    teamBName: string;
+    scoreA: number;
+    scoreB: number;
   }[];
 };
 export type CompetitionData = {

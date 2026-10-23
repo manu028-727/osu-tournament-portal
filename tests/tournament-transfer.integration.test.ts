@@ -284,6 +284,62 @@ beforeAll(async () => {
   await db.qualifierEvent.create({
     data: { lobbyId: qualifier.id, version: 1, kind: 'SCORE', data: { lobbyId: qualifier.id } },
   });
+  await db.poolPlan.create({
+    data: {
+      tournamentId: sourceId,
+      stageId: stage.id,
+      slots: [{ name: 'NM1', category: 'NM' }],
+      minStars: 5,
+      maxStars: 6,
+      reviewState: 'REVIEW',
+    },
+  });
+  const skillset = await db.poolSkillset.create({
+    data: { tournamentId: sourceId, name: 'Custom reading', group: 'Technical' },
+  });
+  await db.poolArtistWarning.create({
+    data: {
+      tournamentId: sourceId,
+      artist: 'QA',
+      artistKey: 'qa',
+      severity: 'WARN',
+      reason: 'Source-specific review',
+      source: '',
+    },
+  });
+  const candidate = await db.poolCandidate.create({
+    data: {
+      tournamentId: sourceId,
+      stageId: stage.id,
+      beatmapId,
+      metadata,
+      category: 'NM',
+      status: 'SELECTED',
+      selectedSlot: 'NM1',
+      submitterId: owner.id,
+      notes: 'Preserved suggestion',
+    },
+  });
+  await db.poolCandidateTag.create({
+    data: {
+      tournamentId: sourceId,
+      candidateId: candidate.id,
+      skillsetId: skillset.id,
+      primary: true,
+    },
+  });
+  await db.poolReview.create({
+    data: {
+      tournamentId: sourceId,
+      candidateId: candidate.id,
+      reviewerId: owner.id,
+      fit: 4,
+      difficulty: 3,
+      flags: 'Ending',
+      notes: 'Preserved feedback',
+      completed: true,
+    },
+  });
   await db.tournament.update({ where: { id: sourceId }, data: { published: true } });
   originalFingerprint = archiveHash(
     Buffer.from(JSON.stringify((await collectTournament(db, sourceId)).data)),
@@ -297,6 +353,9 @@ afterAll(async () => {
     await db.match.deleteMany({ where: { tournamentId: id } });
     await db.qualifierLobby.deleteMany({ where: { tournamentId: id } });
     await db.team.deleteMany({ where: { tournamentId: id } });
+    await db.poolCandidate.deleteMany({ where: { tournamentId: id } });
+    await db.poolSkillset.deleteMany({ where: { tournamentId: id } });
+    await db.poolArtistWarning.deleteMany({ where: { tournamentId: id } });
     await db.mappool.updateMany({
       where: { tournamentId: id },
       data: { draftRevisionId: null, publishedRevisionId: null },
@@ -351,6 +410,33 @@ describe('portable tournament archives', () => {
       include: { settings: true },
     });
     expect(imported.published).toBe(false);
+    const plan = await db.poolPlan.findFirstOrThrow({ where: { tournamentId: imported.id } });
+    expect(plan).toMatchObject({
+      minStars: 5,
+      maxStars: 6,
+      reviewState: 'REVIEW',
+      slots: [{ name: 'NM1', category: 'NM' }],
+    });
+    const candidate = await db.poolCandidate.findFirstOrThrow({
+      where: { tournamentId: imported.id },
+      include: { tags: { include: { skillset: true } }, reviews: true },
+    });
+    expect(candidate).toMatchObject({
+      notes: 'Preserved suggestion',
+      status: 'SELECTED',
+      selectedSlot: 'NM1',
+      submitterId: owner.id,
+    });
+    expect(candidate.tags[0].skillset.name).toBe('Custom reading');
+    expect(candidate.reviews[0]).toMatchObject({
+      completed: true,
+      fit: 4,
+      difficulty: 3,
+      notes: 'Preserved feedback',
+      reviewerId: owner.id,
+    });
+    expect(candidate.stageId).toBe(plan.stageId);
+    expect(candidate.stageId).not.toBe(archive.data.stages[0].id);
     expect(imported.settings!.banner).not.toBe(archive.data.settings[0].banner);
     const actual = await db.match.findFirstOrThrow({
       where: { tournamentId: imported.id },

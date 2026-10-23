@@ -18,6 +18,7 @@ export type QualifierView = {
   lobbyUrl: string;
   updatedAt: string;
   access: MatchAccess;
+  canTransfer?: boolean;
   assignments: { userId: string; user: { id: string; username: string; osuId: number } }[];
   entries: { team: { members: { discordId: string }[] } }[];
   scores: {
@@ -44,4 +45,12 @@ export type QualifierView = {
     actor: { username: string } | null;
   }[];
 };
-export type QualifierData = { lobbies: QualifierView[]; options: MatchOptions | null };
+export type QualifierData = {
+  lobbies: QualifierView[];
+  options:
+    | (Omit<MatchOptions, 'teams'> & {
+        teams: (MatchOptions['teams'][number] & { startingPlayers?: number })[];
+        qualifierStages?: { id: string; policy: import('./qualifier-policy').QualifierPolicy }[];
+      })
+    | null;
+};
