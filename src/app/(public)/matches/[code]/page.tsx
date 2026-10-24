@@ -1,3 +1,4 @@
+import { getLocale, getServerT } from '@/lib/server-locale';
 import Link from '@/components/tournament-scope';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, ExternalLink, Users } from 'lucide-react';
@@ -5,32 +6,35 @@ import { publicMatches, publicMatchHistory } from '@/lib/public-matches';
 import { matchTime, PUBLIC_MATCH_STATUS, bracketEntrant } from '@/lib/match-display';
 import { MatchStatusBadge } from '@/components/ui/badge';
 export async function generateMetadata({ params }: { params: Promise<{ code: string }> }) {
+  const tr = await getServerT();
   const m = (await publicMatches({ code: (await params).code }))[0];
   return {
     title: m
-      ? `Match ${m.matchNumber} · ${m.participants.A.name} vs ${m.participants.B.name}`
-      : 'Incontro',
+      ? tr('Match {0} · {1} vs {2}', m.matchNumber, m.participants.A.name, m.participants.B.name)
+      : tr('Incontro'),
   };
 }
 export default async function Match({ params }: { params: Promise<{ code: string }> }) {
+  const language = await getLocale();
+  const tr = await getServerT();
   const m = await publicMatchHistory((await params).code);
   if (!m) notFound();
   return (
     <div className="wrap py-8">
       <Link href="/matches" className="inline-flex items-center gap-2 text-sm text-primary">
         <ArrowLeft size={18} />
-        Tutti gli incontri
+        {tr('Tutti gli incontri')}
       </Link>
       <header className="public-scoreboard mt-6 border-b pb-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <p className="text-muted">
-            Incontro {m.matchNumber} · {m.stage.name} · {m.bracket}
-            {m.code !== String(m.matchNumber) ? ` · Ref ${m.code}` : ''}
+            {tr('Incontro')} {m.matchNumber} · {m.stage.name} · {m.bracket}
+            {m.code !== String(m.matchNumber) ? tr(' · Ref {0}', m.code) : ''}
           </p>
-          <MatchStatusBadge status={m.status}>{PUBLIC_MATCH_STATUS[m.status]}</MatchStatusBadge>
+          <MatchStatusBadge status={m.status}>{tr(PUBLIC_MATCH_STATUS[m.status])}</MatchStatusBadge>
         </div>
         <h1 className="sr-only">
-          {m.participants.A.name} contro {m.participants.B.name}
+          {m.participants.A.name} {tr('contro')} {m.participants.B.name}
         </h1>
         <div className="my-5 grid grid-cols-2 items-center gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
           {(['A', 'B'] as const).map((side, i) => (
@@ -43,17 +47,19 @@ export default async function Match({ params }: { params: Promise<{ code: string
               >
                 {m.participants[side].name}
               </h2>
-              {m.forfeitSide === side && <p className="mt-2 text-sm text-amber-200">Forfait</p>}
+              {m.forfeitSide === side && (
+                <p className="mt-2 text-sm text-amber-200">{tr('Forfait')}</p>
+              )}
             </div>
           ))}
           <p className="col-span-2 row-start-1 whitespace-nowrap text-center font-mono text-3xl tabular-nums sm:col-span-1 sm:col-start-2">
             {m.status === 'SCHEDULED'
-              ? 'vs'
-              : `${m.forfeitSide === 'A' ? 'FF' : m.scoreA} : ${m.forfeitSide === 'B' ? 'FF' : m.scoreB}`}
+              ? tr('vs')
+              : `${m.forfeitSide === 'A' ? tr('FF') : m.scoreA} : ${m.forfeitSide === 'B' ? tr('FF') : m.scoreB}`}
           </p>
         </div>
         <p className="text-sm text-muted">
-          {matchTime(m.scheduledAt, m.timezone)} · {m.timezone}
+          {matchTime(m.scheduledAt, m.timezone, language)} · {m.timezone}
         </p>
       </header>
       <dl className="my-5 grid gap-4 border-b pb-5 sm:grid-cols-3">
@@ -63,8 +69,8 @@ export default async function Match({ params }: { params: Promise<{ code: string
           ['Commento', m.credits.commentators.join(', ')],
         ].map(([label, value]) => (
           <div key={label}>
-            <dt className="text-sm text-muted">{label}</dt>
-            <dd className="mt-1 break-words font-semibold">{value || 'Da definire'}</dd>
+            <dt className="text-sm text-muted">{tr(label)}</dt>
+            <dd className="mt-1 break-words font-semibold">{value || tr('Da definire')}</dd>
           </div>
         ))}
       </dl>
@@ -75,33 +81,33 @@ export default async function Match({ params }: { params: Promise<{ code: string
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 text-primary"
         >
-          Multiplayer osu!
+          {tr('Multiplayer osu!')}
           <ExternalLink size={18} />
         </a>
       )}
       {m.resultMode === 'SUMMARY' && (
         <p className="mt-5 text-sm text-muted">
-          Risultato storico importato. I punteggi delle singole mappe non sono disponibili.
+          {tr('Risultato storico importato. I punteggi delle singole mappe non sono disponibili.')}
         </p>
       )}
       {m.bracket === 'Reset' && (
         <p className="mt-5 text-sm text-muted">
-          Il reset viene disputato solo se richiesto dall’esito della Grand Final.
+          {tr('Il reset viene disputato solo se richiesto dall’esito della Grand Final.')}
         </p>
       )}
       {!!m.history.length && (
-        <section aria-label="Match action history" className="mt-8 border-y py-6">
-          <h2 className="mb-4 text-xl font-semibold">Cronologia della partita</h2>
+        <section aria-label={tr('Match action history')} className="mt-8 border-y py-6">
+          <h2 className="mb-4 text-xl font-semibold">{tr('Cronologia della partita')}</h2>
           <div className="overflow-x-auto">
             <table className="history-table w-full text-left text-sm">
               <thead className="text-muted">
                 <tr>
                   <th className="px-2 py-3">#</th>
-                  <th className="px-2 py-3">Team</th>
-                  <th className="px-2 py-3">Azione</th>
-                  <th className="px-2 py-3">Mappa</th>
-                  <th className="px-2 py-3">Vincitore</th>
-                  <th className="px-2 py-3">Punteggio</th>
+                  <th className="px-2 py-3">{tr('Team')}</th>
+                  <th className="px-2 py-3">{tr('Azione')}</th>
+                  <th className="px-2 py-3">{tr('Mappa')}</th>
+                  <th className="px-2 py-3">{tr('Vincitore')}</th>
+                  <th className="px-2 py-3">{tr('Punteggio')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -162,7 +168,11 @@ export default async function Match({ params }: { params: Promise<{ code: string
                     <div className="min-w-0">
                       <p className="break-words font-semibold">{p.username}</p>
                       <p className="text-sm text-muted">
-                        {p.captain ? 'Capitano' : p.substitute ? 'Riserva' : 'Giocatore'}
+                        {p.captain
+                          ? tr('Capitano')
+                          : p.substitute
+                            ? tr('Riserva')
+                            : tr('Giocatore')}
                       </p>
                     </div>
                   </a>
@@ -170,7 +180,7 @@ export default async function Match({ params }: { params: Promise<{ code: string
               </div>
             ) : (
               <p className="text-muted">
-                {bracketEntrant(m.participants[side].name)} · esito da definire
+                {bracketEntrant(m.participants[side].name, language)} {tr('· esito da definire')}
               </p>
             )}
           </section>

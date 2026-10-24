@@ -11,7 +11,7 @@ export function validateSheetRecord(
 ) {
   const qualifierIssue = qualifierWorkbookIssue(record.stage);
   if (qualifierIssue) throw new AppError(qualifierIssue);
-  if (record.issues.length) throw new AppError(record.issues.join(' '));
+  if (record.issues.length) throw AppError.fromMessages(record.issues, 400, ' ');
   const pairs = record.draftSequence;
   const inherited = matchRulesSchema.parse(base);
   if (inherited.gameMode !== record.gameMode)
@@ -56,7 +56,9 @@ export function validateSheetRecord(
       source = record.pool.find((s) => s.name === a.slotName);
     if (!slot || !source || slot.beatmapId !== source.beatmapId)
       throw new AppError(
-        `Source slot ${a.slotName} does not match the frozen website pool. Review the pool before importing.`,
+        'Source slot {0} does not match the frozen website pool. Review the pool before importing.',
+        400,
+        [a.slotName],
       );
   }
   const results = actions.flatMap((a) =>

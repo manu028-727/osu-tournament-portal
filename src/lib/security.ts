@@ -1,6 +1,9 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { db } from './db';
 import { AppError } from './permissions';
+import { getLocale } from './server-locale';
+import { translator, translateGeneratedMessage } from './i18n';
+import { validationFeedback } from './validation-feedback';
 export function appUrl() {
   const value = process.env.APP_URL;
   if (process.env.NODE_ENV === 'production' && !value)
@@ -46,30 +49,31 @@ export async function maintenance() {
     db.rateLimit.deleteMany({ where: { expiresAt: { lt: new Date(Date.now() - 86400000) } } }),
   ]);
 }
-export function errorResponse(error: unknown) {
+export async function errorResponse(error: unknown) {
+  // Error reporting must still work if the installation's locale lookup fails.
+  const language = await getLocale().catch(() => 'en' as const);
+  const tr = translator(language);
   if (error instanceof AppError)
     return Response.json(
-      { error: error.message },
+      {
+        error: error.translationValues.length
+          ? tr(error.translationKey, ...error.translationValues)
+          : translateGeneratedMessage(language, error.message),
+      },
       { status: error.status, headers: { 'Cache-Control': 'no-store' } },
     );
   if (error && typeof error === 'object' && 'issues' in error)
     return Response.json(
       {
         error: Array.isArray(error.issues)
-          ? error.issues
-              .slice(0, 3)
-              .map(
-                (issue: { path?: unknown[]; message?: string }) =>
-                  `${issue.path?.join('.') || 'Input'}: ${issue.message || 'Invalid value'}`,
-              )
-              .join('; ')
-          : 'Please check the submitted fields.',
+          ? validationFeedback(error.issues, language)
+          : tr('Please check the submitted fields.'),
       },
       { status: 400, headers: { 'Cache-Control': 'private, no-store' } },
     );
   if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002')
     return Response.json(
-      { error: 'That name, slug or account already exists.' },
+      { error: tr('That name, slug or account already exists.') },
       {
         status: 409,
         headers: { 'Cache-Control': 'private, no-store' },
@@ -77,7 +81,7 @@ export function errorResponse(error: unknown) {
     );
   if (error && typeof error === 'object' && 'code' in error && error.code === 'P2025')
     return Response.json(
-      { error: 'This item no longer exists.' },
+      { error: tr('This item no longer exists.') },
       {
         status: 404,
         headers: { 'Cache-Control': 'private, no-store' },
@@ -85,7 +89,7 @@ export function errorResponse(error: unknown) {
     );
   console.error('Request failed:', error instanceof Error ? error.message : 'Unknown error');
   return Response.json(
-    { error: 'The request could not be completed. Please try again.' },
+    { error: tr('The request could not be completed. Please try again.') },
     { status: 500, headers: { 'Cache-Control': 'private, no-store' } },
   );
 }

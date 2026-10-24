@@ -1,4 +1,7 @@
 'use client';
+import { localeTag } from '@/lib/i18n';
+import { useLocale, useT } from '@/components/locale';
+
 import { useEffect, useState } from 'react';
 import { DropdownMenu, ToggleGroup } from 'radix-ui';
 import { Check, ChevronDown, Save } from 'lucide-react';
@@ -17,11 +20,12 @@ function ModsPicker({
   onChange: (mods: string[]) => void;
   label: string;
 }) {
+  const tr = useT();
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <Button type="button" variant="outline" aria-label={label}>
-          {value.join(' ') || 'No Mod'}
+          {value.join(' ') || tr('No Mod')}
           <ChevronDown size={15} />
         </Button>
       </DropdownMenu.Trigger>
@@ -64,6 +68,8 @@ export function MatchScoreDialog({
   onClose: () => void;
   onSaved: () => Promise<unknown>;
 }) {
+  const language = useLocale();
+  const tr = useT();
   const { busy, run } = useTask();
   const [mode, setMode] = useState('aggregate'),
     [winnerSide, setWinnerSide] = useState<Side>('A'),
@@ -138,7 +144,7 @@ export function MatchScoreDialog({
     }
   const stale = !!selection && selection.baseVersion !== match.version;
   const close = () => {
-    if (!dirty || window.confirm('Discard unsaved score changes?')) {
+    if (!dirty || window.confirm(tr('Discard unsaved score changes?'))) {
       setDirty(false);
       onClose();
     }
@@ -153,7 +159,11 @@ export function MatchScoreDialog({
       onOpenChange={(open) => {
         if (!open) close();
       }}
-      title={`${previous ? 'Correct' : 'Enter'} scores · ${picked?.slotName || ''}`}
+      title={
+        previous
+          ? tr('Correct scores · {0}', picked?.slotName || '')
+          : tr('Enter scores · {0}', picked?.slotName || '')
+      }
       wide
     >
       {selection && (
@@ -191,19 +201,22 @@ export function MatchScoreDialog({
               setDirty(false);
               onClose();
               await onSaved();
-            }, 'Map result saved.');
+            }, tr('Map result saved.'));
           }}
         >
           {stale && (
             <p role="alert" className="text-red-200">
-              Another referee changed this match. Close and reopen this score entry to review the
-              latest version.
+              {tr(
+                'Another referee changed this match. Close and reopen this score entry to review the latest version.',
+              )}
             </p>
           )}
           {match.rules.gameplayScoring === 'LAZER' && mode !== 'winner' && (
             <label className="flex items-center gap-3 text-sm">
               <input type="checkbox" required />
-              Scores are actual standardized lazer values, not classic-scaled display values.
+              {tr(
+                'Scores are actual standardized lazer values, not classic-scaled display values.',
+              )}
             </label>
           )}
           <ToggleGroup.Root
@@ -215,38 +228,42 @@ export function MatchScoreDialog({
                 setDirty(true);
               }
             }}
-            aria-label="Score entry mode"
+            aria-label={tr('Score entry mode')}
             className="flex w-fit max-w-full flex-wrap rounded-lg border p-1"
           >
             <ToggleGroup.Item
               value="winner"
               className="rounded-md px-4 py-2 text-sm data-[state=on]:bg-primary/15 data-[state=on]:text-primary"
             >
-              Winner only
+              {tr('Winner only')}
             </ToggleGroup.Item>
             <ToggleGroup.Item
               value="aggregate"
               className="rounded-md px-4 py-2 text-sm data-[state=on]:bg-primary/15 data-[state=on]:text-primary"
             >
-              Team totals
+              {tr('Team totals')}
             </ToggleGroup.Item>
             <ToggleGroup.Item
               value="individual"
               className="rounded-md px-4 py-2 text-sm data-[state=on]:bg-primary/15 data-[state=on]:text-primary"
             >
-              Individual scores
+              {tr('Individual scores')}
             </ToggleGroup.Item>
           </ToggleGroup.Root>
           {mode === 'winner' ? (
-            <Field label="Map winner">
+            <Field label={tr('Map winner')}>
               <select value={winnerSide} onChange={(e) => setWinnerSide(e.target.value as Side)}>
-                <option value="A">{match.participants.A.name} · Red</option>
-                <option value="B">{match.participants.B.name} · Blue</option>
+                <option value="A">
+                  {match.participants.A.name} {tr('· Red')}
+                </option>
+                <option value="B">
+                  {match.participants.B.name} {tr('· Blue')}
+                </option>
               </select>
             </Field>
           ) : mode === 'aggregate' ? (
             <div className="grid-fields">
-              <Field label={`${match.participants.A.name} score`}>
+              <Field label={tr('{0} score', match.participants.A.name)}>
                 <input
                   type="number"
                   min={0}
@@ -257,7 +274,7 @@ export function MatchScoreDialog({
                   onChange={(e) => setScoreA(Number(e.target.value))}
                 />
               </Field>
-              <Field label={`${match.participants.B.name} score`}>
+              <Field label={tr('{0} score', match.participants.B.name)}>
                 <input
                   type="number"
                   min={0}
@@ -285,7 +302,7 @@ export function MatchScoreDialog({
                           key={`${side}-${index}`}
                           className="grid gap-3 border-b pb-5 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr_auto]"
                         >
-                          <Field label={`Team ${side} player ${index + 1}`}>
+                          <Field label={tr('Team {0} player {1}', side, index + 1)}>
                             <select
                               value={p.osuId}
                               onChange={(e) => player(index, { osuId: Number(e.target.value) })}
@@ -293,12 +310,12 @@ export function MatchScoreDialog({
                               {match.participants[side].members.map((m) => (
                                 <option key={m.osuId} value={m.osuId}>
                                   {m.username}
-                                  {m.substitute ? ' · Substitute' : ''}
+                                  {m.substitute ? tr(' · Substitute') : ''}
                                 </option>
                               ))}
                             </select>
                           </Field>
-                          <Field label={`Raw score ${index + 1}`}>
+                          <Field label={tr('Raw score {0}', index + 1)}>
                             <input
                               type="number"
                               step={match.rules.scoreMode === 'ACCURACY' ? 'any' : 1}
@@ -309,7 +326,7 @@ export function MatchScoreDialog({
                               onChange={(e) => player(index, { score: Number(e.target.value) })}
                             />
                           </Field>
-                          <Field label={`Accuracy ${index + 1} (%)`}>
+                          <Field label={tr('Accuracy {0} (%)', index + 1)}>
                             <input
                               type="number"
                               min={0}
@@ -327,7 +344,7 @@ export function MatchScoreDialog({
                             <ModsPicker
                               value={p.mods}
                               onChange={(mods) => player(index, { mods })}
-                              label={`Mods for player ${index + 1}`}
+                              label={tr('Mods for player {0}', index + 1)}
                             />
                           </div>
                         </div>
@@ -341,19 +358,20 @@ export function MatchScoreDialog({
           {totals ? (
             <div className="flex flex-wrap items-center justify-between gap-4 border-y py-4">
               <p className="text-lg font-semibold">
-                {totals.scoreA.toLocaleString()} : {totals.scoreB.toLocaleString()}
+                {totals.scoreA.toLocaleString(localeTag(language))} :{' '}
+                {totals.scoreB.toLocaleString(localeTag(language))}
               </p>
               <p className={totals.winnerSide === 'A' ? 'text-red-200' : 'text-sky-200'}>
-                Winner: {match.participants[totals.winnerSide].name}
+                {tr('Winner:')} {match.participants[totals.winnerSide].name}
               </p>
             </div>
           ) : (
             <p className="text-amber-200">{issue}</p>
           )}
-          <Field label="Map notes">
+          <Field label={tr('Map notes')}>
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
           </Field>
-          <Field label="Result reason">
+          <Field label={tr('Result reason')}>
             <input
               required
               minLength={3}
@@ -364,7 +382,7 @@ export function MatchScoreDialog({
           </Field>
           <SaveButton busy={busy} disabled={stale || (mode !== 'winner' && !totals)}>
             <Save size={17} />
-            Save map result
+            {tr('Save map result')}
           </SaveButton>
         </form>
       )}

@@ -1,4 +1,7 @@
 'use client';
+import { humanizeCode } from '@/lib/i18n';
+import { useT } from '@/components/locale';
+
 import { useMemo, useRef, useState, type PointerEvent } from 'react';
 import {
   ChevronLeft,
@@ -21,8 +24,9 @@ export function CompetitionViewToggle({
   value: 'list' | 'bracket';
   onChange: (value: 'list' | 'bracket') => void;
 }) {
+  const tr = useT();
   return (
-    <div className="flex gap-1" role="group" aria-label="Match view">
+    <div className="flex gap-1" role="group" aria-label={tr('Match view')}>
       <Button
         size="sm"
         variant={value === 'list' ? 'default' : 'ghost'}
@@ -30,7 +34,7 @@ export function CompetitionViewToggle({
         onClick={() => onChange('list')}
       >
         <List size={16} />
-        List
+        {tr('List')}
       </Button>
       <Button
         size="sm"
@@ -39,7 +43,7 @@ export function CompetitionViewToggle({
         onClick={() => onChange('bracket')}
       >
         <GitBranch size={16} />
-        Bracket
+        {tr('Bracket')}
       </Button>
     </div>
   );
@@ -53,6 +57,7 @@ export function CompetitionBracket({
   onOpenMatch?: (matchId: string) => void;
   onSelectNode?: (nodeId: string) => void;
 }) {
+  const tr = useT();
   const [zoom, setZoom] = useState(1),
     [roundIndex, setRoundIndex] = useState(0);
   const viewport = useRef<HTMLDivElement>(null),
@@ -98,9 +103,9 @@ export function CompetitionBracket({
       <div className="flex h-6 items-center justify-between gap-2 border-b border-border px-2 text-[11px] text-muted">
         <span className="truncate">
           {node.match
-            ? `Match ${node.match.matchNumber}`
+            ? tr('Match {0}', node.match.matchNumber)
             : node.matchNumber
-              ? `Match ${node.matchNumber}`
+              ? tr('Match {0}', node.matchNumber)
               : node.key}
           {node.match && node.match.code !== String(node.match.matchNumber)
             ? ` · ${node.match.code}`
@@ -108,10 +113,10 @@ export function CompetitionBracket({
         </span>
         <span className="shrink-0">
           {node.state === 'BYE'
-            ? 'Bye'
+            ? tr('Bye')
             : node.state === 'SKIPPED'
-              ? 'Not required'
-              : node.match?.status.replaceAll('_', ' ') || node.state}
+              ? tr('Not required')
+              : tr(humanizeCode(node.match?.status || node.state))}
         </span>
       </div>
       {(['A', 'B'] as const).map((side) => {
@@ -126,12 +131,12 @@ export function CompetitionBracket({
             <span className="w-5 shrink-0 text-[11px] tabular-nums">{entry?.seed || ''}</span>
             <span className="min-w-0 flex-1 truncate text-left text-sm" title={entry?.team.name}>
               {entry?.team.name ||
-                (slot?.teamId ? 'Participant' : slot?.resolved ? 'Bye' : 'Pending')}
+                (slot?.teamId ? tr('Participant') : slot?.resolved ? tr('Bye') : tr('Pending'))}
             </span>
             {slot?.mode === 'LOCKED' ? (
-              <LockKeyhole size={12} aria-label="Locked position" />
+              <LockKeyhole size={12} aria-label={tr('Locked position')} />
             ) : slot?.mode === 'MANUAL' ? (
-              <Hand size={12} aria-label="Manual position" />
+              <Hand size={12} aria-label={tr('Manual position')} />
             ) : null}
             <span className="w-5 shrink-0 text-right text-sm tabular-nums">
               {node.match ? (side === 'A' ? node.match.scoreA : node.match.scoreB) : ''}
@@ -167,21 +172,21 @@ export function CompetitionBracket({
       });
   };
   return (
-    <section aria-label={`${bracket.name} bracket`} className="min-w-0">
+    <section aria-label={tr('{0} bracket', bracket.name)} className="min-w-0">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <Button
             variant="ghost"
             size="icon"
-            title="Previous round"
-            aria-label="Previous round"
+            title={tr('Previous round')}
+            aria-label={tr('Previous round')}
             disabled={roundIndex <= 0}
             onClick={() => changeRound(Math.max(0, roundIndex - 1))}
           >
             <ChevronLeft size={18} />
           </Button>
           <select
-            aria-label="Bracket round"
+            aria-label={tr('Bracket round')}
             className="min-w-0 max-w-64"
             value={currentRound?.id || ''}
             onChange={(e) => {
@@ -198,8 +203,8 @@ export function CompetitionBracket({
           <Button
             variant="ghost"
             size="icon"
-            title="Next round"
-            aria-label="Next round"
+            title={tr('Next round')}
+            aria-label={tr('Next round')}
             disabled={roundIndex >= bracket.rounds.length - 1}
             onClick={() => changeRound(Math.min(bracket.rounds.length - 1, roundIndex + 1))}
           >
@@ -210,8 +215,8 @@ export function CompetitionBracket({
           <Button
             variant="ghost"
             size="icon"
-            title="Zoom out"
-            aria-label="Zoom out"
+            title={tr('Zoom out')}
+            aria-label={tr('Zoom out')}
             disabled={zoom <= 0.25}
             onClick={() => setZoom((z) => Math.max(0.25, z - 0.1))}
           >
@@ -223,8 +228,8 @@ export function CompetitionBracket({
           <Button
             variant="ghost"
             size="icon"
-            title="Zoom in"
-            aria-label="Zoom in"
+            title={tr('Zoom in')}
+            aria-label={tr('Zoom in')}
             disabled={zoom >= 2}
             onClick={() => setZoom((z) => Math.min(2, z + 0.1))}
           >
@@ -233,8 +238,8 @@ export function CompetitionBracket({
           <Button
             variant="ghost"
             size="icon"
-            title="Fit bracket"
-            aria-label="Fit bracket"
+            title={tr('Fit bracket')}
+            aria-label={tr('Fit bracket')}
             onClick={fit}
           >
             <Maximize size={16} />
@@ -260,7 +265,7 @@ export function CompetitionBracket({
         ref={viewport}
         className="hidden max-h-[70vh] min-h-64 overflow-auto overscroll-contain rounded-lg border border-border bg-background md:block"
         tabIndex={0}
-        aria-label="Bracket canvas"
+        aria-label={tr('Bracket canvas')}
         onPointerDown={pointerDown}
         onPointerMove={(event) => {
           if (drag.current && viewport.current) {
@@ -351,13 +356,13 @@ export function CompetitionBracket({
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-border text-xs text-muted">
-                <th className="p-2">Group</th>
-                <th className="p-2">Rank</th>
-                <th className="p-2">Participant</th>
-                <th className="p-2">W</th>
-                <th className="p-2">L</th>
-                <th className="p-2">Map +/-</th>
-                <th className="p-2">Status</th>
+                <th className="p-2">{tr('Group')}</th>
+                <th className="p-2">{tr('Rank')}</th>
+                <th className="p-2">{tr('Participant')}</th>
+                <th className="p-2">{tr('W')}</th>
+                <th className="p-2">{tr('L')}</th>
+                <th className="p-2">{tr('Map +/-')}</th>
+                <th className="p-2">{tr('Status')}</th>
               </tr>
             </thead>
             <tbody>
@@ -373,11 +378,11 @@ export function CompetitionBracket({
                   <td className="p-2 tabular-nums">{row.mapDifference}</td>
                   <td className="p-2 text-muted">
                     {row.qualified
-                      ? 'Qualified'
+                      ? tr('Qualified')
                       : row.tied
-                        ? 'Tiebreak pending'
+                        ? tr('Tiebreak pending')
                         : row.tieResolved
-                          ? 'Tiebreak approved'
+                          ? tr('Tiebreak approved')
                           : ''}
                   </td>
                 </tr>

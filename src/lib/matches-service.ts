@@ -205,7 +205,7 @@ export async function applyMatchAction(
         'Approved participants and sufficient starting players are required for this team size.',
       );
     const poolProblems = stagePoolProblems(stage.kind, rules, revision.slots);
-    if (poolProblems.length) throw new AppError(poolProblems.join(' '));
+    if (poolProblems.length) throw AppError.fromMessages(poolProblems, 400, ' ');
     const date = a.scheduledAt ? new Date(a.scheduledAt) : null;
     if (
       await tx.match.findFirst({
@@ -292,8 +292,9 @@ export async function applyMatchAction(
     });
     if (dependency)
       throw new AppError(
-        `Match ${dependency.code} depends on this result. Remove that dependent match first, or cancel this match instead.`,
+        'Match {0} depends on this result. Remove that dependent match first, or cancel this match instead.',
         409,
+        [dependency.code],
       );
     const deleted = await tx.match.deleteMany({ where: { id: match.id, version: a.baseVersion } });
     if (deleted.count !== 1) throw new AppError('The match changed. Reload before deleting.', 409);
@@ -808,8 +809,9 @@ export async function applyMatchAction(
         replayDraft(rules, draftState(match), match.poolRevision.slots, match.actions, results);
       } catch (error) {
         throw new AppError(
-          `This result would invalidate the match history. Undo later actions first. ${(error as Error).message}`,
+          'This result would invalidate the match history. Undo later actions first. {0}',
           409,
+          [(error as Error).message],
         );
       }
       let scoreA = 0,

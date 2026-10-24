@@ -1,4 +1,6 @@
 'use client';
+import { useT } from '@/components/locale';
+
 import { useRef, useState } from 'react';
 import { Plus, Trash2, Users, Eye, EyeOff, ArrowUpRight, Search, Pencil, X } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -43,6 +45,7 @@ type Draft = Omit<Member, 'id' | 'username' | 'avatarUrl' | 'profileUrl' | 'vers
   version?: number;
 };
 export function StaffEditor({ actor }: { actor: Actor }) {
+  const tr = useT();
   const { data, error, reload } = useResource<{ members: Member[]; categories: Category[] }>(
     'staff',
   );
@@ -101,19 +104,19 @@ export function StaffEditor({ actor }: { actor: Actor }) {
     anchor.current = id;
   };
   const closeMember = () => {
-    if (dirty && !window.confirm('Discard unsaved staff changes?')) return;
+    if (dirty && !window.confirm(tr('Discard unsaved staff changes?'))) return;
     setMember(null);
     setDirty(false);
   };
   return (
     <>
       <SectionTitle
-        title="Staff manager"
-        description="Public staff positions do not grant website access."
+        title={tr('Staff manager')}
+        description={tr('Public staff positions do not grant website access.')}
       >
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => setCategoryOpen(true)}>
-            Staff categories
+            {tr('Staff categories')}
           </Button>
           <Button
             size="sm"
@@ -130,7 +133,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
             }}
           >
             <Plus size={14} />
-            Add staff member
+            {tr('Add staff member')}
           </Button>
         </div>
       </SectionTitle>
@@ -143,8 +146,8 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
               />
               <input
-                aria-label="Search staff"
-                placeholder="Search username, osu! ID or position"
+                aria-label={tr('Search staff')}
+                placeholder={tr('Search username, osu! ID or position')}
                 className="!pl-9"
                 value={search}
                 onChange={(event) => {
@@ -153,7 +156,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                 }}
               />
             </div>
-            <Field label="Category">
+            <Field label={tr('Category')}>
               <select
                 value={categoryFilter}
                 onChange={(event) => {
@@ -161,8 +164,8 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                   clearSelection();
                 }}
               >
-                <option value="">All categories</option>
-                <option value="none">No category</option>
+                <option value="">{tr('All categories')}</option>
+                <option value="none">{tr('No category')}</option>
                 {data.categories.map((entry) => (
                   <option key={entry.id} value={entry.id}>
                     {entry.name}
@@ -170,7 +173,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                 ))}
               </select>
             </Field>
-            <Field label="Public visibility">
+            <Field label={tr('Public visibility')}>
               <select
                 value={visibilityFilter}
                 onChange={(event) => {
@@ -178,13 +181,13 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                   clearSelection();
                 }}
               >
-                <option value="">All staff</option>
-                <option value="shown">Shown</option>
-                <option value="hidden">Hidden</option>
+                <option value="">{tr('All staff')}</option>
+                <option value="shown">{tr('Shown')}</option>
+                <option value="hidden">{tr('Hidden')}</option>
               </select>
             </Field>
             <span className="py-3 text-xs text-muted">
-              {visibleMembers.length} of {data.members.length} staff
+              {visibleMembers.length} {tr('of')} {data.members.length} {tr('staff')}
             </span>
           </div>
           {editable && (
@@ -200,7 +203,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                   anchor.current = null;
                 }}
               />
-              Select all {visibleMembers.length} matching staff
+              {tr('Select all')} {visibleMembers.length} {tr('matching staff')}
             </label>
           )}
         </div>
@@ -209,9 +212,11 @@ export function StaffEditor({ actor }: { actor: Actor }) {
         <div
           className="sticky top-0 z-10 mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-primary/40 bg-card p-3"
           role="region"
-          aria-label="Staff bulk actions"
+          aria-label={tr('Staff bulk actions')}
         >
-          <span className="mr-2 text-sm font-medium">{selectedMembers.length} selected</span>
+          <span className="mr-2 text-sm font-medium">
+            {selectedMembers.length} {tr('selected')}
+          </span>
           <Button
             variant="outline"
             size="sm"
@@ -219,7 +224,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
             onClick={() => setBulk({ members: [...selectedMembers], visibility: 'SHOW' })}
           >
             <Eye size={14} />
-            Show
+            {tr('Show')}
           </Button>
           <Button
             variant="outline"
@@ -228,7 +233,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
             onClick={() => setBulk({ members: [...selectedMembers], visibility: 'HIDE' })}
           >
             <EyeOff size={14} />
-            Hide
+            {tr('Hide')}
           </Button>
           <Button
             variant="outline"
@@ -237,14 +242,16 @@ export function StaffEditor({ actor }: { actor: Actor }) {
             onClick={() => setBulk({ members: [...selectedMembers], visibility: 'KEEP' })}
           >
             <Pencil size={14} />
-            Edit positions
+            {tr('Edit positions')}
           </Button>
           <Button variant="ghost" size="sm" onClick={clearSelection}>
             <X size={14} />
-            Clear
+            {tr('Clear')}
           </Button>
           {selectedMembers.length > 200 && (
-            <span className="text-xs text-amber-400">Select up to 200 staff per operation.</span>
+            <span className="text-xs text-amber-400">
+              {tr('Select up to 200 staff per operation.')}
+            </span>
           )}
         </div>
       )}
@@ -256,7 +263,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                 {editable && (
                   <input
                     type="checkbox"
-                    aria-label={`Select ${m.username}`}
+                    aria-label={tr('Select {0}', m.username)}
                     checked={selectedMembers.some((entry) => entry.id === m.id)}
                     onChange={(event) =>
                       toggleSelected(
@@ -282,7 +289,10 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                     {m.username}
                     <ArrowUpRight size={12} className="text-muted" />
                   </a>
-                  <span className="text-xs text-muted">osu! #{m.osuId}</span>
+                  <span className="text-xs text-muted">
+                    {tr('osu! #')}
+                    {m.osuId}
+                  </span>
                 </div>
                 {!m.visible && <EyeOff size={16} className="text-muted" />}
               </div>
@@ -294,7 +304,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                 ))}
               </div>
               <p className="mt-4 line-clamp-2 text-xs text-muted">
-                {m.bio || 'No biography added.'}
+                {m.bio || tr('No biography added.')}
               </p>
               <div className="mt-5 flex justify-between border-t pt-4">
                 <Button
@@ -305,17 +315,17 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                     setDirty(false);
                   }}
                 >
-                  Edit profile
+                  {tr('Edit profile')}
                 </Button>
                 <ConfirmButton
-                  title={`Remove ${m.username} from staff?`}
-                  description="Their website account and access roles are unaffected."
+                  title={tr('Remove {0} from staff?', m.username)}
+                  description={tr('Their website account and access roles are unaffected.')}
                   disabled={busy}
                   onConfirm={() =>
                     void run(async () => {
                       await action({ type: 'staff.delete', id: m.id, baseVersion: m.version });
                       await reload();
-                    }, 'Staff member removed.')
+                    }, tr('Staff member removed.'))
                   }
                 >
                   <Trash2 size={13} />
@@ -326,14 +336,14 @@ export function StaffEditor({ actor }: { actor: Actor }) {
         </div>
       ) : data.members.length ? (
         <p className="rounded-lg border p-8 text-center text-sm text-muted">
-          No staff match the current filters.
+          {tr('No staff match the current filters.')}
         </p>
       ) : (
         <div className="card py-20 text-center">
           <Users className="mx-auto mb-4 text-primary" size={28} />
-          <h2 className="text-xl font-semibold">No public staff members yet</h2>
+          <h2 className="text-xl font-semibold">{tr('No public staff members yet')}</h2>
           <p className="mt-3 text-sm text-muted">
-            Add the first staff member using their osu! user ID.
+            {tr('Add the first staff member using their osu! user ID.')}
           </p>
         </div>
       )}
@@ -354,15 +364,17 @@ export function StaffEditor({ actor }: { actor: Actor }) {
               await reload();
               setBulk(null);
               clearSelection();
-            }, 'Public staff listings updated.')
+            }, tr('Public staff listings updated.'))
           }
         />
       )}
       <Modal
         open={!!member}
         onOpenChange={closeMember}
-        title={member?.id ? 'Edit staff profile' : 'Add staff member'}
-        description="osu! profile details are retrieved from the official API. Assign one or more public staff positions."
+        title={member?.id ? tr('Edit staff profile') : tr('Add staff member')}
+        description={tr(
+          'osu! profile details are retrieved from the official API. Assign one or more public staff positions.',
+        )}
       >
         {member && (
           <form
@@ -374,11 +386,11 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                 await reload();
                 setMember(null);
                 setDirty(false);
-              }, 'Staff profile saved.');
+              }, tr('Staff profile saved.'));
             }}
           >
             <div className="grid-fields">
-              <Field label="osu! user ID" hint="The number in osu.ppy.sh/users/123456">
+              <Field label={tr('osu! user ID')} hint={tr('The number in osu.ppy.sh/users/123456')}>
                 <input
                   type="number"
                   required
@@ -390,7 +402,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                   }}
                 />
               </Field>
-              <Field label="Display order">
+              <Field label={tr('Display order')}>
                 <input
                   type="number"
                   min={0}
@@ -402,7 +414,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                 />
               </Field>
             </div>
-            <Field label="Biography">
+            <Field label={tr('Biography')}>
               <textarea
                 value={member.bio}
                 onChange={(e) => {
@@ -413,7 +425,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
               />
             </Field>
             <MediaField
-              label="Custom profile image (optional)"
+              label={tr('Custom profile image (optional)')}
               value={member.customImage}
               canUpload={can(actor, 'media.upload')}
               onChange={(customImage) => {
@@ -430,10 +442,10 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                   setDirty(true);
                 }}
               />
-              Show on the public staff page
+              {tr('Show on the public staff page')}
             </label>
             <div className="space-y-3">
-              <p className="text-xs font-semibold">Public staff positions</p>
+              <p className="text-xs font-semibold">{tr('Public staff positions')}</p>
               {data.categories.map((c) => {
                 const assignment = member.assignments.find((a) => a.categoryId === c.id);
                 return (
@@ -456,8 +468,8 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                     </label>
                     {assignment && (
                       <input
-                        aria-label={`Position in ${c.name}`}
-                        placeholder="Custom position title (optional)"
+                        aria-label={tr('Position in {0}', c.name)}
+                        placeholder={tr('Custom position title (optional)')}
                         value={assignment.position}
                         onChange={(e) => {
                           setMember({
@@ -474,30 +486,34 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                 );
               })}
               {!data.categories.length && (
-                <p className="text-xs text-muted">Create a staff category to organize your team.</p>
+                <p className="text-xs text-muted">
+                  {tr('Create a staff category to organize your team.')}
+                </p>
               )}
             </div>
             <div className="flex justify-end gap-3">
               <Button type="button" variant="outline" disabled={busy} onClick={closeMember}>
-                Cancel
+                {tr('Cancel')}
               </Button>
-              <SaveButton busy={busy}>Save staff profile</SaveButton>
+              <SaveButton busy={busy}>{tr('Save staff profile')}</SaveButton>
             </div>
           </form>
         )}
       </Modal>
-      <Modal open={categoryOpen} onOpenChange={setCategoryOpen} title="Staff categories">
+      <Modal open={categoryOpen} onOpenChange={setCategoryOpen} title={tr('Staff categories')}>
         <div className="mb-6 space-y-2">
           {data.categories.map((c) => (
             <div key={c.id} className="flex items-center gap-3 rounded-lg border p-3">
               <span className="text-xs text-muted">{c.position + 1}</span>
               <span className="flex-1 text-xs">{c.name}</span>
               <Button size="sm" variant="ghost" onClick={() => setCategory(c)}>
-                Edit
+                {tr('Edit')}
               </Button>
               <ConfirmButton
-                title={`Delete ${c.name}?`}
-                description="Staff members will remain, but their assignments to this category will be removed."
+                title={tr('Delete {0}?', c.name)}
+                description={tr(
+                  'Staff members will remain, but their assignments to this category will be removed.',
+                )}
                 onConfirm={() =>
                   void run(async () => {
                     await action({
@@ -506,7 +522,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                       baseVersion: c.version,
                     });
                     await reload();
-                  }, 'Category removed.')
+                  }, tr('Category removed.'))
                 }
               >
                 <Trash2 size={12} />
@@ -528,26 +544,26 @@ export function StaffEditor({ actor }: { actor: Actor }) {
               });
               setCategory(null);
               await reload();
-            }, 'Category saved.');
+            }, tr('Category saved.'));
           }}
         >
           <h3 className="text-sm font-semibold">
-            {category?.id ? 'Edit category' : 'Add category'}
+            {category?.id ? tr('Edit category') : tr('Add category')}
           </h3>
-          <Field label="Category name">
+          <Field label={tr('Category name')}>
             <input
               required
               value={category?.name || ''}
               onChange={(e) => setCategory({ ...category, name: e.target.value })}
             />
           </Field>
-          <Field label="Description">
+          <Field label={tr('Description')}>
             <textarea
               value={category?.description || ''}
               onChange={(e) => setCategory({ ...category, description: e.target.value })}
             />
           </Field>
-          <Field label="Display order">
+          <Field label={tr('Display order')}>
             <input
               type="number"
               min={0}
@@ -556,10 +572,10 @@ export function StaffEditor({ actor }: { actor: Actor }) {
             />
           </Field>
           <div className="flex gap-3">
-            <SaveButton busy={busy}>Save category</SaveButton>
+            <SaveButton busy={busy}>{tr('Save category')}</SaveButton>
             {category?.id && (
               <Button type="button" variant="ghost" onClick={() => setCategory(null)}>
-                Cancel edit
+                {tr('Cancel edit')}
               </Button>
             )}
           </div>
@@ -586,6 +602,7 @@ function StaffBulkDialog({
   onClose: () => void;
   onSave: (payload: StaffBulkAction) => void;
 }) {
+  const tr = useT();
   const [visibility, setVisibility] = useState(initialVisibility);
   const [operation, setOperation] = useState<StaffAssignmentPatch['operation'] | ''>('');
   const [categoryId, setCategoryId] = useState(initialCategoryId),
@@ -608,7 +625,7 @@ function StaffBulkDialog({
   return (
     <Modal
       open
-      title={`Update ${members.length} public staff listings`}
+      title={tr('Update {0} public staff listings', members.length)}
       onOpenChange={() => {
         if (!busy) onClose();
       }}
@@ -644,40 +661,42 @@ function StaffBulkDialog({
           });
         }}
       >
-        <Field label="Public visibility">
+        <Field label={tr('Public visibility')}>
           <select
             value={visibility}
             onChange={(event) => setVisibility(event.target.value as typeof visibility)}
           >
             <option value="KEEP">
-              Keep current visibility
-              {members.some((member) => member.visible !== members[0].visible) ? ' (mixed)' : ''}
+              {tr('Keep current visibility')}
+              {members.some((member) => member.visible !== members[0].visible)
+                ? tr(' (mixed)')
+                : ''}
             </option>
-            <option value="SHOW">Show all selected staff</option>
-            <option value="HIDE">Hide all selected staff</option>
+            <option value="SHOW">{tr('Show all selected staff')}</option>
+            <option value="HIDE">{tr('Hide all selected staff')}</option>
           </select>
         </Field>
-        <Field label="Public staff category">
+        <Field label={tr('Public staff category')}>
           <select
             value={operation}
             onChange={(event) => setOperation(event.target.value as typeof operation)}
           >
-            <option value="">Keep current categories and position labels</option>
-            <option value="ADD">Add to category</option>
-            <option value="REMOVE">Remove from category</option>
-            <option value="REASSIGN">Move between categories</option>
-            <option value="LABEL">Change position label in category</option>
+            <option value="">{tr('Keep current categories and position labels')}</option>
+            <option value="ADD">{tr('Add to category')}</option>
+            <option value="REMOVE">{tr('Remove from category')}</option>
+            <option value="REASSIGN">{tr('Move between categories')}</option>
+            <option value="LABEL">{tr('Change position label in category')}</option>
           </select>
         </Field>
         {operation && (
-          <Field label={operation === 'REASSIGN' ? 'Source category' : 'Category'}>
+          <Field label={operation === 'REASSIGN' ? tr('Source category') : tr('Category')}>
             <select
               required
               value={categoryId}
               onChange={(event) => setCategoryId(event.target.value)}
             >
               <option value="" disabled>
-                Choose public category
+                {tr('Choose public category')}
               </option>
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>
@@ -688,14 +707,14 @@ function StaffBulkDialog({
           </Field>
         )}
         {operation === 'REASSIGN' && (
-          <Field label="Destination category">
+          <Field label={tr('Destination category')}>
             <select
               required
               value={destinationCategoryId}
               onChange={(event) => setDestinationCategoryId(event.target.value)}
             >
               <option value="" disabled>
-                Choose destination category
+                {tr('Choose destination category')}
               </option>
               {categories
                 .filter((category) => category.id !== categoryId)
@@ -714,12 +733,15 @@ function StaffBulkDialog({
               checked={changeLabel}
               onChange={(event) => setChangeLabel(event.target.checked)}
             />
-            Set a shared position label
+            {tr('Set a shared position label')}
           </label>
         )}
         {(operation === 'LABEL' ||
           ((operation === 'ADD' || operation === 'REASSIGN') && changeLabel)) && (
-          <Field label="Position label" hint="Leave empty to display the category name.">
+          <Field
+            label={tr('Position label')}
+            hint={tr('Leave empty to display the category name.')}
+          >
             <input
               maxLength={100}
               value={position}
@@ -729,50 +751,53 @@ function StaffBulkDialog({
         )}
         {operation === 'LABEL' && categoryId && (
           <p className="text-xs text-muted">
-            Current labels:{' '}
-            {currentLabels.length > 1 ? 'Mixed' : currentLabels[0] || 'Category name'}.
+            {tr('Current labels:')}{' '}
+            {currentLabels.length > 1 ? tr('Mixed') : currentLabels[0] || tr('Category name')}.
           </p>
         )}
         {needsExisting && categoryId && missing > 0 && (
           <p role="alert" className="text-sm text-amber-400">
-            {missing} selected staff {missing === 1 ? 'is' : 'are'} not assigned to this source
-            category. Filter by the category and select its members first.
+            {missing} {tr('selected staff')} {missing === 1 ? tr('is') : tr('are')}{' '}
+            {tr(
+              'not assigned to this source category. Filter by the category and select its members first.',
+            )}
           </p>
         )}
         {operation === 'REASSIGN' && (
           <p className="text-xs text-muted">
-            Other categories are kept. Existing destination labels are kept unless a shared label is
-            set; new destination assignments inherit the source label.
+            {tr(
+              'Other categories are kept. Existing destination labels are kept unless a shared label is set; new destination assignments inherit the source label.',
+            )}
           </p>
         )}
         {operation === 'ADD' && !changeLabel && (
           <p className="text-xs text-muted">
-            Existing position labels are kept. New assignments display the category name.
+            {tr('Existing position labels are kept. New assignments display the category name.')}
           </p>
         )}
         {operation === 'REMOVE' && (
           <p className="text-xs text-muted">
-            Only this category is removed; other public positions are kept.
+            {tr('Only this category is removed; other public positions are kept.')}
           </p>
         )}
         <details>
           <summary className="cursor-pointer text-sm font-medium">
-            Review {members.length} selected staff
+            {tr('Review')} {members.length} {tr('selected staff')}
           </summary>
           <ul className="mt-2 max-h-40 space-y-1 overflow-auto text-sm text-muted">
             {members.map((member) => (
               <li key={member.id}>
-                {member.username} · {member.visible ? 'Shown' : 'Hidden'}
+                {member.username} · {member.visible ? tr('Shown') : tr('Hidden')}
               </li>
             ))}
           </ul>
         </details>
         <div className="flex justify-end gap-2 border-t pt-4">
           <Button type="button" variant="ghost" disabled={busy} onClick={onClose}>
-            Cancel
+            {tr('Cancel')}
           </Button>
           <SaveButton busy={busy} disabled={busy || !valid}>
-            Apply to {members.length} staff
+            {tr('Apply to')} {members.length} {tr('staff')}
           </SaveButton>
         </div>
       </form>

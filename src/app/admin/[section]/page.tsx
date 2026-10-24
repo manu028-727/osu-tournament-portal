@@ -1,3 +1,4 @@
+import { getServerT } from '@/lib/server-locale';
 import { notFound, redirect } from 'next/navigation';
 import { getWorkspaceActor } from '@/lib/workspace-server';
 import { getTournament, publicPage } from '@/lib/queries';
@@ -21,6 +22,7 @@ export default async function Section({
   params: Promise<{ section: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const tr = await getServerT();
   const section = (await params).section;
   if (!Object.hasOwn(WORKSPACE_SECTIONS, section)) notFound();
   const actor = await getWorkspaceActor();
@@ -31,9 +33,9 @@ export default async function Section({
   )
     return (
       <div className="card p-10">
-        <h1 className="text-2xl font-semibold">Access restricted</h1>
+        <h1 className="text-2xl font-semibold">{tr('Access restricted')}</h1>
         <p className="mt-4 text-sm text-muted">
-          Your roles don’t include permission to access this part of the workspace.
+          {tr('Your roles don’t include permission to access this part of the workspace.')}
         </p>
       </div>
     );
@@ -67,12 +69,15 @@ export default async function Section({
           {(can(actor, 'matches.view_all') ||
             can(actor, 'matches.manage') ||
             can(actor, 'matches.manage_all')) && (
-            <nav aria-label="Participant results" className="mb-4 flex flex-wrap gap-4 text-sm">
+            <nav
+              aria-label={tr('Participant results')}
+              className="mb-4 flex flex-wrap gap-4 text-sm"
+            >
               <Link href="/admin/qualifier-results" className="text-primary">
-                Qualifier results & seedings
+                {tr('Qualifier results & seedings')}
               </Link>
               <Link href="/admin/matches" className="text-primary">
-                Matches & brackets
+                {tr('Matches & brackets')}
               </Link>
             </nav>
           )}

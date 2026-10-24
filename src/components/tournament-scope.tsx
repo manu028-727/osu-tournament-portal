@@ -3,6 +3,8 @@ import NextLink from 'next/link';
 import { createContext, useContext } from 'react';
 import type { ComponentProps } from 'react';
 import { tournamentPath, scopedHref } from '@/lib/tournament-paths';
+import { useLocale, useT } from './locale';
+import { localeTag } from '@/lib/i18n';
 export { scopedHref } from '@/lib/tournament-paths';
 type Scope = {
   tournamentId: string;
@@ -20,14 +22,16 @@ const Context = createContext<Scope>({
 export const useTournamentScope = () => useContext(Context);
 export function useTournamentTime() {
   const { timezone = 'UTC' } = useTournamentScope();
+  const language = useLocale(),
+    tr = useT();
   return (value: string | Date | null) =>
     value
-      ? new Intl.DateTimeFormat('it-IT', {
+      ? new Intl.DateTimeFormat(localeTag(language), {
           dateStyle: 'medium',
           timeStyle: 'short',
           timeZone: timezone,
         }).format(new Date(value))
-      : 'Data da definire';
+      : tr('Date to be announced');
 }
 export function TournamentScope({ value, children }: { value: Scope; children: React.ReactNode }) {
   return <Context.Provider value={value}>{children}</Context.Provider>;

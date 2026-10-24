@@ -1,10 +1,13 @@
 'use client';
+import { useT } from '@/components/locale';
+
 import { Download } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useTask } from './shared';
 import { tournamentApiUrl } from '../tournament-scope';
 
 export function ExportTournamentButton({ tournament }: { tournament?: string }) {
+  const tr = useT();
   const { busy, run } = useTask();
   return (
     <Button
@@ -26,11 +29,11 @@ export function ExportTournamentButton({ tournament }: { tournament?: string }) 
             'tournament.zip';
           anchor.click();
           setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
-        }, 'Tournament archive downloaded.')
+        }, tr('Tournament archive downloaded.'))
       }
     >
       <Download size={17} />
-      {busy ? 'Exporting...' : 'Export Tournament'}
+      {busy ? tr('Exporting...') : tr('Export Tournament')}
     </Button>
   );
 }

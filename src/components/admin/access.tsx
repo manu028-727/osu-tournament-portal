@@ -1,4 +1,7 @@
 'use client';
+import { localeTag } from '@/lib/i18n';
+import { useLocale, useT } from '@/components/locale';
+
 import { useState } from 'react';
 import { Plus, Trash2, Search, LockKeyhole } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -33,6 +36,7 @@ type User = {
   roles: { roleId: string; role: Role }[];
 };
 export function RolesEditor({ actor }: { actor: Actor }) {
+  const tr = useT();
   const { data, error, reload } = useResource<{ roles: Role[]; permissions: typeof PERMISSIONS }>(
     'roles',
   );
@@ -48,7 +52,7 @@ export function RolesEditor({ actor }: { actor: Actor }) {
   if (!data) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
   return (
     <>
-      <SectionTitle title="Roles & permissions">
+      <SectionTitle title={tr('Roles & permissions')}>
         <Button
           size="sm"
           onClick={() => {
@@ -57,7 +61,7 @@ export function RolesEditor({ actor }: { actor: Actor }) {
           }}
         >
           <Plus size={13} />
-          Create role
+          {tr('Create role')}
         </Button>
       </SectionTitle>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -72,17 +76,17 @@ export function RolesEditor({ actor }: { actor: Actor }) {
                     {r.systemKey === 'Owner' ? (
                       <>
                         <LockKeyhole size={10} />
-                        Protected
+                        {tr('Protected')}
                       </>
                     ) : (
-                      'System role'
+                      tr('System role')
                     )}
                   </Badge>
                 )}
               </div>
               <p className="mt-2 text-xs text-muted">{r.description}</p>
               <p className="mb-6 mt-4 text-xs text-muted">
-                {r.permissions.length} permissions · {r._count?.users || 0} users
+                {r.permissions.length} {tr('permissions ·')} {r._count?.users || 0} {tr('users')}
               </p>
               <div className="mt-auto flex justify-between border-t pt-4">
                 <Button
@@ -99,18 +103,18 @@ export function RolesEditor({ actor }: { actor: Actor }) {
                     setDirty(false);
                   }}
                 >
-                  {own ? 'Assigned to you' : 'Edit role'}
+                  {own ? tr('Assigned to you') : tr('Edit role')}
                 </Button>
                 {!r.systemKey && !own && (
                   <ConfirmButton
-                    title={`Delete ${r.name}?`}
-                    description="This role will be removed from every user who has it."
+                    title={tr('Delete {0}?', r.name)}
+                    description={tr('This role will be removed from every user who has it.')}
                     disabled={busy}
                     onConfirm={() =>
                       void run(async () => {
                         await action({ type: 'role.delete', id: r.id });
                         await reload();
-                      }, 'Role deleted.')
+                      }, tr('Role deleted.'))
                     }
                   >
                     <Trash2 size={13} />
@@ -124,12 +128,14 @@ export function RolesEditor({ actor }: { actor: Actor }) {
       <Modal
         open={!!role}
         onOpenChange={() => {
-          if (dirty && !window.confirm('Discard unsaved role changes?')) return;
+          if (dirty && !window.confirm(tr('Discard unsaved role changes?'))) return;
           setRole(null);
           setDirty(false);
         }}
-        title={role?.id ? 'Edit role' : 'Create role'}
-        description="You can grant only permissions you hold. Your own roles and the Owner role are protected."
+        title={role?.id ? tr('Edit role') : tr('Create role')}
+        description={tr(
+          'You can grant only permissions you hold. Your own roles and the Owner role are protected.',
+        )}
       >
         {role && (
           <form
@@ -141,10 +147,10 @@ export function RolesEditor({ actor }: { actor: Actor }) {
                 await reload();
                 setRole(null);
                 setDirty(false);
-              }, 'Role saved.');
+              }, tr('Role saved.'));
             }}
           >
-            <Field label="Role name">
+            <Field label={tr('Role name')}>
               <input
                 required
                 value={role.name}
@@ -154,7 +160,7 @@ export function RolesEditor({ actor }: { actor: Actor }) {
                 }}
               />
             </Field>
-            <Field label="Description">
+            <Field label={tr('Description')}>
               <textarea
                 value={role.description}
                 onChange={(e) => {
@@ -164,7 +170,7 @@ export function RolesEditor({ actor }: { actor: Actor }) {
               />
             </Field>
             <fieldset className="space-y-2">
-              <legend className="mb-3 text-xs font-semibold">Granular permissions</legend>
+              <legend className="mb-3 text-xs font-semibold">{tr('Granular permissions')}</legend>
               {Object.entries(data.permissions).map(([key, description]) => (
                 <label className="flex items-start gap-3 rounded-lg border p-3" key={key}>
                   <input
@@ -184,12 +190,14 @@ export function RolesEditor({ actor }: { actor: Actor }) {
                   />
                   <span>
                     <span className="block font-mono text-xs text-primary">{key}</span>
-                    <span className="mt-1 block text-xs font-normal text-muted">{description}</span>
+                    <span className="mt-1 block text-xs font-normal text-muted">
+                      {tr(description)}
+                    </span>
                   </span>
                 </label>
               ))}
             </fieldset>
-            <SaveButton busy={busy}>Save role</SaveButton>
+            <SaveButton busy={busy}>{tr('Save role')}</SaveButton>
           </form>
         )}
       </Modal>
@@ -197,6 +205,8 @@ export function RolesEditor({ actor }: { actor: Actor }) {
   );
 }
 export function UsersEditor({ actor }: { actor: Actor }) {
+  const language = useLocale();
+  const tr = useT();
   const [query, setQuery] = useState(''),
     [search, setSearch] = useState('');
   const { data, error, reload } = useResource<{ users: User[]; roles: Role[] }>(
@@ -210,7 +220,7 @@ export function UsersEditor({ actor }: { actor: Actor }) {
   if (!data) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
   return (
     <>
-      <SectionTitle title="User management" />
+      <SectionTitle title={tr('User management')} />
       <form
         className="mb-6 flex min-w-0 max-w-lg gap-3"
         onSubmit={(e) => {
@@ -219,26 +229,26 @@ export function UsersEditor({ actor }: { actor: Actor }) {
         }}
       >
         <input
-          aria-label="Search users"
+          aria-label={tr('Search users')}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by osu! username or ID…"
+          placeholder={tr('Search by osu! username or ID…')}
         />
         <Button type="submit" variant="outline" className="shrink-0">
           <Search size={15} />
-          Search
+          {tr('Search')}
         </Button>
       </form>
       <div className="card relative overflow-x-auto">
         <table className="admin-table">
           <thead>
             <tr>
-              <th>User</th>
-              <th>osu! ID</th>
-              <th>Roles</th>
-              <th>Last login</th>
+              <th>{tr('User')}</th>
+              <th>{tr('osu! ID')}</th>
+              <th>{tr('Roles')}</th>
+              <th>{tr('Last login')}</th>
               <th>
-                <span className="sr-only">Manage</span>
+                <span className="sr-only">{tr('Manage')}</span>
               </th>
             </tr>
           </thead>
@@ -250,7 +260,9 @@ export function UsersEditor({ actor }: { actor: Actor }) {
                     <img src={u.avatarUrl} alt="" className="size-8 rounded-lg" />
                     <span className="font-medium">
                       {u.username}
-                      {u.id === actor.id && <span className="ml-2 text-xs text-muted">You</span>}
+                      {u.id === actor.id && (
+                        <span className="ml-2 text-xs text-muted">{tr('You')}</span>
+                      )}
                     </span>
                   </div>
                 </td>
@@ -263,7 +275,7 @@ export function UsersEditor({ actor }: { actor: Actor }) {
                   </div>
                 </td>
                 <td className="whitespace-nowrap text-xs text-muted">
-                  {new Date(u.lastLoginAt).toLocaleDateString()}
+                  {new Date(u.lastLoginAt).toLocaleDateString(localeTag(language))}
                 </td>
                 <td>
                   <Button
@@ -275,7 +287,7 @@ export function UsersEditor({ actor }: { actor: Actor }) {
                       setDirty(false);
                     }}
                   >
-                    Manage
+                    {tr('Manage')}
                   </Button>
                 </td>
               </tr>
@@ -283,21 +295,23 @@ export function UsersEditor({ actor }: { actor: Actor }) {
           </tbody>
         </table>
         {!data.users.length && (
-          <div className="py-16 text-center text-sm text-muted">No users match your search.</div>
+          <div className="py-16 text-center text-sm text-muted">
+            {tr('No users match your search.')}
+          </div>
         )}
       </div>
       <p className="mt-4 text-xs text-muted">
-        Showing up to 100 matching users. Refine your search to find a specific account.
+        {tr('Showing up to 100 matching users. Refine your search to find a specific account.')}
       </p>
       <Modal
         open={!!user}
         onOpenChange={() => {
-          if (dirty && !window.confirm('Discard unsaved role assignments?')) return;
+          if (dirty && !window.confirm(tr('Discard unsaved role assignments?'))) return;
           setUser(null);
           setDirty(false);
         }}
-        title={user ? `Manage ${user.username}` : 'User roles'}
-        description="Assign multiple roles. Public staff positions are managed separately."
+        title={user ? tr('Manage {0}', user.username) : tr('User roles')}
+        description={tr('Assign multiple roles. Public staff positions are managed separately.')}
       >
         {user && (
           <form
@@ -309,12 +323,12 @@ export function UsersEditor({ actor }: { actor: Actor }) {
                 await reload();
                 setUser(null);
                 setDirty(false);
-              }, 'User roles updated.');
+              }, tr('User roles updated.'));
             }}
           >
             {user.id === actor.id && (
               <p className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-xs text-primary">
-                You cannot modify your own roles.
+                {tr('You cannot modify your own roles.')}
               </p>
             )}
             <fieldset disabled={busy || user.id === actor.id} className="space-y-2">
@@ -346,7 +360,9 @@ export function UsersEditor({ actor }: { actor: Actor }) {
               ))}
             </fieldset>
             <div>
-              <h3 className="mb-3 text-xs font-semibold">Effective permissions after saving</h3>
+              <h3 className="mb-3 text-xs font-semibold">
+                {tr('Effective permissions after saving')}
+              </h3>
               <div className="flex flex-wrap gap-2">
                 {[
                   ...new Set(
@@ -361,11 +377,11 @@ export function UsersEditor({ actor }: { actor: Actor }) {
                 ))}
               </div>
               {!selected.some((id) => data.roles.find((r) => r.id === id)?.permissions.length) && (
-                <p className="text-xs text-muted">Public player access only.</p>
+                <p className="text-xs text-muted">{tr('Public player access only.')}</p>
               )}
             </div>
             <SaveButton busy={busy} disabled={busy || user.id === actor.id || !dirty}>
-              Save roles
+              {tr('Save roles')}
             </SaveButton>
           </form>
         )}

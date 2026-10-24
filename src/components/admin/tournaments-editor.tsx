@@ -1,4 +1,7 @@
 'use client';
+import { useT } from '@/components/locale';
+import { humanizeCode } from '@/lib/i18n';
+
 import Link from '@/components/tournament-scope';
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, ArrowUpRight, Archive, Eye, EyeOff, Settings } from 'lucide-react';
@@ -24,6 +27,7 @@ type Item = {
   _count: { stages: number; teams: number };
 };
 export function TournamentsEditor({ actor }: { actor: Actor }) {
+  const tr = useT();
   const [data, setData] = useState<{
       tournaments: Item[];
       users: { id: string; osuId: number; username: string; platformAdmin: boolean }[];
@@ -53,18 +57,21 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
   if (!data) return <LoadingState error={error} retry={() => void reload()} />;
   return (
     <>
-      <SectionTitle title="Tournaments" description={`${data.tournaments.length} workspaces`}>
+      <SectionTitle
+        title={tr('Tournaments')}
+        description={tr('{0} workspaces', data.tournaments.length)}
+      >
         <Button asChild variant="outline">
           <Link href="/tournaments">
             <ArrowUpRight size={17} />
-            Public directory
+            {tr('Public directory')}
           </Link>
         </Button>
         {actor.platformAdmin && <TournamentImporter onImported={reload} />}
         {actor.platformAdmin && (
           <Button onClick={() => setOpen(true)}>
             <Plus size={17} />
-            Create tournament
+            {tr('Create tournament')}
           </Button>
         )}
       </SectionTitle>
@@ -76,24 +83,25 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
             )}
             <div className="p-5">
               <p className="text-xs text-muted">
-                {t.gameMode} · {t.status} ·{' '}
-                {t.archivedAt ? 'Archived' : t.published ? 'Published' : 'Private'}
+                {t.gameMode} · {tr(humanizeCode(t.status))} ·{' '}
+                {t.archivedAt ? tr('Archived') : t.published ? tr('Published') : tr('Private')}
               </p>
               <h2 className="my-2 text-xl font-semibold">{t.name}</h2>
               <p className="mb-5 text-sm text-muted">
-                {t._count.stages} stages · {t._count.teams} entrants · {t.matchCount} matches
+                {t._count.stages} {tr('stages ·')} {t._count.teams} {tr('entrants ·')}{' '}
+                {t.matchCount} {tr('matches')}
               </p>
               <div className="flex flex-wrap gap-2">
                 <Button asChild size="sm">
                   <Link href={`/t/${t.slug}/admin`}>
-                    Open tournament
+                    {tr('Open tournament')}
                     <ArrowUpRight size={16} />
                   </Link>
                 </Button>
                 <Button asChild size="icon" variant="outline">
                   <Link
-                    title="Tournament settings"
-                    aria-label={`Edit ${t.name}`}
+                    title={tr('Tournament settings')}
+                    aria-label={tr('Edit {0}', t.name)}
                     href={`/t/${t.slug}/admin/settings`}
                   >
                     <Settings size={17} />
@@ -102,8 +110,10 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
                 {t.canPublish && (
                   <>
                     <ConfirmButton
-                      title={t.published ? 'Hide this tournament?' : 'Publish this tournament?'}
-                      description="Content publication states are preserved."
+                      title={
+                        t.published ? tr('Hide this tournament?') : tr('Publish this tournament?')
+                      }
+                      description={tr('Content publication states are preserved.')}
                       onConfirm={() =>
                         run(
                           () =>
@@ -114,18 +124,18 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
                               published: !t.published,
                               archived: !!t.archivedAt,
                             }),
-                          'Visibility saved.',
+                          tr('Visibility saved.'),
                         )
                       }
                     >
                       <span className="flex items-center gap-2">
                         {t.published ? <EyeOff size={16} /> : <Eye size={16} />}{' '}
-                        {t.published ? 'Hide' : 'Publish'}
+                        {t.published ? tr('Hide') : tr('Publish')}
                       </span>
                     </ConfirmButton>
                     <ConfirmButton
-                      title={t.archivedAt ? 'Restore tournament?' : 'Archive tournament?'}
-                      description="All content, teams and match histories will be retained."
+                      title={t.archivedAt ? tr('Restore tournament?') : tr('Archive tournament?')}
+                      description={tr('All content, teams and match histories will be retained.')}
                       onConfirm={() =>
                         run(
                           () =>
@@ -136,12 +146,12 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
                               published: t.published,
                               archived: !t.archivedAt,
                             }),
-                          'Lifecycle saved.',
+                          tr('Lifecycle saved.'),
                         )
                       }
                     >
                       <Archive size={16} />
-                      {t.archivedAt ? 'Restore' : 'Archive'}
+                      {t.archivedAt ? tr('Restore') : tr('Archive')}
                     </ConfirmButton>
                   </>
                 )}
@@ -151,7 +161,7 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
         ))}
       </div>
       {!data.tournaments.length && (
-        <p className="py-12 text-muted">No tournament staff memberships assigned.</p>
+        <p className="py-12 text-muted">{tr('No tournament staff memberships assigned.')}</p>
       )}
       {data.platform && actor.platformAdmin && (
         <PlatformSettingsEditor
@@ -166,7 +176,7 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
           onSubmit={(e) => {
             e.preventDefault();
             const form = new FormData(e.currentTarget);
-            if (window.confirm('Change this account’s platform-wide administrative access?'))
+            if (window.confirm(tr('Change this account’s platform-wide administrative access?')))
               void run(
                 () =>
                   send({
@@ -174,20 +184,20 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
                     userId: form.get('userId'),
                     enabled: form.get('enabled') === 'on',
                   }),
-                'Platform access updated.',
+                tr('Platform access updated.'),
               );
           }}
         >
-          <h2 className="text-xl font-semibold">Platform administrators</h2>
+          <h2 className="text-xl font-semibold">{tr('Platform administrators')}</h2>
           <p className="text-sm text-muted">
             {data.users
               .filter((u) => u.platformAdmin)
               .map((u) => u.username)
               .join(', ')}
           </p>
-          <Field label="Global osu! account">
+          <Field label={tr('Global osu! account')}>
             <select name="userId" required>
-              <option value="">Select account</option>
+              <option value="">{tr('Select account')}</option>
               {data.users
                 .filter((u) => u.id !== actor.id)
                 .map((u) => (
@@ -199,12 +209,12 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
           </Field>
           <label className="flex items-center gap-3">
             <input type="checkbox" name="enabled" />
-            Platform administrator
+            {tr('Platform administrator')}
           </label>
-          <Button disabled={busy}>Apply platform access</Button>
+          <Button disabled={busy}>{tr('Apply platform access')}</Button>
         </form>
       )}
-      <Modal title="Create tournament" open={open} onOpenChange={setOpen}>
+      <Modal title={tr('Create tournament')} open={open} onOpenChange={setOpen}>
         <form
           className="space-y-5"
           onSubmit={(e) => {
@@ -213,48 +223,48 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
             void run(async () => {
               await send({ type: 'create', ...values });
               setOpen(false);
-            }, 'Tournament created privately.');
+            }, tr('Tournament created privately.'));
           }}
         >
-          <Field label="Name">
+          <Field label={tr('Name')}>
             <input name="name" required maxLength={120} />
           </Field>
-          <Field label="Acronym">
+          <Field label={tr('Acronym')}>
             <input name="acronym" required maxLength={20} />
           </Field>
-          <Field label="URL slug">
+          <Field label={tr('URL slug')}>
             <input name="slug" required pattern="[a-z0-9]+(-[a-z0-9]+)*" maxLength={80} />
           </Field>
-          <Field label="Game mode">
+          <Field label={tr('Game mode')}>
             <select name="gameMode">
               {['osu', 'taiko', 'fruits', 'mania'].map((m) => (
                 <option key={m}>{m}</option>
               ))}
             </select>
           </Field>
-          <Field label="Format">
+          <Field label={tr('Format')}>
             <select name="format">
-              <option value="TEAMS">Teams</option>
-              <option value="SOLO">1v1</option>
-              <option value="CUSTOM">Custom</option>
+              <option value="TEAMS">{tr('Teams')}</option>
+              <option value="SOLO">{tr('1v1')}</option>
+              <option value="CUSTOM">{tr('Custom')}</option>
             </select>
           </Field>
-          <Field label="Scoring System">
+          <Field label={tr('Scoring System')}>
             <select name="gameplayScoring" defaultValue="SCORE_V2">
               {Object.entries(SCORING_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>
-                  {label}
+                  {tr(label)}
                 </option>
               ))}
             </select>
           </Field>
-          <Field label="Timezone">
+          <Field label={tr('Timezone')}>
             <input name="timezone" defaultValue={data.platform?.timezone || 'UTC'} required />
           </Field>
-          <Field label="Description">
+          <Field label={tr('Description')}>
             <textarea name="description" maxLength={2000} />
           </Field>
-          <Button disabled={busy}>Create tournament</Button>
+          <Button disabled={busy}>{tr('Create tournament')}</Button>
         </form>
       </Modal>
     </>

@@ -1,4 +1,6 @@
 'use client';
+import { useT } from '@/components/locale';
+
 import { useState } from 'react';
 import Link from '@/components/tournament-scope';
 import { Users, ListChecks } from 'lucide-react';
@@ -8,6 +10,7 @@ import { CompetitionWorkspace } from './competition-workspace';
 import { MatchesDashboard } from './matches-dashboard';
 import { Button } from '../ui/button';
 export function MatchesWorkspace({ actor }: { actor: Actor }) {
+  const tr = useT();
   const [view, setView] = useState<'list' | 'bracket'>('list');
   return (
     <>
@@ -17,13 +20,13 @@ export function MatchesWorkspace({ actor }: { actor: Actor }) {
           <Button asChild size="sm" variant="ghost">
             <Link href="/admin/referee/qualifiers">
               <Users size={16} />
-              Qualifier sessions
+              {tr('Qualifier sessions')}
             </Link>
           </Button>
           <Button asChild size="sm" variant="ghost">
             <Link href="/admin/qualifier-results">
               <ListChecks size={16} />
-              Qualifier results
+              {tr('Qualifier results')}
             </Link>
           </Button>
         </div>

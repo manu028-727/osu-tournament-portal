@@ -1,4 +1,6 @@
 'use client';
+import { useT } from '@/components/locale';
+
 import { useEffect, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { action, Field, Modal, SaveButton, useTask } from './shared';
@@ -12,6 +14,7 @@ export function DeleteMatchDialog({
   onClose: () => void;
   onDeleted: () => Promise<unknown>;
 }) {
+  const tr = useT();
   const [code, setCode] = useState(''),
     [reason, setReason] = useState('');
   const { busy, run } = useTask();
@@ -21,7 +24,7 @@ export function DeleteMatchDialog({
   }, [match?.id, match?.version]);
   return (
     <Modal
-      title="Permanently delete match"
+      title={tr('Permanently delete match')}
       open={!!match}
       onOpenChange={(open) => {
         if (!open && !busy) onClose();
@@ -42,15 +45,16 @@ export function DeleteMatchDialog({
               });
               onClose();
               await onDeleted();
-            }, 'Match permanently deleted.');
+            }, tr('Match permanently deleted.'));
           }}
         >
           <p className="text-red-200">
-            Match {match.code}, its picks, scores, lobby imports and referee history will be
-            permanently removed. This cannot be undone. Teams and mappools are kept; an audit entry
-            records the deletion.
+            {tr('Match')} {match.code}
+            {tr(
+              ', its picks, scores, lobby imports and referee history will be permanently removed. This cannot be undone. Teams and mappools are kept; an audit entry records the deletion.',
+            )}
           </p>
-          <Field label="Match code confirmation">
+          <Field label={tr('Match code confirmation')}>
             <input
               autoComplete="off"
               required
@@ -58,7 +62,7 @@ export function DeleteMatchDialog({
               onChange={(e) => setCode(e.target.value)}
             />
           </Field>
-          <Field label="Deletion reason">
+          <Field label={tr('Deletion reason')}>
             <input
               required
               minLength={3}
@@ -69,7 +73,7 @@ export function DeleteMatchDialog({
           </Field>
           <SaveButton busy={busy} disabled={code !== match.code || reason.trim().length < 3}>
             <Trash2 size={17} />
-            Permanently delete match
+            {tr('Permanently delete match')}
           </SaveButton>
         </form>
       )}

@@ -1,3 +1,5 @@
+'use client';
+import { useT } from '@/components/locale';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import Link from './tournament-scope';
 import { Button } from './ui/button';
@@ -19,19 +21,23 @@ export function ListPagination({
   onPage?: (page: number) => void;
   busy?: boolean;
 }) {
+  const tr = useT();
   const last = Math.max(1, Math.ceil(total / pageSize));
   if (last === 1) return null;
   return (
-    <nav aria-label="Pagination" className="my-5 flex flex-wrap items-center justify-between gap-3">
+    <nav
+      aria-label={tr('Pagination')}
+      className="my-5 flex flex-wrap items-center justify-between gap-3"
+    >
       <p className="text-sm text-muted">
-        Page {page} of {last} · {total} entries
+        {tr('Page')} {page} {tr('of')} {last} · {total} {tr('entries')}
       </p>
       <div className="flex gap-2">
         {previousHref && page > 1 ? (
           <Button asChild variant="outline" size="sm">
             <Link href={previousHref}>
               <ChevronLeft size={16} />
-              Previous
+              {tr('Previous')}
             </Link>
           </Button>
         ) : (
@@ -42,13 +48,13 @@ export function ListPagination({
             onClick={onPage ? () => onPage(page - 1) : undefined}
           >
             <ChevronLeft size={16} />
-            Previous
+            {tr('Previous')}
           </Button>
         )}
         {nextHref && page < last ? (
           <Button asChild variant="outline" size="sm">
             <Link href={nextHref}>
-              Next
+              {tr('Next')}
               <ChevronRight size={16} />
             </Link>
           </Button>
@@ -59,7 +65,7 @@ export function ListPagination({
             disabled={busy || page === last}
             onClick={onPage ? () => onPage(page + 1) : undefined}
           >
-            Next
+            {tr('Next')}
             <ChevronRight size={16} />
           </Button>
         )}

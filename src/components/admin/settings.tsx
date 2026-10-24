@@ -1,4 +1,8 @@
 'use client';
+import { humanizeCode } from '@/lib/i18n';
+import { localDateTimeInput } from '@/lib/utils';
+import { useT } from '@/components/locale';
+
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Trash2, Save, Eye, X } from 'lucide-react';
@@ -49,6 +53,7 @@ export function SettingsEditor({
   area?: SettingsArea;
   home?: PageContent | null;
 }) {
+  const tr = useT();
   const { data, error, reload } = useResource<SettingsData>('settings');
   const [form, setForm] = useState<Form | null>(null),
     [dirty, setDirty] = useState(false),
@@ -119,47 +124,47 @@ export function SettingsEditor({
             });
             await reload();
             router.refresh();
-          }, 'Saved. Website settings take effect immediately; page and mappool drafts are unchanged.');
+          }, tr('Saved. Website settings take effect immediately; page and mappool drafts are unchanged.'));
         }}
       >
-        <SectionTitle title={titles[area]}>
+        <SectionTitle title={tr(titles[area])}>
           {area === 'branding' && (
             <Button type="button" variant="outline" onClick={() => setPreview(true)}>
               <Eye size={16} />
-              Preview appearance
+              {tr('Preview appearance')}
             </Button>
           )}
           <SaveButton busy={busy} disabled={busy || !dirty}>
             <Save size={15} />
-            {saveLabel}
+            {tr(saveLabel)}
           </SaveButton>
         </SectionTitle>
         <p role="status" className="mb-5 text-sm text-muted">
-          {dirty ? 'Unsaved changes' : 'All changes saved'} · Website settings take effect
-          immediately.
+          {dirty ? tr('Unsaved changes') : tr('All changes saved')}{' '}
+          {tr('· Website settings take effect immediately.')}
         </p>
         <fieldset disabled={busy} className="space-y-6">
           {area === 'info' && (
             <>
               {identityOverride?.content.title && identityOverride.content.title !== form.name && (
                 <p className="text-sm text-muted">
-                  Homepage title override: {identityOverride.content.title}.{' '}
+                  {tr('Homepage title override:')} {identityOverride.content.title}.{' '}
                   <Link href="/admin/website?view=homepage" className="text-primary">
-                    Edit homepage
+                    {tr('Edit homepage')}
                   </Link>
                 </p>
               )}
               <div className="grid-fields">
-                {text('name', 'Tournament name')}
-                {text('acronym', 'Acronym')}
+                {text('name', tr('Tournament name'))}
+                {text('acronym', tr('Acronym'))}
               </div>
-              {text('description', 'Description', true)}
-              <Field label="Tournament status">
+              {text('description', tr('Description'), true)}
+              <Field label={tr('Tournament status')}>
                 <select value={form.status} onChange={(e) => update('status', e.target.value)}>
                   {['DRAFT', 'UPCOMING', 'REGISTRATIONS_OPEN', 'ONGOING', 'COMPLETED'].map(
                     (status) => (
                       <option key={status} value={status}>
-                        {status.replaceAll('_', ' ').toLowerCase()}
+                        {tr(humanizeCode(status))}
                       </option>
                     ),
                   )}
@@ -167,19 +172,10 @@ export function SettingsEditor({
               </Field>
               <div className="grid-fields">
                 {(['startsAt', 'endsAt'] as const).map((key) => (
-                  <Field key={key} label={key === 'startsAt' ? 'Start date' : 'End date'}>
+                  <Field key={key} label={key === 'startsAt' ? tr('Start date') : tr('End date')}>
                     <input
                       type="datetime-local"
-                      value={
-                        form[key]
-                          ? new Date(
-                              new Date(form[key]!).getTime() -
-                                new Date(form[key]!).getTimezoneOffset() * 60000,
-                            )
-                              .toISOString()
-                              .slice(0, 16)
-                          : ''
-                      }
+                      value={localDateTimeInput(form[key])}
                       onChange={(e) =>
                         update(key, e.target.value ? new Date(e.target.value).toISOString() : null)
                       }
@@ -187,9 +183,9 @@ export function SettingsEditor({
                   </Field>
                 ))}
               </div>
-              {text('registrationUrl', 'Registration link')}
+              {text('registrationUrl', tr('Registration link'))}
               <section className="form-section space-y-4">
-                <h2 className="text-lg font-semibold">Important dates</h2>
+                <h2 className="text-lg font-semibold">{tr('Important dates')}</h2>
                 <ReorderList
                   compact
                   items={form.importantDates}
@@ -198,7 +194,7 @@ export function SettingsEditor({
                   renderItem={(date, i) => (
                     <div className="flex flex-wrap items-end gap-3">
                       <div className="min-w-0 flex-1">
-                        <Field label="Date label">
+                        <Field label={tr('Date label')}>
                           <input
                             required
                             value={date.label}
@@ -214,7 +210,7 @@ export function SettingsEditor({
                         </Field>
                       </div>
                       <div className="min-w-0 flex-1">
-                        <Field label="Date (UTC)">
+                        <Field label={tr('Date (UTC)')}>
                           <input
                             required
                             type="date"
@@ -234,7 +230,7 @@ export function SettingsEditor({
                         type="button"
                         variant="ghost"
                         size="icon"
-                        aria-label="Remove date"
+                        aria-label={tr('Remove date')}
                         onClick={() =>
                           update(
                             'importantDates',
@@ -258,7 +254,7 @@ export function SettingsEditor({
                   }
                 >
                   <Plus size={16} />
-                  Add date
+                  {tr('Add date')}
                 </Button>
               </section>
             </>
@@ -267,9 +263,9 @@ export function SettingsEditor({
             <>
               {identityOverride?.content.image && (
                 <p className="text-sm text-muted">
-                  The homepage has its own banner override.{' '}
+                  {tr('The homepage has its own banner override.')}{' '}
                   <Link href="/admin/website?view=homepage" className="text-primary">
-                    Edit homepage artwork
+                    {tr('Edit homepage artwork')}
                   </Link>
                 </p>
               )}
@@ -278,7 +274,7 @@ export function SettingsEditor({
                   <MediaField
                     key={key}
                     canUpload={can(actor, 'media.upload')}
-                    label={key === 'logo' ? 'Tournament logo' : 'Favicon'}
+                    label={key === 'logo' ? tr('Tournament logo') : tr('Favicon')}
                     value={form[key]}
                     onChange={(url) => update(key, url)}
                   />
@@ -286,7 +282,7 @@ export function SettingsEditor({
               </div>
               <MediaField
                 canUpload={can(actor, 'media.upload')}
-                label="Main banner"
+                label={tr('Main banner')}
                 value={form.banner}
                 onChange={(url) => update('banner', url)}
               />
@@ -294,11 +290,13 @@ export function SettingsEditor({
                 {(['primaryColor', 'accentColor'] as const).map((key) => (
                   <Field
                     key={key}
-                    label={key === 'primaryColor' ? 'Primary color' : 'Accent color'}
+                    label={key === 'primaryColor' ? tr('Primary color') : tr('Accent color')}
                   >
                     <div className="flex items-center gap-3">
                       <input
-                        aria-label={key === 'primaryColor' ? 'Primary color' : 'Accent color'}
+                        aria-label={
+                          key === 'primaryColor' ? tr('Primary color') : tr('Accent color')
+                        }
                         type="color"
                         value={form[key]}
                         onChange={(e) => update(key, e.target.value)}
@@ -312,14 +310,14 @@ export function SettingsEditor({
                 href="/admin/mappools?view=stages"
                 className="inline-flex min-h-11 items-center text-sm text-primary"
               >
-                Stage-specific banners
+                {tr('Stage-specific banners')}
               </Link>
             </>
           )}
           {area === 'navigation' && (
             <>
-              <section aria-label="Navigation preview" className="min-w-0 overflow-hidden">
-                <h2 className="mb-2 text-lg font-semibold">Navigation labels</h2>
+              <section aria-label={tr('Navigation preview')} className="min-w-0 overflow-hidden">
+                <h2 className="mb-2 text-lg font-semibold">{tr('Navigation labels')}</h2>
                 <div inert>
                   <TournamentTabs links={form.navigation} />
                 </div>
@@ -327,7 +325,7 @@ export function SettingsEditor({
               {(['navigation', 'socialLinks'] as const).map((key) => (
                 <section className="form-section space-y-4" key={key}>
                   <h2 className="text-lg font-semibold">
-                    {key === 'navigation' ? 'Website navigation' : 'Social links'}
+                    {key === 'navigation' ? tr('Website navigation') : tr('Social links')}
                   </h2>
                   <ReorderList
                     compact
@@ -337,7 +335,9 @@ export function SettingsEditor({
                     renderItem={(link, i) => (
                       <div className="grid grid-cols-[minmax(0,1fr)_44px] items-end gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_44px]">
                         <div className="min-w-0 flex-1">
-                          <Field label={key === 'navigation' ? 'Navigation label' : 'Link label'}>
+                          <Field
+                            label={key === 'navigation' ? tr('Navigation label') : tr('Link label')}
+                          >
                             <input
                               required
                               value={link.label}
@@ -353,7 +353,7 @@ export function SettingsEditor({
                           </Field>
                         </div>
                         <div className="col-span-2 min-w-0 sm:col-span-1">
-                          <Field label="URL">
+                          <Field label={tr('URL')}>
                             <input
                               value={link.href}
                               onChange={(e) =>
@@ -371,7 +371,7 @@ export function SettingsEditor({
                           type="button"
                           variant="ghost"
                           size="icon"
-                          aria-label="Remove link"
+                          aria-label={tr('Remove link')}
                           className="col-start-2 row-start-1 sm:col-auto sm:row-auto"
                           onClick={() =>
                             update(
@@ -391,18 +391,21 @@ export function SettingsEditor({
                     onClick={() => update(key, [...form[key], { label: 'New link', href: '/' }])}
                   >
                     <Plus size={16} />
-                    Add link
+                    {tr('Add link')}
                   </Button>
                 </section>
               ))}
               <section className="form-section space-y-5">
-                <h2 className="text-lg font-semibold">Public page text</h2>
+                <h2 className="text-lg font-semibold">{tr('Public page text')}</h2>
                 {[
                   {
                     label: 'Mappools page',
                     keys: ['mappoolsEyebrow', 'mappoolsTitle', 'mappoolsDescription'],
                   },
-                  { label: 'Staff page', keys: ['staffEyebrow', 'staffTitle', 'staffDescription'] },
+                  {
+                    label: 'Staff page',
+                    keys: ['staffEyebrow', 'staffTitle', 'staffDescription'],
+                  },
                   { label: 'Rules page', keys: ['rulesEyebrow', 'rulesDescription'] },
                   {
                     label: 'Homepage labels & timeline',
@@ -426,14 +429,14 @@ export function SettingsEditor({
                   },
                 ].map((group) => (
                   <details key={group.label} className="border-b pb-3">
-                    <summary className="min-h-11 cursor-pointer py-2">{group.label}</summary>
+                    <summary className="min-h-11 cursor-pointer py-2">{tr(group.label)}</summary>
                     <div className="grid-fields mt-3">
                       {group.keys.map((key) => (
                         <Field
                           key={key}
-                          label={key
-                            .replace(/([A-Z])/g, ' $1')
-                            .replace(/^./, (c) => c.toUpperCase())}
+                          label={tr(
+                            key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()),
+                          )}
                         >
                           <textarea
                             className="min-h-20"
@@ -449,30 +452,33 @@ export function SettingsEditor({
                   </details>
                 ))}
               </section>
-              {text('footer', 'Footer content', true)}
+              {text('footer', tr('Footer content'), true)}
             </>
           )}
           {area === 'advanced' && (
             <>
               <div className="grid-fields">
-                <Field label="Game mode" hint="Unpublish mappools before changing the game mode.">
+                <Field
+                  label={tr('Game mode')}
+                  hint={tr('Unpublish mappools before changing the game mode.')}
+                >
                   <select
                     value={form.gameMode}
                     onChange={(e) => update('gameMode', e.target.value)}
                   >
                     {['osu', 'taiko', 'fruits', 'mania'].map((mode) => (
                       <option key={mode} value={mode}>
-                        {mode === 'osu' ? 'osu!standard' : `osu!${mode}`}
+                        {mode === 'osu' ? tr('osu!standard') : tr('osu!{0}', mode)}
                       </option>
                     ))}
                   </select>
                 </Field>
                 <Field
-                  label="Scoring System"
+                  label={tr('Scoring System')}
                   hint={
                     form.gameplayScoring
-                      ? SCORING_DESCRIPTIONS[form.gameplayScoring]
-                      : 'Legacy scoring configuration requires review.'
+                      ? tr(SCORING_DESCRIPTIONS[form.gameplayScoring])
+                      : tr('Legacy scoring configuration requires review.')
                   }
                 >
                   <select
@@ -482,11 +488,11 @@ export function SettingsEditor({
                     required
                   >
                     <option value="" disabled>
-                      Review scoring configuration
+                      {tr('Review scoring configuration')}
                     </option>
                     {Object.entries(SCORING_LABELS).map(([value, label]) => (
                       <option key={value} value={value}>
-                        {label}
+                        {tr(label)}
                       </option>
                     ))}
                   </select>
@@ -499,14 +505,16 @@ export function SettingsEditor({
                       checked={scoringReview}
                       onChange={(e) => setScoringReview(e.target.checked)}
                     />
-                    I reviewed the historical records. The chosen scoring system must match every
-                    recorded result; no scores will be converted.
+                    {tr(
+                      'I reviewed the historical records. The chosen scoring system must match every recorded result; no scores will be converted.',
+                    )}
                   </label>
                 )}
                 {data.scoringImpact?.locked && (
                   <details className="text-sm text-muted">
                     <summary>
-                      Scoring locked: {data.scoringImpact.affected.length} started or scored records
+                      {tr('Scoring locked:')} {data.scoringImpact.affected.length}{' '}
+                      {tr('started or scored records')}
                     </summary>
                     <ul>
                       {data.scoringImpact.affected.map((record) => (
@@ -517,15 +525,15 @@ export function SettingsEditor({
                     </ul>
                   </details>
                 )}
-                {text('timezone', 'Timezone')}
-                <Field label="Format">
+                {text('timezone', tr('Timezone'))}
+                <Field label={tr('Format')}>
                   <select
                     value={form.format || 'CUSTOM'}
                     onChange={(e) => update('format', e.target.value)}
                   >
-                    <option value="SOLO">1v1</option>
-                    <option value="TEAMS">Teams</option>
-                    <option value="CUSTOM">Custom</option>
+                    <option value="SOLO">{tr('1v1')}</option>
+                    <option value="TEAMS">{tr('Teams')}</option>
+                    <option value="CUSTOM">{tr('Custom')}</option>
                   </select>
                 </Field>
               </div>
@@ -534,11 +542,11 @@ export function SettingsEditor({
                   href="/admin/matches?rules=1"
                   className="inline-flex min-h-11 items-center text-sm text-primary"
                 >
-                  Default match rules & stage overrides
+                  {tr('Default match rules & stage overrides')}
                 </Link>
               )}
               <section className="form-section space-y-4">
-                <h2 className="text-lg font-semibold">Tournament archive</h2>
+                <h2 className="text-lg font-semibold">{tr('Tournament archive')}</h2>
                 {can(actor, 'users.manage') && can(actor, 'roles.manage') && (
                   <ExportTournamentButton />
                 )}
@@ -551,7 +559,7 @@ export function SettingsEditor({
                 type="button"
                 variant="outline"
                 onClick={() => {
-                  if (window.confirm('Discard unsaved changes?')) {
+                  if (window.confirm(tr('Discard unsaved changes?'))) {
                     const { settings, ...t } = data;
                     setForm({ ...t, ...settings, copy: siteCopy(settings.copy) });
                     setDirty(false);
@@ -559,16 +567,16 @@ export function SettingsEditor({
                 }}
               >
                 <X size={16} />
-                Discard changes
+                {tr('Discard changes')}
               </Button>
             )}
             <SaveButton busy={busy} disabled={busy || !dirty}>
-              {saveLabel}
+              {tr(saveLabel)}
             </SaveButton>
           </div>
         </fieldset>
       </form>
-      <Modal open={preview} onOpenChange={setPreview} title="Appearance preview" wide>
+      <Modal open={preview} onOpenChange={setPreview} title={tr('Appearance preview')} wide>
         <div inert style={themeStyle(form.primaryColor, form.accentColor) as React.CSSProperties}>
           <TournamentProfileHeader
             page={home}

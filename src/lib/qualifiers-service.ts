@@ -170,7 +170,9 @@ export async function applyQualifierAction(
         where: { tournamentId_code: { tournamentId, code: a.code } },
       })
     )
-      throw new AppError(`Lobby code ${a.code} is already in use. Choose a different code.`, 409);
+      throw new AppError('Lobby code {0} is already in use. Choose a different code.', 409, [
+        a.code,
+      ]);
     const stage = await tx.tournamentStage.findUniqueOrThrow({
       where: { id: a.stageId },
       include: { mappool: { include: { publishedRevision: { include: { slots: true } } } } },
@@ -411,9 +413,12 @@ export async function applyQualifierAction(
                 ? scores.length < policy.requiredPlayers
                 : scores.length !== policy.requiredPlayers
             )
-              throw new AppError(
-                `${team.name} needs ${policy.requiredPlayers} scores on ${slot.name}, Run ${run}.`,
-              );
+              throw new AppError('{0} needs {1} scores on {2}, Run {3}.', 400, [
+                team.name,
+                policy.requiredPlayers,
+                slot.name,
+                run,
+              ]);
             if (rules.freeModCategories.includes(slot.category)) {
               const mods = scores.map((s) => s.mods as string[]);
               if (
@@ -421,9 +426,10 @@ export async function applyQualifierAction(
                 mods.filter((m) => !m.includes('HR') && (m.includes('HD') || m.includes('EZ')))
                   .length < rules.freeModRequiredHD
               )
-                throw new AppError(
-                  `${team.name} does not meet the FreeMod requirements on ${slot.name}.`,
-                );
+                throw new AppError('{0} does not meet the FreeMod requirements on {1}.', 400, [
+                  team.name,
+                  slot.name,
+                ]);
             }
           }
     }

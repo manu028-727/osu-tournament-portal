@@ -35,13 +35,15 @@ export function assertQualifierCapacity(participants: QualifierRoster, policy: Q
   const players = new Set<number>();
   for (const team of participants) {
     if (team.members.filter((player) => !player.substitute).length < policy.requiredPlayers)
-      throw new AppError(`${team.name} needs ${policy.requiredPlayers} starting players.`);
+      throw new AppError('{0} needs {1} starting players.', 400, [
+        team.name,
+        policy.requiredPlayers,
+      ]);
     for (const player of team.members) {
       if (players.has(player.osuId))
-        throw new AppError(
-          `${player.username} is registered with multiple selected entrants.`,
-          409,
-        );
+        throw new AppError('{0} is registered with multiple selected entrants.', 409, [
+          player.username,
+        ]);
       players.add(player.osuId);
     }
   }
@@ -93,15 +95,16 @@ export async function assertQualifierAvailability(
         other.participants.some((team) => entrants.has(team.id))
       )
         throw new AppError(
-          `${plan.code}: an entrant already has a session in ${other.code} for this stage. Move the entrant instead.`,
+          '{0}: an entrant already has a session in {1} for this stage. Move the entrant instead.',
           409,
+          [plan.code, other.code],
         );
       const sharedPlayer = playerIds(other.participants).some((id) => players.has(id));
       if (plan.stageId === other.stageId && sharedPlayer)
-        throw new AppError(
-          `${plan.code}: a player already has a session in ${other.code} for this stage.`,
-          409,
-        );
+        throw new AppError('{0}: a player already has a session in {1} for this stage.', 409, [
+          plan.code,
+          other.code,
+        ]);
     }
   }
   await assertScheduleAvailability(
@@ -149,18 +152,19 @@ export async function applyQualifierBulkSchedule(
   const versions = new Map(action.lobbies.map((lobby) => [lobby.id, lobby.baseVersion]));
   for (const record of records) {
     if (record.version !== versions.get(record.id))
-      throw new AppError(`${record.code} changed. Reload and review the selection.`, 409);
+      throw new AppError('{0} changed. Reload and review the selection.', 409, [record.code]);
     if (record.status !== 'SCHEDULED')
       throw new AppError(
-        `${record.code} has already started or is closed. Only scheduled lobbies can be changed in bulk.`,
+        '{0} has already started or is closed. Only scheduled lobbies can be changed in bulk.',
         409,
+        [record.code],
       );
   }
   for (const stageId of [...new Set(records.map((record) => record.stageId))].sort())
     await assertQualifierMutable(tx, stageId, tournamentId);
   const plans = records.map((record) => {
     if (action.shiftMinutes !== undefined && !record.scheduledAt)
-      throw new AppError(`${record.code} has no time to shift. Set a start time first.`, 409);
+      throw new AppError('{0} has no time to shift. Set a start time first.', 409, [record.code]);
     return {
       ...record,
       participants: record.participants as unknown as QualifierRoster,
@@ -189,7 +193,7 @@ export async function applyQualifierBulkSchedule(
       },
     });
     if (updated.count !== 1)
-      throw new AppError(`${plan.code} changed during this update. Reload.`, 409);
+      throw new AppError('{0} changed during this update. Reload.', 409, [plan.code]);
     if (action.refereeIds !== undefined) {
       await tx.qualifierAssignment.deleteMany({ where: { lobbyId: plan.id } });
       if (plan.refereeIds.length)
@@ -238,11 +242,12 @@ export async function applyQualifierParticipantMove(
   const source = records.find((record) => record.id === action.fromLobbyId);
   for (const record of records) {
     if (record.version !== (record.id === target.id ? action.baseVersion : action.sourceVersion))
-      throw new AppError(`${record.code} changed. Reload before moving entrants.`, 409);
+      throw new AppError('{0} changed. Reload before moving entrants.', 409, [record.code]);
     if (!qualifierNeverStarted(record))
       throw new AppError(
-        `${record.code} has started or has recorded history. Entrants can only move between unstarted sessions.`,
+        '{0} has started or has recorded history. Entrants can only move between unstarted sessions.',
         409,
+        [record.code],
       );
   }
   if (
@@ -283,7 +288,7 @@ export async function applyQualifierParticipantMove(
         ? [...before, ...moving]
         : before.filter((team) => !action.teamIds.includes(team.id!));
     if (new Set(participants.map((team) => team.id)).size !== participants.length)
-      throw new AppError(`${record.code} already contains a selected entrant.`, 409);
+      throw new AppError('{0} already contains a selected entrant.', 409, [record.code]);
     assertQualifierCapacity(
       participants,
       qualifierPolicySchema.parse(
@@ -301,7 +306,7 @@ export async function applyQualifierParticipantMove(
       data: { participants: json(plan.participants), version: { increment: 1 } },
     });
     if (updated.count !== 1)
-      throw new AppError(`${plan.code} changed during the move. Reload.`, 409);
+      throw new AppError('{0} changed during the move. Reload.', 409, [plan.code]);
     await tx.qualifierEntry.deleteMany({ where: { lobbyId: plan.id, tournamentId } });
     if (plan.participants.length)
       await tx.qualifierEntry.createMany({

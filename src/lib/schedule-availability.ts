@@ -99,19 +99,19 @@ export async function assertScheduleAvailability(
     for (const other of [...plans.slice(0, index), ...existing]) {
       if (other.scheduledAt?.getTime() !== plan.scheduledAt.getTime()) continue;
       if (plan.refereeIds.some((id) => other.refereeIds.includes(id)))
-        throw new AppError(
-          `${plan.label}: a referee is already scheduled in ${other.label} at this time.`,
-          409,
-        );
+        throw new AppError('{0}: a referee is already scheduled in {1} at this time.', 409, [
+          plan.label,
+          other.label,
+        ]);
       const resources = scheduledEntrants(other.participants, other.teamIds);
       if (
         intersects(entrants.teams, resources.teams) ||
         intersects(entrants.players, resources.players)
       )
-        throw new AppError(
-          `${plan.label}: a participant is already scheduled in ${other.label} at this time.`,
-          409,
-        );
+        throw new AppError('{0}: a participant is already scheduled in {1} at this time.', 409, [
+          plan.label,
+          other.label,
+        ]);
     }
   }
 }

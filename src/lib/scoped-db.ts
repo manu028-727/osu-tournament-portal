@@ -203,8 +203,9 @@ function ownedData(
   for (const field of Object.keys(data))
     if (!scalarFields.get(model)?.has(field) && !(field in (relations[model] || {})))
       throw new AppError(
-        `Unsupported nested write: ${model}.${field}. Use an explicit domain operation.`,
+        'Unsupported nested write: {0}.{1}. Use an explicit domain operation.',
         403,
+        [model, field],
       );
   for (const [field, child] of Object.entries(relations[model] || {})) {
     if (!data[field]) continue;
@@ -275,7 +276,7 @@ export function scopedDb<T extends Client>(client: T, tournamentId: string): T {
           scalarFields.has(property) &&
           !globalModels.has(property)
         )
-          throw new AppError(`Unclassified database model: ${property}.`, 403);
+          throw new AppError('Unclassified database model: {0}.', 403, [property]);
         return member;
       }
       if (!delegates.has(property))

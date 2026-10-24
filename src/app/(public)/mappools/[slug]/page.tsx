@@ -1,3 +1,4 @@
+import { getServerT } from '@/lib/server-locale';
 import Link from '@/components/tournament-scope';
 import { notFound } from 'next/navigation';
 import { PageHeading } from '@/components/content';
@@ -9,18 +10,19 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return { title: pool ? `${pool.name} mappool` : 'Mappool not found' };
 }
 export default async function Stage({ params }: { params: Promise<{ slug: string }> }) {
+  const tr = await getServerT();
   const { slug } = await params;
   const [stage, stages] = await Promise.all([publicPool(slug), publicPools()]);
   if (!stage?.mappool?.publishedRevision) notFound();
   return (
     <div className="wrap pb-20">
       <PageHeading
-        eyebrow="MAPPOOL UFFICIALE"
+        eyebrow={tr('MAPPOOL UFFICIALE')}
         title={stage.name}
         description={stage.description || ''}
       />
       <nav
-        aria-label="Tournament stages"
+        aria-label={tr('Tournament stages')}
         className="stage-tabs mb-6 flex gap-1 overflow-x-auto border-b pb-1"
       >
         {stages.map((s) => (

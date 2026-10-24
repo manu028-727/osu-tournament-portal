@@ -79,8 +79,9 @@ export async function applyQualifierStandingsAction(
       );
     if (!impact.canReopen)
       throw new AppError(
-        `Started or scored downstream matches require manual historical reconciliation: ${impact.blockingMatches.map((m) => m.code).join(', ')}.`,
+        'Started or scored downstream matches require manual historical reconciliation: {0}.',
         409,
+        [impact.blockingMatches.map((m) => m.code).join(', ')],
       );
     const now = new Date().toISOString();
     const snapshot: QualifierStandingSnapshot = {

@@ -1,3 +1,5 @@
+import { humanizeCode, localeTag } from '@/lib/i18n';
+import { getLocale, getServerT } from '@/lib/server-locale';
 import Link from '@/components/tournament-scope';
 import { tournamentList } from '@/lib/tournaments-service';
 import { db } from '@/lib/db';
@@ -12,6 +14,8 @@ export async function TournamentDirectory({
   status?: string;
   mode?: string;
 }) {
+  const language = await getLocale();
+  const tr = await getServerT();
   const [items, platform, actor] = await Promise.all([
     tournamentList(null, true),
     db.platformSettings.findUnique({ where: { id: 'main' } }),
@@ -26,8 +30,8 @@ export async function TournamentDirectory({
         <div className="flex min-w-0 items-center gap-4">
           {platform?.logo && <img src={platform.logo} alt="" className="size-12 object-contain" />}
           <div>
-            <p className="eyebrow mb-1">osu! community</p>
-            <h1 className="text-2xl font-semibold">{platform?.name || 'osu! Tournaments'}</h1>
+            <p className="eyebrow mb-1">{tr('osu! community')}</p>
+            <h1 className="text-2xl font-semibold">{platform?.name || tr('osu! Tournaments')}</h1>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -38,7 +42,7 @@ export async function TournamentDirectory({
                 actor?.workspaceAny ? '/admin/tournaments' : '/api/auth/login?returnTo=/tournaments'
               }
             >
-              {actor?.workspaceAny ? 'Organizer workspace' : 'Login with osu!'}
+              {actor?.workspaceAny ? tr('Organizer workspace') : tr('Login with osu!')}
               <ArrowUpRight size={16} />
             </a>
           </Button>
@@ -47,25 +51,25 @@ export async function TournamentDirectory({
       {platform?.description && <p className="mb-8 max-w-2xl text-muted">{platform.description}</p>}
       <div className="mb-5 flex flex-wrap items-end justify-between gap-4 border-b pb-5">
         <h2 className="text-lg font-semibold">
-          Tournaments{' '}
+          {tr('Tournaments')}{' '}
           <span className="ml-2 font-mono text-sm text-muted">{tournaments.length}</span>
         </h2>
         <form className="directory-filters flex flex-wrap items-end gap-3" action="/tournaments">
           <label className="field">
-            Status
+            {tr('Status')}
             <select name="status" defaultValue={status}>
-              <option value="">All tournaments</option>
+              <option value="">{tr('All tournaments')}</option>
               {['UPCOMING', 'REGISTRATIONS_OPEN', 'ONGOING', 'COMPLETED'].map((s) => (
                 <option key={s} value={s}>
-                  {s.charAt(0) + s.slice(1).toLowerCase().replaceAll('_', ' ')}
+                  {tr(humanizeCode(s))}
                 </option>
               ))}
             </select>
           </label>
           <label className="field">
-            Game mode
+            {tr('Game mode')}
             <select name="mode" defaultValue={mode}>
-              <option value="">All modes</option>
+              <option value="">{tr('All modes')}</option>
               {['osu', 'taiko', 'fruits', 'mania'].map((m) => (
                 <option key={m}>{m}</option>
               ))}
@@ -73,7 +77,7 @@ export async function TournamentDirectory({
           </label>
           <Button variant="outline" type="submit">
             <Search size={16} />
-            Filter
+            {tr('Filter')}
           </Button>
         </form>
       </div>
@@ -91,7 +95,7 @@ export async function TournamentDirectory({
               <p className="flex flex-wrap items-center gap-2 text-xs text-muted">
                 <span className="font-mono">{t.gameMode}</span>
                 <span aria-hidden="true">/</span>
-                {t.status.charAt(0) + t.status.slice(1).toLowerCase().replaceAll('_', ' ')}
+                {tr(humanizeCode(t.status))}
               </p>
               <div className="mt-2 flex items-start justify-between gap-3">
                 <h3 className="text-xl font-semibold">{t.name}</h3>
@@ -105,7 +109,7 @@ export async function TournamentDirectory({
               )}
               {t.startsAt && (
                 <p className="mt-3 text-sm text-muted">
-                  {t.startsAt.toLocaleDateString('it-IT', { timeZone: t.timezone })}
+                  {t.startsAt.toLocaleDateString(localeTag(language), { timeZone: t.timezone })}
                 </p>
               )}
             </div>
@@ -115,16 +119,18 @@ export async function TournamentDirectory({
       {!tournaments.length && (
         <div className="border-y py-12 space-y-4">
           <p className="text-muted">
-            {items.length ? 'No tournaments match these filters.' : 'No tournaments published yet.'}
+            {items.length
+              ? tr('No tournaments match these filters.')
+              : tr('No tournaments published yet.')}
           </p>
           {actor?.platformAdmin && (
             <a className="text-primary" href="/admin/tournaments">
-              Create tournament
+              {tr('Create tournament')}
             </a>
           )}
           {!platform?.ownerBootstrappedAt && (
             <a className="block text-primary" href="/setup">
-              Setup
+              {tr('Setup')}
             </a>
           )}
         </div>

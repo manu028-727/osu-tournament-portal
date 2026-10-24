@@ -46,8 +46,9 @@ export async function applyStaffBulkAction(
       );
       if (missing)
         throw new AppError(
-          `${missing.username} is not assigned to the selected source category. Filter that category and review the selection.`,
+          '{0} is not assigned to the selected source category. Filter that category and review the selection.',
           409,
+          [missing.username],
         );
     }
   }

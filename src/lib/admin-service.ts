@@ -109,7 +109,11 @@ export async function executeAction(
     ? await preparePoolingAction({ ...originalActor, tournamentId }, a as PoolingAction)
     : null;
   if (fetched?.errors.length)
-    throw new AppError(fetched.errors.map((e) => `${e.id}: ${e.error}`).join(' '));
+    throw AppError.fromMessages(
+      fetched.errors.map((e) => `${e.id}: ${e.error}`),
+      400,
+      ' ',
+    );
   const existingStaff =
     a.type === 'staff.save' && a.id
       ? await db.staffMember.findUnique({ where: { id: a.id } })
@@ -454,10 +458,10 @@ export async function executeAction(
             });
           const categories = await tx.modCategory.findMany();
           const problems = poolSlotErrors(a.slots, categories);
-          if (problems.length) throw new AppError(problems.join(' '));
+          if (problems.length) throw AppError.fromMessages(problems, 400, ' ');
           const slots = sortPoolSlots(a.slots, categories).map((s, position) => {
             const category = categories.find((c) => c.acronym === s.category);
-            if (!category) throw new AppError(`Unknown mod category: ${s.category}`);
+            if (!category) throw new AppError('Unknown mod category: {0}', 400, [s.category]);
             const metadata = fetched!.maps.find((m) => m.id === s.beatmapId)!;
             return {
               name: s.name,

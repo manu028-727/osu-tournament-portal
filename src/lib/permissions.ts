@@ -1,3 +1,5 @@
+import { formatMessage, isMessageList, messageList, type MessageValue } from './messages';
+
 export const PERMISSIONS = {
   'tournaments.create': 'Create tournaments at platform level',
   'tournaments.manage_all': 'Administer all platform tournaments',
@@ -85,11 +87,26 @@ export function can(actor: Pick<Actor, 'permissions'> | null, permission: Permis
   return !!actor?.permissions.includes(permission);
 }
 export class AppError extends Error {
+  declare readonly translationKey: string;
+  declare readonly translationValues: readonly MessageValue[];
   constructor(
     message: string,
     public status = 400,
+    values: readonly unknown[] = [],
   ) {
-    super(message);
+    const parameters = values.map((value) =>
+      isMessageList(value) ? messageList(value.items, value.separator) : String(value),
+    );
+    super(formatMessage(message, parameters));
+    // Preserve the English Error.message contract without exposing extra values
+    // through JSON serialization or ordinary error logging.
+    Object.defineProperties(this, {
+      translationKey: { value: message },
+      translationValues: { value: parameters },
+    });
+  }
+  static fromMessages(messages: readonly string[], status = 400, separator = ' ') {
+    return new AppError('{0}', status, [messageList(messages, separator)]);
   }
 }
 export function assertPermission(

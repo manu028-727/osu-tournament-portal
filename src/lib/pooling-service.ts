@@ -1,3 +1,4 @@
+import { messageList } from './messages';
 import { Prisma } from '@/generated/prisma/client';
 import { db } from './db';
 import { AppError, assertPermission, can, type Actor, type PermissionKey } from './permissions';
@@ -14,7 +15,7 @@ const tenant = (actor: Actor) => {
     throw new AppError('Select a tournament.');
   return actor.tournamentId;
 };
-export const artistKey = (value: string) => value.normalize('NFKC').trim().toLocaleLowerCase('en');
+import { artistKey } from './pool-artist';
 export function poolingPermission(action: PoolingAction): PermissionKey {
   if (action.type === 'pooling.pools.release') return 'mappools.publish';
   if (action.type === 'pooling.suggest' || action.type === 'pooling.review.save')
@@ -109,7 +110,11 @@ export async function preparePoolingAction(actor: Actor, action: PoolingAction) 
   const tournament = await db.tournament.findUniqueOrThrow({ where: { id: tenant(actor) } });
   const fetched = await beatmaps(action.beatmapIds, tournament.gameMode);
   if (fetched.errors.length)
-    throw new AppError(fetched.errors.map((error) => `${error.id}: ${error.error}`).join(' '));
+    throw AppError.fromMessages(
+      fetched.errors.map((error) => `${error.id}: ${error.error}`),
+      400,
+      ' ',
+    );
   return fetched.maps;
 }
 export async function savePoolPlan(
@@ -128,7 +133,7 @@ export async function savePoolPlan(
     plan.slots.map((slot) => ({ ...slot, beatmapId: 1 })),
     categories,
   );
-  if (errors.length) throw new AppError(errors.join(' '));
+  if (errors.length) throw AppError.fromMessages(errors, 400, ' ');
   const existing = await tx.poolPlan.findFirst({ where: { stageId, tournamentId } });
   if ((existing?.version ?? null) !== plan.baseVersion)
     throw new AppError('The pool plan changed. Reload before saving.', 409);
@@ -162,10 +167,9 @@ export async function assertPlanComplete(
       !slots.some((slot) => slot.name === expected.name && slot.category === expected.category),
   );
   if (missing.length)
-    throw new AppError(
-      `Fill the planned slots before publishing: ${missing.map((slot) => slot.name).join(', ')}.`,
-      409,
-    );
+    throw new AppError('Fill the planned slots before publishing: {0}.', 409, [
+      missing.map((slot) => slot.name).join(', '),
+    ]);
   const warnings = await tx.poolArtistWarning.findMany({
     where: { tournamentId, severity: 'BANNED' },
   });
@@ -188,7 +192,9 @@ export async function assertPlanComplete(
         !resolution.resolution
       )
         throw new AppError(
-          `${slot.name}: ${map.artist} is banned for this tournament. Resolve the warning when selecting this suggestion, or amend the warning before publishing.`,
+          '{0}: {1} is banned for this tournament. Resolve the warning when selecting this suggestion, or amend the warning before publishing.',
+          400,
+          [slot.name, map.artist],
         );
     }
   }
@@ -207,10 +213,9 @@ export async function publishPoolDraft(
   });
   if (!pool) throw new AppError('Mappool not found in this tournament.', 404);
   if (pool.draftRevisionId !== revisionId || !pool.draftRevision?.slots.length)
-    throw new AppError(
-      `${pool.stage.name}: Review and save a non-empty current draft before publishing.`,
-      409,
-    );
+    throw new AppError('{0}: Review and save a non-empty current draft before publishing.', 409, [
+      pool.stage.name,
+    ]);
   const tournament = await tx.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
   if (
     pool.draftRevision.slots.some(
@@ -218,7 +223,9 @@ export async function publishPoolDraft(
     )
   )
     throw new AppError(
-      `${pool.stage.name}: this draft contains beatmaps from a different game mode. Edit and save it again.`,
+      '{0}: this draft contains beatmaps from a different game mode. Edit and save it again.',
+      400,
+      [pool.stage.name],
     );
   await assertPlanComplete(tx, tournamentId, pool.stageId, pool.draftRevision.slots);
   if (['ELIMINATION', 'GROUPS'].includes(pool.stage.kind)) {
@@ -232,7 +239,8 @@ export async function publishPoolDraft(
       ),
       pool.draftRevision.slots,
     );
-    if (problems.length) throw new AppError(`${pool.stage.name}: ${problems.join(' ')}`, 409);
+    if (problems.length)
+      throw new AppError('{0}: {1}', 409, [pool.stage.name, messageList(problems, ' ')]);
   }
   await tx.poolPlan.updateMany({
     where: { tournamentId, stageId: pool.stageId },
@@ -259,7 +267,7 @@ async function validateReferences(
   )
     throw new AppError('Choose an active stage from this tournament.');
   if (category && !(await tx.modCategory.findFirst({ where: { tournamentId, acronym: category } })))
-    throw new AppError(`Unknown mod category: ${category}.`);
+    throw new AppError('Unknown mod category: {0}.', 400, [category]);
   const tags = [...(primary || []), ...(secondary || [])];
   if (new Set(tags).size !== tags.length)
     throw new AppError('A skillset can be primary or secondary, not both.');
@@ -344,7 +352,7 @@ export async function applyPoolingAction(
         'A pool supports at most 100 slots. Remove destination slots before transferring.',
       );
     const problems = poolSlotErrors(combined, categories);
-    if (problems.length) throw new AppError(problems.join(' '));
+    if (problems.length) throw AppError.fromMessages(problems, 400, ' ');
     if (new Set(combined.map((slot) => slot.beatmapId)).size !== combined.length)
       throw new AppError('The destination would contain the same beatmap in multiple slots.');
     const createRevision = async (poolId: string, notes: string, slots: typeof combined) => {
@@ -406,7 +414,7 @@ export async function applyPoolingAction(
           inheritedRules(stage.matchRules || settings.matchRules, settings.gameplayScoring),
           slots,
         );
-        if (problems.length) throw new AppError(problems.join(' '));
+        if (problems.length) throw AppError.fromMessages(problems, 400, ' ');
       }
     }
     const result = await tx.poolPlan.updateMany({
@@ -465,7 +473,9 @@ export async function applyPoolingAction(
       const metadata = fetched?.find((map) => map.id === beatmapId);
       if (!metadata)
         throw new AppError(
-          `Beatmap ${beatmapId} metadata is unavailable. Fetch it before suggesting.`,
+          'Beatmap {0} metadata is unavailable. Fetch it before suggesting.',
+          400,
+          [beatmapId],
         );
       const candidate = await tx.poolCandidate.create({
         data: {
@@ -628,7 +638,9 @@ export async function applyPoolingAction(
       where: { tournamentId_artistKey: { tournamentId, artistKey: artistKey(metadata.artist) } },
     });
     if (warning?.severity === 'BANNED' && action.warningResolution.length < 3)
-      throw new AppError(`Artist ban: ${warning.reason}. An explicit resolution is required.`);
+      throw new AppError('Artist ban: {0}. An explicit resolution is required.', 400, [
+        warning.reason,
+      ]);
     const revision = pool.draftRevision || pool.publishedRevision;
     const name = normalizedSlot({
       name: action.slotName,
@@ -670,7 +682,7 @@ export async function applyPoolingAction(
         'A pool supports at most 100 slots. Replace an existing slot or remove one before selecting.',
       );
     const problems = poolSlotErrors(slots, categories);
-    if (problems.length) throw new AppError(problems.join(' '));
+    if (problems.length) throw AppError.fromMessages(problems, 400, ' ');
     const created = await tx.mappoolRevision.create({
       data: {
         tournamentId,

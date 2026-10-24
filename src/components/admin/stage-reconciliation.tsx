@@ -1,4 +1,5 @@
 'use client';
+import { Feedback, useT } from '@/components/locale';
 
 import { useState } from 'react';
 import { Check, RefreshCw, Wrench } from 'lucide-react';
@@ -17,6 +18,7 @@ export function StageReconciliation({
   onApply?: (value: StageReconciliationAction) => Promise<unknown>;
   onChanged?: () => Promise<unknown>;
 }) {
+  const tr = useT();
   const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState(supplied);
   const [changes, setChanges] = useState<Record<string, Change>>({});
@@ -38,14 +40,14 @@ export function StageReconciliation({
           setOpen(true);
           setChanges({});
           if (supplied) setPreview(supplied);
-          else void run(refresh, 'Stage review ready.');
+          else void run(refresh, tr('Stage review ready.'));
         }}
       >
         <Wrench size={16} />
-        Repair stage associations
+        {tr('Repair stage associations')}
       </Button>
       <Modal
-        title="Review stage associations"
+        title={tr('Review stage associations')}
         wide
         open={open}
         onOpenChange={(value) => {
@@ -58,25 +60,25 @@ export function StageReconciliation({
             <Button
               size="icon"
               variant="outline"
-              title="Refresh stage review"
-              aria-label="Refresh stage review"
+              title={tr('Refresh stage review')}
+              aria-label={tr('Refresh stage review')}
               disabled={busy}
-              onClick={() => void run(refresh, 'Stage review refreshed.')}
+              onClick={() => void run(refresh, tr('Stage review refreshed.'))}
             >
               <RefreshCw size={16} />
             </Button>
           </div>
           {preview && !preview.matches.length && (
-            <p className="text-sm text-muted">No suspect stage associations.</p>
+            <p className="text-sm text-muted">{tr('No suspect stage associations.')}</p>
           )}
           <div className="max-h-[55dvh] overflow-auto">
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>Review</th>
-                  <th>Match / source</th>
-                  <th>Existing target stage</th>
-                  <th>Snapshot changes</th>
+                  <th>{tr('Review')}</th>
+                  <th>{tr('Match / source')}</th>
+                  <th>{tr('Existing target stage')}</th>
+                  <th>{tr('Snapshot changes')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -102,7 +104,7 @@ export function StageReconciliation({
                       <td>
                         <input
                           type="checkbox"
-                          aria-label={`Review match ${match.code}`}
+                          aria-label={tr('Review match {0}', match.code)}
                           checked={!!selected}
                           disabled={busy || !stageId}
                           onChange={(event) => {
@@ -124,18 +126,18 @@ export function StageReconciliation({
                           {match.currentStage.name} / {match.status}
                         </p>
                         <p className="text-xs text-muted">
-                          Source: {match.sourceLabel}
+                          {tr('Source:')} {match.sourceLabel}
                           {match.bracket ? ` / ${match.bracket}` : ''}
                         </p>
                         {match.reasons.map((reason) => (
                           <p key={reason} className="text-xs text-muted">
-                            {reason}
+                            <Feedback message={reason} />
                           </p>
                         ))}
                       </td>
                       <td className="min-w-48">
                         <select
-                          aria-label={`Target stage for match ${match.code}`}
+                          aria-label={tr('Target stage for match {0}', match.code)}
                           value={stageId}
                           disabled={busy}
                           onChange={(event) =>
@@ -146,7 +148,7 @@ export function StageReconciliation({
                             })
                           }
                         >
-                          <option value="">Choose manually</option>
+                          <option value="">{tr('Choose manually')}</option>
                           {preview.stages.map((stage) => (
                             <option key={stage.id} value={stage.id}>
                               {stage.name}
@@ -154,7 +156,7 @@ export function StageReconciliation({
                           ))}
                         </select>
                         <p className="mt-2 text-xs text-muted">
-                          {match.currentStage.name} to {stage?.name || 'unresolved'}
+                          {match.currentStage.name} {tr('to')} {stage?.name || tr('unresolved')}
                         </p>
                       </td>
                       <td className="min-w-56 whitespace-normal text-xs">
@@ -173,21 +175,24 @@ export function StageReconciliation({
                                 })
                               }
                             />
-                            Bind published target pool and inherited rules
+                            {tr('Bind published target pool and inherited rules')}
                           </label>
                         ) : (
-                          <p>Historical pool and rules preserved.</p>
+                          <p>{tr('Historical pool and rules preserved.')}</p>
                         )}
                         {selected?.rebindPool && (
                           <p className="mt-2 break-all">
-                            Pool: {match.poolRevisionId || 'none'} to {stage?.poolRevisionId}
+                            {tr('Pool:')} {match.poolRevisionId || tr('none')} {tr('to')}{' '}
+                            {stage?.poolRevisionId}
                           </p>
                         )}
                         {selected?.rebindPool && (
                           <p className="mt-2">
-                            Best-of: {match.rules?.bestOf || 'invalid'} to {stage?.rules?.bestOf}
-                            {' / '}Scoring: {match.rules?.gameplayScoring || 'unknown'} to{' '}
-                            {stage?.rules?.gameplayScoring}
+                            {tr('Best-of:')} {match.rules?.bestOf || tr('invalid')} {tr('to')}{' '}
+                            {stage?.rules?.bestOf}
+                            {' / '}
+                            {tr('Scoring:')} {match.rules?.gameplayScoring || tr('unknown')}{' '}
+                            {tr('to')} {stage?.rules?.gameplayScoring}
                           </p>
                         )}
                         {stage?.rulesError && (
@@ -195,11 +200,11 @@ export function StageReconciliation({
                         )}
                         {!!match.snapshotProblems.length && !selected?.rebindPool && (
                           <p className="mt-2 text-red-300">
-                            Snapshot needs review before this repair can be applied.
+                            {tr('Snapshot needs review before this repair can be applied.')}
                           </p>
                         )}
                         <p className="mt-2 text-muted">
-                          Actions, results, participants and schedules unchanged.
+                          {tr('Actions, results, participants and schedules unchanged.')}
                         </p>
                       </td>
                     </tr>
@@ -208,7 +213,7 @@ export function StageReconciliation({
               </tbody>
             </table>
           </div>
-          <Field label="Repair reason">
+          <Field label={tr('Repair reason')}>
             <input
               value={reason}
               maxLength={2000}
@@ -232,7 +237,11 @@ export function StageReconciliation({
             onClick={() => {
               if (
                 !window.confirm(
-                  `Apply ${Object.keys(changes).length} reviewed stage repairs to ${preview?.tournament.name}?`,
+                  tr(
+                    'Apply {0} reviewed stage repairs to {1}?',
+                    Object.keys(changes).length,
+                    preview?.tournament.name,
+                  ),
                 )
               )
                 return;
@@ -244,11 +253,12 @@ export function StageReconciliation({
                 });
                 await refresh();
                 await onChanged?.();
-              }, 'Reviewed stage repairs applied.');
+              }, tr('Reviewed stage repairs applied.'));
             }}
           >
             <Check size={16} />
-            Apply reviewed repairs ({Object.keys(changes).length})
+            {tr('Apply reviewed repairs (')}
+            {Object.keys(changes).length})
           </Button>
         </div>
       </Modal>

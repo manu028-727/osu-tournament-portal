@@ -55,6 +55,12 @@ duplicate localStorage preference, database color edits or theme flash workaroun
 Dialogs/menus inherit workspace theme; portaled public previews capture scoped
 branding. Both themes apply to CMS, referee, qualifiers, errors and loading states.
 
+The header places a compact EN/IT language control beside appearance. Its menu
+names the languages English and Italiano and marks the selection. Language changes
+refresh built-in copy while retaining mounted editors and dirty values. The selected
+language sets the document language and date/number formatting; authored content
+keeps its original language and wording. This is separate from saved CMS copy.
+
 ## Typography, Geometry And Controls
 
 Self-host IBM Plex Sans 400/600 for interface/prose and Plex Mono 400 for identifiers,
@@ -186,11 +192,14 @@ light/dark palettes. home-pilot.module.css and workspace-pilot.module.css are ac
 styles for the approved profile/workspace, despite their historical names.
 
 Current editing uses shared Radix Modal/ConfirmButton alongside native confirm
-prompts. useUnsaved covers ordinary anchor navigation and unload, with incomplete
-history/programmatic navigation coverage. Public empty states and some control
-labels mix Italian and English outside the editable copy catalog. These are
-alignment candidates, not approval for a new interaction system or automatic
-translation of tournament content. Actionable scope and regression gates belong in
+prompts. Dirty editors share one navigation confirmation, including cancelable
+browser history and guarded stage redirects. Pooling dialogs preserve edits when
+discard is canceled, protect transitions into other dialogs, and return focus to
+their connected opener. Unsupported/forced browser exits retain the limitations in
+[ARCHITECTURE.md](ARCHITECTURE.md#interface-language-and-editor-ownership).
+Built-in copy follows the English/Italian control; editable copy remains authored
+content. The approved layout and confirmation controls are retained. Regression
+scope and historical evidence belong in
 [F09](PLAN.md#f09-frontend-boundaries-and-editing-consistency); obsolete QA authority
 is covered by [F10](PLAN.md#f10-obsolescence-and-compatibility-inventory).
 

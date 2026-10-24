@@ -1,4 +1,7 @@
 'use client';
+import { useLocale, useT } from '@/components/locale';
+import { formatNumber } from '@/lib/i18n';
+
 import { Fragment, useEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
@@ -49,6 +52,8 @@ export function PoolSlotTable({
   onBulkTransfer?: (names: string[]) => void;
   transferDisabled?: boolean;
 }) {
+  const tr = useT();
+  const language = useLocale();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const lastSelected = useRef<string | null>(null);
@@ -67,7 +72,7 @@ export function PoolSlotTable({
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              aria-label="Select all mappool slots"
+              aria-label={tr('Select all mappool slots')}
               checked={selected.size === slots.length}
               onChange={(event) =>
                 setSelected(
@@ -76,9 +81,11 @@ export function PoolSlotTable({
               }
               disabled={disabled}
             />
-            Select all
+            {tr('Select all')}
           </label>
-          <span className="text-muted">{selected.size} selected</span>
+          <span className="text-muted">
+            {selected.size} {tr('selected')}
+          </span>
           {selected.size > 0 && (
             <>
               <button
@@ -94,7 +101,7 @@ export function PoolSlotTable({
                   )
                 }
               >
-                Copy IDs
+                {tr('Copy IDs')}
               </button>
               {onBulkTransfer && (
                 <button
@@ -107,8 +114,8 @@ export function PoolSlotTable({
                   }
                   title={
                     transferDisabled
-                      ? 'Save draft changes before transferring maps'
-                      : 'Copy or move saved maps to another stage'
+                      ? tr('Save draft changes before transferring maps')
+                      : tr('Copy or move saved maps to another stage')
                   }
                   onClick={() =>
                     onBulkTransfer(
@@ -119,13 +126,13 @@ export function PoolSlotTable({
                   }
                 >
                   <Copy size={14} />
-                  Copy / move to stage
+                  {tr('Copy / move to stage')}
                 </button>
               )}
               <label className="ml-auto flex items-center gap-2">
-                <span className="text-xs text-muted">Change mod</span>
+                <span className="text-xs text-muted">{tr('Change mod')}</span>
                 <select
-                  aria-label="Change selected maps mod category"
+                  aria-label={tr('Change selected maps mod category')}
                   disabled={disabled}
                   defaultValue=""
                   onChange={(event) => {
@@ -134,7 +141,7 @@ export function PoolSlotTable({
                   }}
                 >
                   <option value="" disabled>
-                    Choose category
+                    {tr('Choose category')}
                   </option>
                   {categories.map((category) => (
                     <option key={category.acronym} value={category.acronym}>
@@ -148,24 +155,19 @@ export function PoolSlotTable({
                 className="rounded-lg px-3 py-1.5 text-red-200 hover:bg-red-400/10"
                 disabled={disabled}
                 onClick={() => {
-                  if (
-                    !window.confirm(
-                      `Remove ${selected.size} selected map${selected.size === 1 ? '' : 's'}?`,
-                    )
-                  )
-                    return;
+                  if (!window.confirm(tr('Remove selected maps ({0})?', selected.size))) return;
                   onBulkRemove([...selected]);
                   setSelected(new Set());
                 }}
               >
-                Remove selected
+                {tr('Remove selected')}
               </button>
               <button
                 type="button"
                 className="rounded-lg px-3 py-1.5 text-muted hover:text-foreground"
                 onClick={() => setSelected(new Set())}
               >
-                Clear
+                {tr('Clear')}
               </button>
             </>
           )}
@@ -174,7 +176,7 @@ export function PoolSlotTable({
       <div
         className="pool-editor-table relative max-h-[65vh] min-h-40 overflow-auto rounded-lg border"
         tabIndex={0}
-        aria-label="Mappool slots"
+        aria-label={tr('Mappool slots')}
       >
         <table className="w-full min-w-[940px] table-fixed text-left text-sm">
           <colgroup>
@@ -191,7 +193,7 @@ export function PoolSlotTable({
             <tr>
               {['', 'Order', 'Slot', 'Mod', 'Beatmap', 'ID', 'Stars', 'Actions'].map((h) => (
                 <th key={h} scope="col" className="h-9 px-2 font-medium">
-                  {h}
+                  {tr(h)}
                 </th>
               ))}
             </tr>
@@ -228,7 +230,7 @@ export function PoolSlotTable({
                     <td className="px-2">
                       <input
                         type="checkbox"
-                        aria-label={`Select ${s.name}`}
+                        aria-label={tr('Select {0}', s.name)}
                         checked={selected.has(s.editorId)}
                         disabled={disabled}
                         onChange={(event) => {
@@ -258,13 +260,13 @@ export function PoolSlotTable({
                     <td className="px-1">
                       <div className="flex">
                         {icon(
-                          `Move ${s.name} up`,
+                          tr('Move {0} up', s.name),
                           () => onMove(s.editorId, -1),
                           <ArrowUp size={14} />,
                           disabled || position < 1,
                         )}
                         {icon(
-                          `Move ${s.name} down`,
+                          tr('Move {0} down', s.name),
                           () => onMove(s.editorId, 1),
                           <ArrowDown size={14} />,
                           disabled || position === group.length - 1,
@@ -273,7 +275,7 @@ export function PoolSlotTable({
                     </td>
                     <td className="px-1">
                       <input
-                        aria-label="Slot"
+                        aria-label={tr('Slot')}
                         value={s.name}
                         maxLength={20}
                         disabled={disabled}
@@ -291,7 +293,7 @@ export function PoolSlotTable({
                     </td>
                     <td className="px-1">
                       <select
-                        aria-label="Mod category"
+                        aria-label={tr('Mod category')}
                         disabled={disabled}
                         value={s.category}
                         onChange={(e) =>
@@ -323,13 +325,13 @@ export function PoolSlotTable({
                           title={
                             map
                               ? `${map.artist} - ${map.title} [${map.difficulty}] · ${map.mapper}`
-                              : errors[s.beatmapId] || 'Metadata not loaded'
+                              : errors[s.beatmapId] || tr('Metadata not loaded')
                           }
                         >
                           <div className="truncate font-medium">
                             {map
                               ? `${map.artist} - ${map.title}`
-                              : errors[s.beatmapId] || 'Metadata not loaded'}
+                              : errors[s.beatmapId] || tr('Metadata not loaded')}
                           </div>
                           {map && (
                             <div className="truncate text-xs text-muted">[{map.difficulty}]</div>
@@ -339,7 +341,7 @@ export function PoolSlotTable({
                     </td>
                     <td className="px-1">
                       <input
-                        aria-label="Beatmap ID"
+                        aria-label={tr('Beatmap ID')}
                         type="number"
                         min={1}
                         max={2147483647}
@@ -351,20 +353,20 @@ export function PoolSlotTable({
                       />
                     </td>
                     <td className="px-2 font-mono text-amber-200">
-                      {map?.stars.toFixed(2) ?? '--'}
+                      {map ? formatNumber(map.stars, language, 2) : '--'}
                     </td>
                     <td className="px-1">
                       <div className="flex">
                         {icon(
-                          `Copy beatmap ID ${s.beatmapId}`,
+                          tr('Copy beatmap ID {0}', s.beatmapId),
                           () => onCopy(String(s.beatmapId)),
                           <Copy size={14} />,
                           s.beatmapId < 1,
                         )}
                         <button
                           type="button"
-                          title={`Details for ${s.name}`}
-                          aria-label={`Details for ${s.name}`}
+                          title={tr('Details for {0}', s.name)}
+                          aria-label={tr('Details for {0}', s.name)}
                           aria-expanded={expanded === s.editorId}
                           onClick={() => setExpanded(expanded === s.editorId ? null : s.editorId)}
                           className="inline-flex size-8 items-center justify-center rounded-lg hover:bg-[var(--surface-hover)]"
@@ -376,7 +378,7 @@ export function PoolSlotTable({
                           )}
                         </button>
                         {icon(
-                          `Remove ${s.name}`,
+                          tr('Remove {0}', s.name),
                           () => onRemove(s.editorId),
                           <Trash2 size={14} />,
                           disabled,
@@ -392,21 +394,26 @@ export function PoolSlotTable({
                             <span className="break-words">
                               {map.artist} - {map.title} [{map.difficulty}]
                             </span>
-                            <span>Mapper: {map.mapper}</span>
-                            <span>{map.bpm} BPM</span>
+                            <span>
+                              {tr('Mapper:')} {map.mapper}
+                            </span>
+                            <span>
+                              {map.bpm} {tr('BPM')}
+                            </span>
                             <span>
                               {Math.floor(map.length / 60)}:
                               {String(map.length % 60).padStart(2, '0')}
                             </span>
                             <span>
-                              AR {map.ar} · CS {map.cs} · OD {map.od} · HP {map.hp ?? '--'}
+                              {tr('AR')} {map.ar} {tr('· CS')} {map.cs} {tr('· OD')} {map.od}{' '}
+                              {tr('· HP')} {map.hp ?? '--'}
                             </span>
                             <a
                               href={`https://osu.ppy.sh/beatmaps/${s.beatmapId}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              aria-label={`Open beatmap ${s.beatmapId}`}
-                              title="Open beatmap"
+                              aria-label={tr('Open beatmap {0}', s.beatmapId)}
+                              title={tr('Open beatmap')}
                               className="text-primary"
                             >
                               <ExternalLink size={16} />
@@ -414,7 +421,7 @@ export function PoolSlotTable({
                           </div>
                         ) : (
                           <span className="text-muted">
-                            {errors[s.beatmapId] || 'Metadata not loaded'}
+                            {errors[s.beatmapId] || tr('Metadata not loaded')}
                           </span>
                         )}
                         {problems.map((p) => (

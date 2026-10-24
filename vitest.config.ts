@@ -4,6 +4,8 @@ export default defineConfig({
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   test: {
     include: [
+      'tests/error-localization.test.ts',
+      'tests/i18n.test.ts',
       'tests/archive-contract.test.ts',
       'tests/media-references.test.ts',
       'tests/tournament-archive.test.ts',

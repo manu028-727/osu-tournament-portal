@@ -1,4 +1,8 @@
 'use client';
+import { QUALIFIER_METHOD_LABELS } from '@/lib/qualifier-policy';
+import { humanizeCode } from '@/lib/i18n';
+import { localDateTimeInput } from '@/lib/utils';
+import { useT } from '@/components/locale';
 
 import { useRef, useState } from 'react';
 import { ArrowRightLeft, CalendarClock, ListPlus, X } from 'lucide-react';
@@ -13,12 +17,6 @@ import { action, Field, Modal, SaveButton, useTask, useUnsaved } from './shared'
 type Options = NonNullable<QualifierData['options']>;
 const toggle = (values: string[], value: string) =>
   values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
-const localDate = (iso: string | null) =>
-  iso
-    ? new Date(new Date(iso).getTime() - new Date(iso).getTimezoneOffset() * 60_000)
-        .toISOString()
-        .slice(0, 16)
-    : '';
 
 function Referees({
   options,
@@ -29,9 +27,10 @@ function Referees({
   value: string[];
   onChange: (value: string[]) => void;
 }) {
+  const tr = useT();
   return (
     <fieldset className="max-h-40 space-y-2 overflow-auto">
-      <legend className="mb-2 font-semibold">Referees</legend>
+      <legend className="mb-2 font-semibold">{tr('Referees')}</legend>
       {options.referees.map((ref) => (
         <label key={ref.id} className="flex items-center gap-2 text-sm">
           <input
@@ -57,6 +56,7 @@ function CreateSessions({
   close: () => void;
   reload: () => Promise<unknown>;
 }) {
+  const tr = useT();
   const { run, busy, notify } = useTask();
   const [form, setForm] = useState({
     stageId: '',
@@ -120,26 +120,29 @@ function CreateSessions({
           build();
           return;
         }
-        void run(async () => {
-          await action({ type: 'qualifier.batch.create', sessions: preview });
-          await reload();
-          close();
-        }, `${preview.length} qualifier sessions created.`);
+        void run(
+          async () => {
+            await action({ type: 'qualifier.batch.create', sessions: preview });
+            await reload();
+            close();
+          },
+          tr('{0} qualifier sessions created.', preview.length),
+        );
       }}
     >
       {!preview ? (
         <>
           <div className="grid-fields">
-            <Field label="Entrant format">
+            <Field label={tr('Entrant format')}>
               <select
                 value={form.format}
                 onChange={(event) => setForm({ ...form, format: event.target.value, teamIds: [] })}
               >
-                <option value="TEAM">Teams</option>
-                <option value="INDIVIDUAL">Individuals</option>
+                <option value="TEAM">{tr('Teams')}</option>
+                <option value="INDIVIDUAL">{tr('Individuals')}</option>
               </select>
             </Field>
-            <Field label="Qualifier stage">
+            <Field label={tr('Qualifier stage')}>
               <select
                 required
                 value={form.stageId}
@@ -159,7 +162,7 @@ function CreateSessions({
                   })
                 }
               >
-                <option value="">Select stage</option>
+                <option value="">{tr('Select stage')}</option>
                 {options.stages
                   .filter((stage) => stage.kind === 'QUALIFIERS' && stage.published)
                   .map((stage) => (
@@ -169,7 +172,7 @@ function CreateSessions({
                   ))}
               </select>
             </Field>
-            <Field label="Lobby prefix">
+            <Field label={tr('Lobby prefix')}>
               <input
                 required
                 maxLength={71}
@@ -177,7 +180,7 @@ function CreateSessions({
                 onChange={(event) => setForm({ ...form, prefix: event.target.value })}
               />
             </Field>
-            <Field label="First lobby number">
+            <Field label={tr('First lobby number')}>
               <input
                 type="number"
                 min={1}
@@ -186,7 +189,7 @@ function CreateSessions({
                 onChange={(event) => setForm({ ...form, firstNumber: event.target.valueAsNumber })}
               />
             </Field>
-            <Field label="Number of sessions">
+            <Field label={tr('Number of sessions')}>
               <input
                 type="number"
                 min={1}
@@ -195,7 +198,7 @@ function CreateSessions({
                 onChange={(event) => setForm({ ...form, count: event.target.valueAsNumber })}
               />
             </Field>
-            <Field label="Entrants per session">
+            <Field label={tr('Entrants per session')}>
               <input
                 type="number"
                 min={1}
@@ -206,14 +209,14 @@ function CreateSessions({
                 }
               />
             </Field>
-            <Field label="First session time (your timezone)">
+            <Field label={tr('First session time (your timezone)')}>
               <input
                 type="datetime-local"
                 value={form.startAt}
                 onChange={(event) => setForm({ ...form, startAt: event.target.value })}
               />
             </Field>
-            <Field label="Interval (minutes)">
+            <Field label={tr('Interval (minutes)')}>
               <input
                 type="number"
                 min={0}
@@ -227,18 +230,20 @@ function CreateSessions({
           </div>
           {stage && (
             <p className="text-sm text-muted">
-              {stage.policy.runs} run(s) · {stage.policy.requiredPlayers} active player(s) per
-              entrant · {stage.policy.method.replaceAll('_', ' ')}
+              {stage.policy.runs} {tr('run(s) ·')} {stage.policy.requiredPlayers}{' '}
+              {tr('active player(s) per entrant ·')}{' '}
+              {tr(QUALIFIER_METHOD_LABELS[stage.policy.method])}
             </p>
           )}
           <fieldset className="max-h-52 space-y-2 overflow-auto">
             <legend className="mb-2 font-semibold">
-              Entrants ({form.teamIds.length} selected)
+              {tr('Entrants (')}
+              {form.teamIds.length} {tr('selected)')}
             </legend>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                aria-label="Select all available qualifier entrants"
+                aria-label={tr('Select all available qualifier entrants')}
                 disabled={!selectable.length}
                 checked={
                   !!selectable.length && selectable.every((team) => form.teamIds.includes(team.id))
@@ -250,7 +255,7 @@ function CreateSessions({
                   })
                 }
               />
-              Select all available
+              {tr('Select all available')}
             </label>
             {available.map((team) => (
               <label key={team.id} className="flex items-center gap-2 text-sm">
@@ -271,7 +276,7 @@ function CreateSessions({
           />
           <Button type="submit">
             <ListPlus size={16} />
-            Preview sessions
+            {tr('Preview sessions')}
           </Button>
         </>
       ) : (
@@ -280,10 +285,10 @@ function CreateSessions({
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>Lobby</th>
-                  <th>Time</th>
-                  <th>Entrants</th>
-                  <th>Referee</th>
+                  <th>{tr('Lobby')}</th>
+                  <th>{tr('Time')}</th>
+                  <th>{tr('Entrants')}</th>
+                  <th>{tr('Referee')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -291,7 +296,7 @@ function CreateSessions({
                   <tr key={index}>
                     <td>
                       <input
-                        aria-label={`Lobby code ${index + 1}`}
+                        aria-label={tr('Lobby code {0}', index + 1)}
                         maxLength={80}
                         value={session.code}
                         onChange={(event) =>
@@ -305,9 +310,9 @@ function CreateSessions({
                     </td>
                     <td>
                       <input
-                        aria-label={`Session time ${index + 1}`}
+                        aria-label={tr('Session time {0}', index + 1)}
                         type="datetime-local"
-                        value={localDate(session.scheduledAt)}
+                        value={localDateTimeInput(session.scheduledAt)}
                         onChange={(event) =>
                           setPreview(
                             preview.map((row, i) =>
@@ -327,11 +332,11 @@ function CreateSessions({
                     <td className="min-w-40">
                       {session.teamIds
                         .map((id) => options.teams.find((team) => team.id === id)?.name)
-                        .join(', ') || 'No entrants'}
+                        .join(', ') || tr('No entrants')}
                     </td>
                     <td>
                       <select
-                        aria-label={`Referee for session ${index + 1}`}
+                        aria-label={tr('Referee for session {0}', index + 1)}
                         value={
                           session.refereeIds.length === 1
                             ? session.refereeIds[0]
@@ -352,10 +357,10 @@ function CreateSessions({
                           )
                         }
                       >
-                        <option value="">Unassigned</option>
+                        <option value="">{tr('Unassigned')}</option>
                         {session.refereeIds.length > 1 && (
                           <option value="multiple" disabled>
-                            Multiple referees
+                            {tr('Multiple referees')}
                           </option>
                         )}
                         {options.referees.map((ref) => (
@@ -372,9 +377,11 @@ function CreateSessions({
           </div>
           <div className="flex gap-3">
             <Button type="button" variant="outline" onClick={() => setPreview(null)}>
-              Back
+              {tr('Back')}
             </Button>
-            <SaveButton busy={busy}>Create {preview.length} sessions</SaveButton>
+            <SaveButton busy={busy}>
+              {tr('Create')} {preview.length} {tr('sessions')}
+            </SaveButton>
           </div>
         </>
       )}
@@ -393,6 +400,7 @@ function BulkSchedule({
   reload: () => Promise<unknown>;
   close: () => void;
 }) {
+  const tr = useT();
   const { run, busy } = useTask();
   const [schedule, setSchedule] = useState<'keep' | 'set' | 'shift' | 'clear'>('keep');
   const [scheduledAt, setScheduledAt] = useState('');
@@ -438,42 +446,47 @@ function BulkSchedule({
       onSubmit={(event) => {
         event.preventDefault();
         if (invalid) return;
-        void run(async () => {
-          const body: Extract<QualifierAction, { type: 'qualifier.bulk.schedule' }> = {
-            type: 'qualifier.bulk.schedule',
-            lobbies: versions,
-            ...(schedule === 'set' || schedule === 'clear'
-              ? { scheduledAt: schedule === 'clear' ? null : new Date(scheduledAt).toISOString() }
-              : {}),
-            ...(schedule === 'shift' ? { shiftMinutes: minutes } : {}),
-            ...(changeRefs ? { refereeIds } : {}),
-            ...(changeNotes ? { notes } : {}),
-          };
-          await action(body);
-          await reload();
-          close();
-        }, `${selected.length} sessions updated.`);
+        void run(
+          async () => {
+            const body: Extract<QualifierAction, { type: 'qualifier.bulk.schedule' }> = {
+              type: 'qualifier.bulk.schedule',
+              lobbies: versions,
+              ...(schedule === 'set' || schedule === 'clear'
+                ? { scheduledAt: schedule === 'clear' ? null : new Date(scheduledAt).toISOString() }
+                : {}),
+              ...(schedule === 'shift' ? { shiftMinutes: minutes } : {}),
+              ...(changeRefs ? { refereeIds } : {}),
+              ...(changeNotes ? { notes } : {}),
+            };
+            await action(body);
+            await reload();
+            close();
+          },
+          tr('{0} sessions updated.', selected.length),
+        );
       }}
     >
       {invalid && (
         <p role="alert">
-          A selected lobby changed or is no longer scheduled. Close and review the selection.
+          {tr(
+            'A selected lobby changed or is no longer scheduled. Close and review the selection.',
+          )}
         </p>
       )}
       <div className="grid-fields">
-        <Field label="Schedule">
+        <Field label={tr('Schedule')}>
           <select
             value={schedule}
             onChange={(event) => setSchedule(event.target.value as typeof schedule)}
           >
-            <option value="keep">Keep existing times</option>
-            <option value="set">Set a start time</option>
-            <option value="shift">Shift existing times</option>
-            <option value="clear">Clear times</option>
+            <option value="keep">{tr('Keep existing times')}</option>
+            <option value="set">{tr('Set a start time')}</option>
+            <option value="shift">{tr('Shift existing times')}</option>
+            <option value="clear">{tr('Clear times')}</option>
           </select>
         </Field>
         {schedule === 'set' && (
-          <Field label="New start time (your timezone)">
+          <Field label={tr('New start time (your timezone)')}>
             <input
               required
               type="datetime-local"
@@ -483,7 +496,7 @@ function BulkSchedule({
           </Field>
         )}
         {schedule === 'shift' && (
-          <Field label="Shift (minutes)">
+          <Field label={tr('Shift (minutes)')}>
             <input
               required
               type="number"
@@ -501,7 +514,8 @@ function BulkSchedule({
           checked={changeRefs}
           onChange={(event) => setChangeRefs(event.target.checked)}
         />
-        Replace referee assignments{mixedRefs ? ' (currently mixed)' : ''}
+        {tr('Replace referee assignments')}
+        {mixedRefs ? tr(' (currently mixed)') : ''}
       </label>
       {changeRefs && <Referees options={options} value={refereeIds} onChange={setRefereeIds} />}
       <label className="flex items-center gap-2 text-sm">
@@ -510,10 +524,10 @@ function BulkSchedule({
           checked={changeNotes}
           onChange={(event) => setChangeNotes(event.target.checked)}
         />
-        Replace notes
+        {tr('Replace notes')}
       </label>
       {changeNotes && (
-        <Field label="New session notes">
+        <Field label={tr('New session notes')}>
           <textarea
             maxLength={4000}
             value={notes}
@@ -525,9 +539,9 @@ function BulkSchedule({
         <table className="admin-table">
           <thead>
             <tr>
-              <th>Lobby</th>
-              <th>New time</th>
-              <th>Referees</th>
+              <th>{tr('Lobby')}</th>
+              <th>{tr('New time')}</th>
+              <th>{tr('Referees')}</th>
             </tr>
           </thead>
           <tbody>
@@ -539,8 +553,9 @@ function BulkSchedule({
                   {changeRefs
                     ? refereeIds
                         .map((id) => options.referees.find((ref) => ref.id === id)?.username)
-                        .join(', ') || 'Unassigned'
-                    : lobby.assignments.map((ref) => ref.user.username).join(', ') || 'Unassigned'}
+                        .join(', ') || tr('Unassigned')
+                    : lobby.assignments.map((ref) => ref.user.username).join(', ') ||
+                      tr('Unassigned')}
                 </td>
               </tr>
             ))}
@@ -558,7 +573,7 @@ function BulkSchedule({
               selected.some((lobby) => !lobby.scheduledAt)))
         }
       >
-        Apply to {selected.length} sessions
+        {tr('Apply to')} {selected.length} {tr('sessions')}
       </SaveButton>
     </form>
   );
@@ -575,6 +590,7 @@ function MoveEntrants({
   reload: () => Promise<unknown>;
   close: () => void;
 }) {
+  const tr = useT();
   const { run, busy } = useTask();
   const [sourceId, setSourceId] = useState('');
   const [targetId, setTargetId] = useState('');
@@ -618,22 +634,25 @@ function MoveEntrants({
       onSubmit={(event) => {
         event.preventDefault();
         if (!target || !teamIds.length || stale) return;
-        void run(async () => {
-          await action({
-            type: 'qualifier.participants.move',
-            fromLobbyId: sourceId || null,
-            ...(source ? { sourceVersion: versions[source.id] } : {}),
-            toLobbyId: target.id,
-            baseVersion: versions[target.id],
-            teamIds,
-          });
-          await reload();
-          close();
-        }, `${teamIds.length} entrants assigned.`);
+        void run(
+          async () => {
+            await action({
+              type: 'qualifier.participants.move',
+              fromLobbyId: sourceId || null,
+              ...(source ? { sourceVersion: versions[source.id] } : {}),
+              toLobbyId: target.id,
+              baseVersion: versions[target.id],
+              teamIds,
+            });
+            await reload();
+            close();
+          },
+          tr('{0} entrants assigned.', teamIds.length),
+        );
       }}
     >
       <div className="grid-fields">
-        <Field label="From">
+        <Field label={tr('From')}>
           <select
             value={sourceId}
             onChange={(event) => {
@@ -644,7 +663,7 @@ function MoveEntrants({
               setVersions(lobby ? { [lobby.id]: lobby.version } : {});
             }}
           >
-            <option value="">Unassigned entrants</option>
+            <option value="">{tr('Unassigned entrants')}</option>
             {unstarted.map((lobby) => (
               <option key={lobby.id} value={lobby.id}>
                 {lobby.code} · {lobby.stage.name}
@@ -652,7 +671,7 @@ function MoveEntrants({
             ))}
           </select>
         </Field>
-        <Field label="To">
+        <Field label={tr('To')}>
           <select
             required
             value={targetId}
@@ -663,7 +682,7 @@ function MoveEntrants({
               if (lobby) setVersions({ ...versions, [lobby.id]: lobby.version });
             }}
           >
-            <option value="">Choose a session</option>
+            <option value="">{tr('Choose a session')}</option>
             {unstarted
               .filter(
                 (lobby) =>
@@ -681,18 +700,21 @@ function MoveEntrants({
         </Field>
       </div>
       <fieldset className="max-h-56 space-y-2 overflow-auto">
-        <legend className="mb-2 font-semibold">Entrants ({teamIds.length} selected)</legend>
+        <legend className="mb-2 font-semibold">
+          {tr('Entrants (')}
+          {teamIds.length} {tr('selected)')}
+        </legend>
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
-            aria-label="Select all source entrants"
+            aria-label={tr('Select all source entrants')}
             disabled={!candidates.length}
             checked={!!candidates.length && candidates.every((team) => teamIds.includes(team.id!))}
             onChange={(event) =>
               setTeamIds(event.target.checked ? candidates.map((team) => team.id!) : [])
             }
           />
-          Select all
+          {tr('Select all')}
         </label>
         {candidates.map((team) => (
           <label key={team.id} className="flex items-center gap-2 text-sm">
@@ -707,23 +729,23 @@ function MoveEntrants({
       </fieldset>
       {target && (
         <p className="text-sm">
-          {target.code}: {nextCount} entrants · {activePlayers}/16 active players
+          {target.code}: {nextCount} {tr('entrants ·')} {activePlayers}/16 {tr('active players')}
         </p>
       )}
       {(stale || mixed || overCapacity) && (
         <p role="alert">
           {stale
-            ? 'A session changed. Reopen this form.'
+            ? tr('A session changed. Reopen this form.')
             : mixed
-              ? 'Team and individual entrants need separate sessions.'
-              : 'The destination exceeds its entrant or sixteen-player capacity.'}
+              ? tr('Team and individual entrants need separate sessions.')
+              : tr('The destination exceeds its entrant or sixteen-player capacity.')}
         </p>
       )}
       <SaveButton
         busy={busy}
         disabled={!target || !teamIds.length || stale || !!mixed || overCapacity}
       >
-        Assign {teamIds.length} entrants
+        {tr('Assign')} {teamIds.length} {tr('entrants')}
       </SaveButton>
     </form>
   );
@@ -738,6 +760,7 @@ export function QualifierLobbyList({
   data: QualifierData;
   reload: () => Promise<unknown>;
 }) {
+  const tr = useT();
   const time = useTournamentTime();
   const { timezone = 'UTC' } = useTournamentScope();
   const [filter, setFilter] = useState('');
@@ -770,8 +793,8 @@ export function QualifierLobbyList({
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <input
           className="max-w-sm"
-          aria-label="Search qualifier lobbies"
-          placeholder="Search lobbies, entrants, referees"
+          aria-label={tr('Search qualifier lobbies')}
+          placeholder={tr('Search lobbies, entrants, referees')}
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
@@ -780,7 +803,7 @@ export function QualifierLobbyList({
           }}
         />
         <select
-          aria-label="Filter qualifier lobbies"
+          aria-label={tr('Filter qualifier lobbies')}
           className="max-w-xs"
           value={filter}
           onChange={(event) => {
@@ -789,9 +812,9 @@ export function QualifierLobbyList({
             anchor.current = null;
           }}
         >
-          <option value="">All qualifier lobbies</option>
-          <option value="me">My assigned lobbies</option>
-          <option value="unassigned">Unassigned</option>
+          <option value="">{tr('All qualifier lobbies')}</option>
+          <option value="me">{tr('My assigned lobbies')}</option>
+          <option value="unassigned">{tr('Unassigned')}</option>
           {[
             'SCHEDULED',
             'IN_PROGRESS',
@@ -801,7 +824,7 @@ export function QualifierLobbyList({
             'CANCELLED',
           ].map((status) => (
             <option key={status} value={status}>
-              {status.replaceAll('_', ' ')}
+              {tr(humanizeCode(status))}
             </option>
           ))}
         </select>
@@ -813,11 +836,11 @@ export function QualifierLobbyList({
               onClick={() => setDialog('create')}
             >
               <ListPlus size={16} />
-              Create several sessions
+              {tr('Create several sessions')}
             </Button>
             <Button variant="outline" onClick={() => setDialog('move')}>
               <ArrowRightLeft size={16} />
-              Assign entrants
+              {tr('Assign entrants')}
             </Button>
           </>
         )}
@@ -825,19 +848,21 @@ export function QualifierLobbyList({
       {!!chosen.length && (
         <div
           role="toolbar"
-          aria-label="Qualifier bulk actions"
+          aria-label={tr('Qualifier bulk actions')}
           className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border bg-card p-3 text-sm"
         >
-          <span>{chosen.length} visible sessions selected</span>
+          <span>
+            {chosen.length} {tr('visible sessions selected')}
+          </span>
           <Button variant="outline" onClick={() => setDialog('schedule')}>
             <CalendarClock size={16} />
-            Edit schedule and assignments
+            {tr('Edit schedule and assignments')}
           </Button>
           <Button
             size="icon"
             variant="ghost"
-            title="Clear selection"
-            aria-label="Clear qualifier selection"
+            title={tr('Clear selection')}
+            aria-label={tr('Clear qualifier selection')}
             onClick={() => setSelected([])}
           >
             <X size={16} />
@@ -845,8 +870,8 @@ export function QualifierLobbyList({
         </div>
       )}
       <p className="mb-3 text-sm text-muted">
-        {visible.length} of {data.lobbies.length} lobbies ·{' '}
-        {data.lobbies.filter((lobby) => lobby.status === 'IN_PROGRESS').length} in progress
+        {visible.length} {tr('of')} {data.lobbies.length} {tr('lobbies ·')}{' '}
+        {data.lobbies.filter((lobby) => lobby.status === 'IN_PROGRESS').length} {tr('in progress')}
       </p>
       <div className="overflow-auto">
         <table className="admin-table">
@@ -856,7 +881,7 @@ export function QualifierLobbyList({
                 <th>
                   <input
                     type="checkbox"
-                    aria-label="Select all visible scheduled qualifier sessions"
+                    aria-label={tr('Select all visible scheduled qualifier sessions')}
                     disabled={!eligible.length}
                     checked={
                       !!eligible.length && eligible.every((lobby) => selected.includes(lobby.id))
@@ -867,12 +892,15 @@ export function QualifierLobbyList({
                   />
                 </th>
               )}
-              <th>Lobby</th>
-              <th>Stage</th>
-              <th>Entrants</th>
-              <th>Schedule ({timezone})</th>
-              <th>Referees</th>
-              <th>Status</th>
+              <th>{tr('Lobby')}</th>
+              <th>{tr('Stage')}</th>
+              <th>{tr('Entrants')}</th>
+              <th>
+                {tr('Schedule (')}
+                {timezone})
+              </th>
+              <th>{tr('Referees')}</th>
+              <th>{tr('Status')}</th>
             </tr>
           </thead>
           <tbody>
@@ -882,7 +910,7 @@ export function QualifierLobbyList({
                   <td>
                     <input
                       type="checkbox"
-                      aria-label={`Select qualifier ${lobby.code}`}
+                      aria-label={tr('Select qualifier {0}', lobby.code)}
                       disabled={lobby.status !== 'SCHEDULED'}
                       checked={selected.includes(lobby.id)}
                       onChange={(event) => {
@@ -920,30 +948,32 @@ export function QualifierLobbyList({
                   </Link>
                 </td>
                 <td>{lobby.stage.name}</td>
-                <td>{lobby.participants.map((team) => team.name).join(', ') || 'No entrants'}</td>
+                <td>
+                  {lobby.participants.map((team) => team.name).join(', ') || tr('No entrants')}
+                </td>
                 <td>{time(lobby.scheduledAt)}</td>
                 <td>
-                  {lobby.assignments.map((ref) => ref.user.username).join(', ') || 'Unassigned'}
+                  {lobby.assignments.map((ref) => ref.user.username).join(', ') || tr('Unassigned')}
                 </td>
-                <td>{lobby.status.replaceAll('_', ' ')}</td>
+                <td>{tr(humanizeCode(lobby.status))}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {!visible.length && <p className="py-8 text-muted">No matching qualifier lobbies.</p>}
+      {!visible.length && <p className="py-8 text-muted">{tr('No matching qualifier lobbies.')}</p>}
       <Modal
         open={!!dialog}
         onOpenChange={(open) => {
-          if (!open && window.confirm('Close this form and discard unsaved changes?'))
+          if (!open && window.confirm(tr('Close this form and discard unsaved changes?')))
             setDialog(null);
         }}
         title={
           dialog === 'create'
-            ? 'Create qualifier sessions'
+            ? tr('Create qualifier sessions')
             : dialog === 'move'
-              ? 'Assign qualifier entrants'
-              : 'Bulk qualifier schedule'
+              ? tr('Assign qualifier entrants')
+              : tr('Bulk qualifier schedule')
         }
         wide
       >

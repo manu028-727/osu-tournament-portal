@@ -26,7 +26,7 @@ document when those contracts change. Examples are not proof of live verificatio
   [adoption](#existing-schema-adoption), [backups](#backups-and-recovery),
   [troubleshooting](#troubleshooting).
 - Engineering: [development/tests](#development-and-tests),
-  [boundaries and proposed cleanup](#implementation-boundaries-and-proposed-cleanup),
+  [implementation boundaries](#implementation-boundaries-and-cleanup),
   [security/contribution/license rules](#security-and-distribution).
 
 | Layer          | Implementation                                                                      |
@@ -460,7 +460,7 @@ Same-origin media routes check publication/reference/ownership separately for gl
 and tenant assets. Failed saves do not create false catalog success. Referenced
 deletion is refused, including hidden and historical references. Archive imports
 retain retryable cleanup through TournamentTransfer; ordinary uploads/deletes use
-the MediaCleanup outbox described in [implementation boundaries](#implementation-boundaries-and-proposed-cleanup).
+the MediaCleanup outbox described in [implementation boundaries](#implementation-boundaries-and-cleanup).
 Back up every saved revision reference, not only current visible artwork.
 
 ## Tournament Archive Protocol
@@ -768,7 +768,7 @@ Safe commands: `./portal status`, `./portal compose config --quiet`,
 `./portal compose logs --since=15m --tail=100 web`, and gateway logs. Do not publish
 resolved env/Compose configuration, credential URLs, cookies or tickets.
 
-## Implementation Boundaries And Proposed Cleanup
+## Implementation Boundaries And Cleanup
 
 Cleanup delivery starts with the ownership boundary. The additive
 20261024010000 migration scans existing links and refuses mismatches before adding
@@ -839,6 +839,53 @@ Public inference still applies publication/visibility filters before traversal.
 | Scheduling/media    | schedule-availability.ts validates final resource plans; media-cleanup.ts owns ordinary storage journaling; media-references.ts traverses exact current/historical references                                                                                                        |
 | Archives            | tournament-archive-format.ts owns wire allowlists, insertion order and deferred references; archive-identities.ts owns version 1 namespace traversal; domain restoration modules verify competitive witnesses                                                                        |
 
+### Interface Language And Editor Ownership
+
+`i18n.ts` owns the English/Italian catalogs and bounded message interpolation.
+English source copy is its own fallback; the English catalog maps the original
+Italian built-in messages. `server-locale.ts` reads the nonsensitive, one-year,
+SameSite=Lax `portal_language` cookie through async request cookies. An explicit
+`en`/`it` preference wins; installation locale supplies Italian for `it`/`it-*`
+and English otherwise. URLs and tenant selection are independent of language.
+`LocaleProvider` initializes from that server value. Its control updates the
+cookie, document language and mounted client copy, then refreshes server content
+without remounting editors. Date/number display uses the selected locale and
+the existing tournament timezone; stored values and command/export formats keep
+their domain representation. Native date widgets and browser-owned unload prompts
+follow browser/OS language settings.
+
+Only built-in copy calls the translator. CMS/navigation labels, names, notes,
+rich text, rules policies and imported histories are authored data and render
+verbatim. Interpolation parameters are preserved. Generated feedback alone uses
+the catalog's template matcher, allowing existing notices to follow a language
+change. There is no DOM-wide translation or external translation service.
+
+`AppError` retains its English `message` and HTTP status, with non-enumerable
+translation templates/parameters. `errorResponse` is async and localizes the
+existing `{ error }` response at the HTTP boundary; callers inspecting the response
+must await it. Field paths and protocol identifiers remain stable. Zod uses
+request-local formatting, never mutable global language configuration. Locale
+lookup failure falls back to English so error reporting still works. Diagnostics,
+audit payloads, saved competition data and archive contracts are unchanged.
+
+Shared match labels live in `match-display.ts`; artist normalization in
+`pool-artist.ts`; browser datetime conversion in `utils.ts`. PoolingWorkspace owns
+filters/selection and read refresh, while suggestion/bulk dialogs, review/selection
+dialogs and configuration forms own their local edits in separate components.
+Successful saves close through the existing mutation callback; failed saves keep
+the dirty form. Shared Modal returns focus to its connected opener.
+
+`unsaved-navigation.ts` registers one listener set while editors are dirty, with
+one confirmation across multiple dirty rows. It protects ordinary links, unload,
+cancelable same-document Navigation API traversal and explicit guarded stage
+router calls. A confirmed discard/save acknowledges only its own editor before
+navigation. Pooling dialogs additionally guard Escape, outside/Close/Cancel and
+detail-to-review/selection transitions. Refreshing language is not a navigation
+away. Browsers can impose non-cancelable traversals; browsers without Navigation
+API retain link/unload and explicit router protection. These are limits of the
+[HTML navigation contract](https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-navigate-event),
+not a guarantee that every forced exit can be canceled.
+
 Read modules do not import mutation services. Archive entrypoints import restoration
 owners directly. Removed service reexports prevent new callers rebuilding that
 coupling. Referee/provider/import adapters share record/access helpers rather than
@@ -878,8 +925,10 @@ scopedDb explicitly classifies models and validates parent references. Unsupport
 nested operations and unclassified models fail closed. Raw SQL remains a service
 responsibility; the full Prisma type does not imply all nested APIs are supported.
 Archive contract tests compare every generated model/scalar with its reviewed wire
-allowlist or explicit exclusion. Local edit counters, object keys and server/global
-credentials remain excluded. Imported edit counters start at one. Version 1 opaque
+allowlist or explicit exclusion. New staff/category edit counters, object keys and
+server/global credentials remain excluded. Those new counters default to one on
+import; existing version 1 version fields retain their wire contract, and the new
+tournament starts at version one. Version 1 opaque
 history retains its established identity-field convention; competitive configurations
 and standings additionally require domain witness equivalence before hash rebinding.
 
@@ -942,7 +991,10 @@ Relevant suites: pure ordering/stage/pooling, rules/engine/Discord goldens, stri
 IRC mock TCP, competition/scoring/numbering/qualifier mathematics; PostgreSQL
 tenant/permission/stale-write/history/archive tests; E2E workspace/tournaments/
 transfer/competition/stages/bulk matches/referee/public pools/standings. Browser mocks
-do not replace persistence coverage or live-provider checks.
+do not replace persistence coverage or live-provider checks. Locale tests check
+catalog coverage, duplicate keys, interpolation, request concurrency and unchanged
+authored parameters. Localization E2E exercises real localized failures, dirty
+forms/dialogs/history and both languages/appearances at required viewport sizes.
 
 Smoke harnesses need explicit isolated environments. workspace.ts requires empty
 migrated/bootstrapped platform_workspace_dev_test or platform_workspace_prod_test,

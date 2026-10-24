@@ -1,3 +1,4 @@
+import { messageList } from './messages';
 import { Prisma } from '@/generated/prisma/client';
 import { AppError, assertPermission, type Actor } from './permissions';
 import type { MatchParticipants } from './matches-types';
@@ -62,10 +63,9 @@ export async function applyBulkScheduleAction(
   const versions = new Map(action.matches.map((match) => [match.id, match.baseVersion]));
   for (const record of records) {
     if (record.version !== versions.get(record.id))
-      throw new AppError(
-        `Match ${record.matchNumber} changed. Reload and review the selection.`,
-        409,
-      );
+      throw new AppError('Match {0} changed. Reload and review the selection.', 409, [
+        record.matchNumber,
+      ]);
     if (
       record.status !== 'SCHEDULED' ||
       record.startedAt ||
@@ -73,8 +73,9 @@ export async function applyBulkScheduleAction(
       record.completedAt
     )
       throw new AppError(
-        `Match ${record.matchNumber} has started or is closed. Bulk editing requires unstarted scheduled matches.`,
+        'Match {0} has started or is closed. Bulk editing requires unstarted scheduled matches.',
         409,
+        [record.matchNumber],
       );
   }
 
@@ -90,7 +91,9 @@ export async function applyBulkScheduleAction(
     if (target.archivedAt || target.kind === 'QUALIFIERS')
       throw new AppError('Choose an active elimination or custom stage. Qualifiers use sessions.');
     if (target.mappool?.state !== 'PUBLISHED' || !target.mappool.publishedRevision?.slots.length)
-      throw new AppError(`${target.name} needs a published mappool before assigning matches.`);
+      throw new AppError('{0} needs a published mappool before assigning matches.', 400, [
+        target.name,
+      ]);
     const settings = await tx.tournamentSettings.findUniqueOrThrow({ where: { tournamentId } });
     const tournament = await tx.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
     targetRules = inheritedRules(
@@ -103,12 +106,14 @@ export async function applyBulkScheduleAction(
       targetRules,
       target.mappool.publishedRevision.slots,
     );
-    if (problems.length) throw new AppError(`${target.name}: ${problems.join(' ')}`);
+    if (problems.length)
+      throw new AppError('{0}: {1}', 400, [target.name, messageList(problems, ' ')]);
     for (const record of records) {
       if (record.bracketNode && record.bracketNode.round.stageId !== target.id)
         throw new AppError(
-          `Match ${record.matchNumber} is linked to a bracket round in another stage. Change the bracket round instead.`,
+          'Match {0} is linked to a bracket round in another stage. Change the bracket round instead.',
           409,
+          [record.matchNumber],
         );
       if (record.stageId === target.id) continue;
       if (
@@ -120,8 +125,9 @@ export async function applyBulkScheduleAction(
         record.rollB !== null
       )
         throw new AppError(
-          `Match ${record.matchNumber} already has referee actions or results. Its stage and snapshots must be preserved.`,
+          'Match {0} already has referee actions or results. Its stage and snapshots must be preserved.',
           409,
+          [record.matchNumber],
         );
       const roster = Object.values(record.participants as unknown as MatchParticipants);
       if (
@@ -134,13 +140,15 @@ export async function applyBulkScheduleAction(
         )
       )
         throw new AppError(
-          `Match ${record.matchNumber} needs two resolved rosters with ${targetRules.teamSize} starting player(s) per side.`,
+          'Match {0} needs two resolved rosters with {1} starting player(s) per side.',
+          400,
+          [record.matchNumber, targetRules.teamSize],
         );
       const approved = await tx.team.count({
         where: { tournamentId, id: { in: roster.map((team) => team.id!) }, status: 'APPROVED' },
       });
       if (approved !== 2)
-        throw new AppError(`Match ${record.matchNumber} needs two approved entrants.`);
+        throw new AppError('Match {0} needs two approved entrants.', 400, [record.matchNumber]);
       const pathId = sourceObject(record.source).competitionPathId;
       if (
         typeof pathId === 'string' &&
@@ -150,17 +158,16 @@ export async function applyBulkScheduleAction(
           select: { id: true },
         }))
       )
-        throw new AppError(
-          `Match ${record.matchNumber}'s competition path does not use the selected stage.`,
-          409,
-        );
+        throw new AppError("Match {0}'s competition path does not use the selected stage.", 409, [
+          record.matchNumber,
+        ]);
     }
   }
 
   const plans = records.map((record) => {
     const patch = rowPatches.get(record.id)!;
     if (action.shiftMinutes !== undefined && !record.scheduledAt)
-      throw new AppError(`Match ${record.matchNumber} has no start time to shift.`, 409);
+      throw new AppError('Match {0} has no start time to shift.', 409, [record.matchNumber]);
     const scheduledAt =
       patch.scheduledAt !== undefined
         ? patch.scheduledAt
@@ -226,7 +233,9 @@ export async function applyBulkScheduleAction(
       },
     });
     if (updated.count !== 1)
-      throw new AppError(`Match ${record.matchNumber} changed during this update. Reload.`, 409);
+      throw new AppError('Match {0} changed during this update. Reload.', 409, [
+        record.matchNumber,
+      ]);
     if (plan.patch.refereeIds !== undefined) {
       await tx.matchAssignment.deleteMany({ where: { matchId: record.id } });
       if (plan.refereeIds.length)

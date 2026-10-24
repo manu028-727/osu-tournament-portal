@@ -1,3 +1,5 @@
+'use client';
+import { useT } from '@/components/locale';
 import { can, type Actor } from '@/lib/permissions';
 import { canAccessSection } from '@/lib/workspace';
 import type { PageContent, TournamentView } from '@/lib/types';
@@ -23,6 +25,7 @@ export function WebsiteWorkspace({
   view?: string;
   home: PageContent | null;
 }) {
+  const tr = useT();
   const views = [
     { value: 'homepage', label: 'Homepage', allowed: canAccessSection(actor, 'homepage') },
     { value: 'rules', label: 'Rules', allowed: canAccessSection(actor, 'rules') },
@@ -35,7 +38,7 @@ export function WebsiteWorkspace({
   return (
     <>
       <SectionNav
-        label="Website sections"
+        label={tr('Website sections')}
         active={selected}
         links={views.map((item) => ({ ...item, href: `/admin/website?view=${item.value}` }))}
       />
@@ -56,6 +59,7 @@ export function WebsiteWorkspace({
 }
 
 export function StaffWorkspace({ actor, view }: { actor: Actor; view?: string }) {
+  const tr = useT();
   const views = [
     { value: 'listing', label: 'Public listing', allowed: can(actor, 'staff.edit') },
     { value: 'access', label: 'Website access', allowed: can(actor, 'users.manage') },
@@ -65,7 +69,7 @@ export function StaffWorkspace({ actor, view }: { actor: Actor; view?: string })
   return (
     <>
       <SectionNav
-        label="Staff sections"
+        label={tr('Staff sections')}
         active={selected}
         links={views.map((item) => ({ ...item, href: `/admin/staff?view=${item.value}` }))}
       />
@@ -93,6 +97,7 @@ export function PoolsWorkspace({
   newStage?: boolean;
   returnToPool?: boolean;
 }) {
+  const tr = useT();
   const views = [
     { value: 'pools', label: 'Mappools', allowed: canAccessSection(actor, 'mappools') },
     {
@@ -108,7 +113,7 @@ export function PoolsWorkspace({
   return (
     <>
       <SectionNav
-        label="Stages & mappools sections"
+        label={tr('Stages & mappools sections')}
         active={selected}
         links={views.map((item) => ({ ...item, href: `/admin/mappools?view=${item.value}` }))}
       />
@@ -130,6 +135,7 @@ export function PoolsWorkspace({
 }
 
 export function SettingsWorkspace({ actor, view }: { actor: Actor; view?: string }) {
+  const tr = useT();
   const views = [
     {
       value: 'configuration',
@@ -143,7 +149,7 @@ export function SettingsWorkspace({ actor, view }: { actor: Actor; view?: string
   return (
     <>
       <SectionNav
-        label="Settings sections"
+        label={tr('Settings sections')}
         active={selected}
         links={views.map((item) => ({ ...item, href: `/admin/settings?view=${item.value}` }))}
       />

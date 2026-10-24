@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     response.headers.set('Cache-Control', 'no-store');
     return response;
   } catch (error) {
-    const response = errorResponse(error);
+    const response = await errorResponse(error);
     response.headers.append(
       'Set-Cookie',
       `${stateCookie()}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureCookie() ? '; Secure' : ''}`,

@@ -1,5 +1,6 @@
 'use client';
 import Link from '@/components/tournament-scope';
+import { useT } from '@/components/locale';
 
 export function SectionNav({
   label,
@@ -10,6 +11,7 @@ export function SectionNav({
   links: { label: string; href: string; value: string }[];
   active: string;
 }) {
+  const tr = useT();
   return (
     <nav
       aria-label={label}
@@ -22,7 +24,7 @@ export function SectionNav({
           aria-current={active === link.value ? 'page' : undefined}
           className="inline-flex min-h-11 shrink-0 items-center rounded-xl px-3 py-2 text-sm text-muted hover:bg-[var(--surface-hover)] aria-[current=page]:bg-primary/10 aria-[current=page]:text-primary"
         >
-          {link.label}
+          {tr(link.label)}
         </Link>
       ))}
     </nav>

@@ -1,4 +1,6 @@
 'use client';
+import { useT } from '@/components/locale';
+
 import Link, { useTournamentScope } from '@/components/tournament-scope';
 import { usePathname } from 'next/navigation';
 import { DropdownMenu } from 'radix-ui';
@@ -33,6 +35,7 @@ export function AdminShell({
   platform?: boolean;
   children: React.ReactNode;
 }) {
+  const tr = useT();
   const scope = useTournamentScope();
   const portal = useWorkspacePortal();
   const pathname = usePathname();
@@ -49,7 +52,7 @@ export function AdminShell({
             <DropdownMenu.Root>
               <DropdownMenu.Trigger
                 className={styles.identity}
-                aria-label={`Switch tournament: ${name}`}
+                aria-label={tr('Switch tournament: {0}', name)}
               >
                 <span className={styles.acronym}>{acronym.slice(0, 6)}</span>
                 <span className={styles.name}>{name}</span>
@@ -64,7 +67,7 @@ export function AdminShell({
                 >
                   <DropdownMenu.Item asChild>
                     <Link className={styles.menuItem} href="/admin/tournaments">
-                      {platform ? 'Tournaments' : 'Switch tournament'}
+                      {platform ? tr('Tournaments') : tr('Switch tournament')}
                     </Link>
                   </DropdownMenu.Item>
                 </DropdownMenu.Content>
@@ -75,20 +78,20 @@ export function AdminShell({
               <Link
                 href={platform ? '/tournaments' : '/'}
                 className={styles.website}
-                aria-label="View website"
-                title="View website"
+                aria-label={tr('View website')}
+                title={tr('View website')}
               >
-                <span>View website</span>
+                <span>{tr('View website')}</span>
                 <ArrowUpRight size={18} />
               </Link>
               <span className={styles.username}>{actor.username}</span>
-              <LogoutButton aria-label="Sign out" className={styles.iconButton} />
+              <LogoutButton aria-label={tr('Sign out')} className={styles.iconButton} />
             </div>
           </div>
-          <nav aria-label="Administration" className={styles.navigation}>
+          <nav aria-label={tr('Administration')} className={styles.navigation}>
             {platform ? (
               <Link href="/admin/tournaments" aria-current="page">
-                Tournaments
+                {tr('Tournaments')}
               </Link>
             ) : (
               <>
@@ -105,7 +108,7 @@ export function AdminShell({
                       href={`/admin${slug ? '/' + slug : ''}`}
                       aria-current={active(slug) ? 'page' : undefined}
                     >
-                      {label}
+                      {tr(label)}
                     </Link>
                   ))}
               </>

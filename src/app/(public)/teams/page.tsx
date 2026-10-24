@@ -1,27 +1,36 @@
+import { localeTag } from '@/lib/i18n';
+import { getLocale, getServerT } from '@/lib/server-locale';
 import Link from '@/components/tournament-scope';
 import { ArrowUpRight } from 'lucide-react';
 import { PageHeading, EmptyState } from '@/components/content';
 import { publicTeamsPage } from '@/lib/teams-service';
 import { listPageSchema } from '@/lib/list-pagination';
 import { ListPagination } from '@/components/list-pagination';
-export const metadata = { title: 'Team e giocatori' };
+export async function generateMetadata() {
+  const tr = await getServerT();
+  return { title: tr('Team e giocatori') };
+}
 export default async function Teams({
   searchParams,
 }: {
   searchParams: Promise<{ page?: string }>;
 }) {
+  const language = await getLocale();
+  const tr = await getServerT();
   const page = listPageSchema.safeParse((await searchParams).page);
   const result = await publicTeamsPage(page.success ? page.data : 1);
   const teams = result.items;
   return (
     <div className="wrap pb-20">
       <PageHeading
-        eyebrow="I PARTECIPANTI"
-        title="Team e giocatori"
-        description="Le squadre approvate e i giocatori del torneo."
+        eyebrow={tr('I PARTECIPANTI')}
+        title={tr('Team e giocatori')}
+        description={tr('Le squadre approvate e i giocatori del torneo.')}
       />
       <ListPagination
-        {...result}
+        page={result.page}
+        pageSize={result.pageSize}
+        total={result.total}
         previousHref={`/teams?page=${result.page - 1}`}
         nextHref={`/teams?page=${result.page + 1}`}
       />
@@ -50,24 +59,31 @@ export default async function Teams({
                 )}
                 <div className="min-w-0 flex-1">
                   <h2 className="break-words text-lg font-semibold leading-snug">{team.name}</h2>
-                  {team.seed && <p className="mt-1 text-sm text-accent">Seed #{team.seed}</p>}
+                  {team.seed && (
+                    <p className="mt-1 text-sm text-accent">
+                      {tr('Seed #')}
+                      {team.seed}
+                    </p>
+                  )}
                   {team.qualifierPlayed === false && (
-                    <p className="mt-1 text-xs text-muted">Qualifiche non disputate</p>
+                    <p className="mt-1 text-xs text-muted">{tr('Qualifiche non disputate')}</p>
                   )}
                 </div>
                 <ArrowUpRight size={20} className="shrink-0 text-primary" />
               </div>
               <p className="text-sm text-muted">
-                Capitano:{' '}
+                {tr('Capitano:')}{' '}
                 {team.members.find((m) => m.captain)?.registeredUsername ||
                   team.members.find((m) => m.captain)?.participant.username}
               </p>
               <p className="mt-1 text-sm text-muted">
-                {team.members.length} {team.members.length === 1 ? 'giocatore' : 'giocatori'}
+                {team.members.length}{' '}
+                {team.members.length === 1 ? tr('giocatore') : tr('giocatori')}
               </p>
               {team.rankSum && (
                 <p className="mt-1 text-xs text-muted">
-                  Rank sum all’iscrizione: {team.rankSum.toLocaleString('it-IT')}
+                  {tr('Rank sum all’iscrizione:')}{' '}
+                  {team.rankSum.toLocaleString(localeTag(language))}
                 </p>
               )}
               <div className="mt-3 flex flex-wrap gap-2 border-t pt-3">
@@ -85,10 +101,12 @@ export default async function Teams({
           ))}
         </div>
       ) : (
-        <EmptyState title="Nessuna squadra pubblicata" />
+        <EmptyState title={tr('Nessuna squadra pubblicata')} />
       )}
       <ListPagination
-        {...result}
+        page={result.page}
+        pageSize={result.pageSize}
+        total={result.total}
         previousHref={`/teams?page=${result.page - 1}`}
         nextHref={`/teams?page=${result.page + 1}`}
       />

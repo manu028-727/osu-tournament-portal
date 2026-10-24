@@ -1,4 +1,7 @@
 'use client';
+import { useLocale, useT } from '@/components/locale';
+import { formatNumber } from '@/lib/i18n';
+
 import type { ReactNode } from 'react';
 import { Copy, Terminal, SlidersHorizontal } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -23,10 +26,15 @@ export function RefereePool({
   action?: (slot: Slot) => ReactNode;
   dense?: boolean;
 }) {
+  const tr = useT();
+  const language = useLocale();
   return (
-    <section aria-label="Match mappool" className="min-w-0 [container-type:inline-size]">
+    <section aria-label={tr('Match mappool')} className="min-w-0 [container-type:inline-size]">
       <h2 className="mb-3 text-base font-semibold">
-        Mappool <span className="text-sm font-normal text-muted">{slots.length} maps</span>
+        {tr('Mappool')}{' '}
+        <span className="text-sm font-normal text-muted">
+          {tr(slots.length === 1 ? '{0} map' : '{0} maps', slots.length)}
+        </span>
       </h2>
       <div
         className={`${dense ? 'referee-scroll max-h-[56vh]' : 'max-h-[65vh]'} overflow-auto border-y`}
@@ -36,11 +44,11 @@ export function RefereePool({
         >
           <thead className="sticky top-0 z-10 bg-background text-left text-xs text-muted">
             <tr>
-              <th className="pool-slot w-16">Slot</th>
-              <th>Beatmap</th>
-              <th className="pool-id w-24">ID</th>
-              <th className="pool-copy w-28">Copy</th>
-              {action && <th className="w-12">Action</th>}
+              <th className="pool-slot w-16">{tr('Slot')}</th>
+              <th>{tr('Beatmap')}</th>
+              <th className="pool-id w-24">{tr('ID')}</th>
+              <th className="pool-copy w-28">{tr('Copy')}</th>
+              {action && <th className="w-12">{tr('Action')}</th>}
             </tr>
           </thead>
           <tbody>
@@ -83,9 +91,9 @@ export function RefereePool({
                         <div className="truncate text-xs text-muted">
                           {state?.(slot) ||
                             (slot.category === rules.tiebreakerCategory
-                              ? 'Tiebreaker'
-                              : 'Available')}{' '}
-                          · {slot.metadata.stars.toFixed(2)}★
+                              ? tr('Tiebreaker')
+                              : tr('Available'))}{' '}
+                          · {formatNumber(slot.metadata.stars, language, 2)}★
                         </div>
                       </div>
                     </div>
@@ -106,8 +114,8 @@ export function RefereePool({
                             key={label}
                             size="icon"
                             variant="ghost"
-                            title={`Copy ${slot.name} ${label}`}
-                            aria-label={`Copy ${slot.name} ${label}`}
+                            title={tr('Copy {0} {1}', slot.name, tr(label))}
+                            aria-label={tr('Copy {0} {1}', slot.name, tr(label))}
                             onClick={() => copy(value)}
                           >
                             <Icon size={15} />

@@ -1,3 +1,5 @@
+import { getLocale, getServerT } from '@/lib/server-locale';
+import { LocaleProvider } from '@/components/locale';
 import type { Metadata } from 'next';
 import localFont from 'next/font/local';
 import { appearance, themeStyle } from '@/lib/theme';
@@ -34,6 +36,7 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const tr = await getServerT();
   let scope;
   try {
     scope = await requestScope();
@@ -44,7 +47,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const platform = await db.platformSettings.findUnique({ where: { id: 'main' } });
   const preference = appearance((await cookies()).get('portal_appearance')?.value);
   return (
-    <html lang={platform?.locale || 'en'} data-appearance={preference}>
+    <html lang={await getLocale()} data-appearance={preference}>
       <body
         className={`${sans.variable} ${mono.variable}`}
         style={themeStyle(platform?.primaryColor, platform?.accentColor) as React.CSSProperties}
@@ -53,13 +56,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           href="#main"
           className="fixed -top-20 left-4 z-[100] rounded-xl bg-primary px-4 py-2 text-[var(--brand-ink)] focus:top-4"
         >
-          Skip to content
+          {tr('Skip to content')}
         </a>
-        <AppearanceProvider initial={preference}>
-          <TournamentScope key={scope.tournamentId} value={scope}>
-            {children}
-          </TournamentScope>
-        </AppearanceProvider>
+        <LocaleProvider initial={await getLocale()}>
+          <AppearanceProvider initial={preference}>
+            <TournamentScope key={scope.tournamentId} value={scope}>
+              {children}
+            </TournamentScope>
+          </AppearanceProvider>
+        </LocaleProvider>
       </body>
     </html>
   );

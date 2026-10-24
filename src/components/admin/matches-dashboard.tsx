@@ -1,4 +1,7 @@
 'use client';
+import { localDateTimeInput } from '@/lib/utils';
+import { Feedback, useT } from '@/components/locale';
+
 import Link from '@/components/tournament-scope';
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -21,9 +24,8 @@ import { can, type Actor } from '@/lib/permissions';
 import { matchAccess } from '@/lib/match-access';
 import type { MatchListData, MatchSummary } from '@/lib/matches-types';
 import { type MatchRules } from '@/lib/match-rules';
-import { matchCredits } from '@/lib/match-display';
+import { matchCredits, MATCH_STATUS_LABELS } from '@/lib/match-display';
 import { useTournamentTime, useTournamentScope } from '@/components/tournament-scope';
-export { matchTime } from '@/lib/match-display';
 import { MatchRulesFields } from './match-rules-fields';
 import { RefereeSheetImporter } from './referee-sheet-importer';
 import { StageReconciliation } from './stage-reconciliation';
@@ -44,17 +46,10 @@ import {
   useUnsaved,
   usePolling,
 } from './shared';
-export const MATCH_STATUS_LABELS = {
-  SCHEDULED: 'Scheduled',
-  IN_PROGRESS: 'In progress',
-  AWAITING_CONFIRMATION: 'Awaiting confirmation',
-  COMPLETED: 'Completed',
-  DISPUTED: 'Disputed',
-  CANCELLED: 'Cancelled',
-};
 type BulkField =
   'referees' | 'time' | 'stage' | 'streamer' | 'commentators' | 'notes' | 'published';
 export function MatchesDashboard({ actor }: { actor: Actor }) {
+  const tr = useT();
   const [filters, setFilters] = useState({
     stage: '',
     status: '',
@@ -172,16 +167,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
     setStageId(first?.length === 1 ? first[0].id : '');
     setTeamA(match?.participants.A.id || '');
     setTeamB(match?.participants.B.id || '');
-    setScheduled(
-      match?.scheduledAt
-        ? new Date(
-            new Date(match.scheduledAt).getTime() -
-              new Date(match.scheduledAt).getTimezoneOffset() * 60000,
-          )
-            .toISOString()
-            .slice(0, 16)
-        : '',
-    );
+    setScheduled(localDateTimeInput(match?.scheduledAt));
     setReferees(match?.assignments.map((r) => r.userId) || []);
     setNotes(match?.notes || '');
     setPublished(match?.published || false);
@@ -252,23 +238,23 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
       <Button asChild size="sm" variant="outline">
         <Link
           href={`/admin/referee/${m.id}`}
-          aria-label={`Open match ${m.code}`}
+          aria-label={tr('Open match {0}', m.code)}
           title={
             matchAccess(actor, m).editable
-              ? 'Referee this match'
-              : 'View match history and live state'
+              ? tr('Referee this match')
+              : tr('View match history and live state')
           }
         >
           <Play size={17} />
-          {matchAccess(actor, m).editable ? 'Referee' : 'View'}
+          {matchAccess(actor, m).editable ? tr('Referee') : tr('View')}
         </Link>
       </Button>
       {matchAccess(actor, m).operate && !['COMPLETED', 'CANCELLED'].includes(m.status) && (
         <Button
           size="icon"
           variant="ghost"
-          title="Multiplayer link"
-          aria-label={`Multiplayer link for ${m.code}`}
+          title={tr('Multiplayer link')}
+          aria-label={tr('Multiplayer link for {0}', m.code)}
           onClick={() =>
             setLobby({ id: m.id, code: m.code, version: m.version, url: m.lobbyUrl || '' })
           }
@@ -280,8 +266,8 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
         <Button
           size="icon"
           variant="ghost"
-          aria-label={`Assign ${m.code}`}
-          title="Schedule and referee assignments"
+          aria-label={tr('Assign {0}', m.code)}
+          title={tr('Schedule and referee assignments')}
           onClick={() => begin(m)}
         >
           <Pencil size={17} />
@@ -291,8 +277,8 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
         <Button
           size="icon"
           variant="ghost"
-          aria-label={`Delete match ${m.code}`}
-          title="Permanently delete match"
+          aria-label={tr('Delete match {0}', m.code)}
+          title={tr('Permanently delete match')}
           onClick={() => setDeleting({ id: m.id, code: m.code, version: m.version })}
         >
           <Trash2 size={17} className="text-red-200" />
@@ -303,22 +289,22 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
   return (
     <>
       <SectionTitle
-        title="Matches"
+        title={tr('Matches')}
         description={
           can(actor, 'matches.manage') || can(actor, 'matches.view_all')
-            ? `Tournament matches · ${timezone || 'UTC'}`
-            : `Your assigned matches · ${timezone || 'UTC'}`
+            ? tr('Tournament matches · {0}', timezone || 'UTC')
+            : tr('Your assigned matches · {0}', timezone || 'UTC')
         }
       >
         <div className="flex flex-wrap gap-2">
           <Button asChild size="sm" variant="outline">
-            <Link href="/admin/referee/qualifiers">Qualifier lobbies</Link>
+            <Link href="/admin/referee/qualifiers">{tr('Qualifier lobbies')}</Link>
           </Button>
           <Button
             size="icon"
             variant="outline"
-            aria-label="Refresh matches"
-            title="Refresh matches"
+            aria-label={tr('Refresh matches')}
+            title={tr('Refresh matches')}
             onClick={() => void reload().catch(() => {})}
           >
             <RefreshCw size={18} />
@@ -327,7 +313,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
             <>
               <Button size="sm" disabled={options?.scoringNeedsReview} onClick={() => begin()}>
                 <Plus size={17} />
-                New match
+                {tr('New match')}
               </Button>
             </>
           )}
@@ -335,17 +321,17 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
       </SectionTitle>
       {options?.scoringNeedsReview && (
         <p className="mb-4 text-sm text-muted">
-          Historical matches remain accessible.{' '}
+          {tr('Historical matches remain accessible.')}{' '}
           <Link className="text-primary" href="/admin/settings">
-            Review tournament gameplay scoring
+            {tr('Review tournament gameplay scoring')}
           </Link>{' '}
-          before creating new competition records.
+          {tr('before creating new competition records.')}
         </p>
       )}
       {(can(actor, 'matches.import') || can(actor, 'matches.manage')) && (
         <details className="mb-4 border-b pb-2">
           <summary className="min-h-11 cursor-pointer py-2 text-sm text-muted">
-            Import & rule presets
+            {tr('Import & rule presets')}
           </summary>
           <div className="flex flex-wrap gap-2 pb-3">
             {can(actor, 'matches.import') && <RefereeSheetImporter onChanged={reload} />}{' '}
@@ -360,19 +346,19 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                 }}
               >
                 <SlidersHorizontal size={17} />
-                Match rules
+                {tr('Match rules')}
               </Button>
             )}
           </div>
         </details>
       )}
       <p className="mb-3 text-sm text-muted">
-        {Object.values(data.counts).reduce((sum, n) => sum + (n || 0), 0)} matches ·{' '}
-        {data.counts.IN_PROGRESS || 0} in progress · {data.matches.length} shown
+        {Object.values(data.counts).reduce((sum, n) => sum + (n || 0), 0)} {tr('matches ·')}{' '}
+        {data.counts.IN_PROGRESS || 0} {tr('in progress ·')} {data.matches.length} {tr('shown')}
       </p>
       <div
         role="group"
-        aria-label="Match views"
+        aria-label={tr('Match views')}
         className="mb-5 flex flex-wrap gap-2 border-b pb-4"
       >
         <Button
@@ -382,7 +368,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
           className="aria-pressed:border-primary/40 aria-pressed:bg-primary/10 aria-pressed:text-primary"
           onClick={() => setFilters({ ...filters, status: '', assigned: '' })}
         >
-          All Matches
+          {tr('All Matches')}
         </Button>
         <Button
           variant="outline"
@@ -391,7 +377,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
           className="aria-pressed:border-primary/40 aria-pressed:bg-primary/10 aria-pressed:text-primary"
           onClick={() => setFilters({ ...filters, status: '', assigned: 'me' })}
         >
-          My Matches
+          {tr('My Matches')}
         </Button>
         {stats.map(([status, label]) => (
           <Button
@@ -402,7 +388,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
             className="aria-pressed:border-primary/40 aria-pressed:bg-primary/10 aria-pressed:text-primary"
             onClick={() => setFilters({ ...filters, status, assigned: '' })}
           >
-            {label} · {data.counts[status] || 0}
+            {tr(label)} · {data.counts[status] || 0}
           </Button>
         ))}
       </div>
@@ -416,26 +402,26 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
         onClick={() => setFiltersOpen(!filtersOpen)}
       >
         <SlidersHorizontal size={16} />
-        {filtersOpen ? 'Hide filters' : 'Filters'}
+        {filtersOpen ? tr('Hide filters') : tr('Filters')}
         {activeFilters ? ` (${activeFilters})` : ''}
       </Button>
       <div
         id="match-filters"
         className={`match-filters mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5 ${filtersOpen ? 'filters-open' : ''}`}
       >
-        <Field label="Search matches">
+        <Field label={tr('Search matches')}>
           <input
             type="search"
             value={filters.q}
             onChange={(e) => setFilters({ ...filters, q: e.target.value })}
           />
         </Field>
-        <Field label="Stage">
+        <Field label={tr('Stage')}>
           <select
             value={filters.stage}
             onChange={(e) => setFilters({ ...filters, stage: e.target.value })}
           >
-            <option value="">All stages</option>
+            <option value="">{tr('All stages')}</option>
             {data.stages.map((s) => (
               <option value={s.id} key={s.id}>
                 {s.name}
@@ -443,27 +429,27 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
             ))}
           </select>
         </Field>
-        <Field label="Match status">
+        <Field label={tr('Match status')}>
           <select
             value={filters.status}
             onChange={(e) => setFilters({ ...filters, status: e.target.value })}
           >
-            <option value="">All statuses</option>
+            <option value="">{tr('All statuses')}</option>
             {Object.entries(MATCH_STATUS_LABELS).map(([key, label]) => (
               <option key={key} value={key}>
-                {label}
+                {tr(label)}
               </option>
             ))}
           </select>
         </Field>
-        <Field label="Match date">
+        <Field label={tr('Match date')}>
           <input
             type="date"
             value={filters.date}
             onChange={(e) => setFilters({ ...filters, date: e.target.value })}
           />
         </Field>
-        <Field label="Match time">
+        <Field label={tr('Match time')}>
           <input
             type="time"
             disabled={!filters.date}
@@ -471,14 +457,14 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
             onChange={(e) => setFilters({ ...filters, time: e.target.value })}
           />
         </Field>
-        <Field label="Assigned referee">
+        <Field label={tr('Assigned referee')}>
           <select
             value={filters.assigned}
             onChange={(e) => setFilters({ ...filters, assigned: e.target.value })}
           >
-            <option value="">All Matches</option>
-            <option value="me">My Assigned Matches</option>
-            <option value="unassigned">Unassigned Matches</option>
+            <option value="">{tr('All Matches')}</option>
+            <option value="me">{tr('My Assigned Matches')}</option>
+            <option value="unassigned">{tr('Unassigned Matches')}</option>
             {options?.referees
               .filter((r) => r.id !== actor.id)
               .map((r) => (
@@ -500,12 +486,12 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
             }}
           >
             <ClipboardPaste size={16} />
-            Paste schedule
+            {tr('Paste schedule')}
           </Button>
           <label className="flex min-h-10 items-center gap-2 text-sm">
             <input
               type="checkbox"
-              aria-label="Select all visible matches"
+              aria-label={tr('Select all visible matches')}
               checked={
                 eligibleBulkRows.length > 0 &&
                 eligibleBulkRows.every((match) => selectedMatches.has(match.id))
@@ -519,9 +505,11 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                 )
               }
             />
-            Select scheduled
+            {tr('Select scheduled')}
           </label>
-          <span className="text-sm text-muted">{selectedMatches.size} selected</span>
+          <span className="text-sm text-muted">
+            {selectedMatches.size} {tr('selected')}
+          </span>
           {selectedMatches.size > 0 && (
             <>
               <Button
@@ -557,16 +545,16 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                   setBulkOpen(true);
                 }}
               >
-                Bulk schedule / assign
+                {tr('Bulk schedule / assign')}
               </Button>
               {(bulkRows.length !== selectedMatches.size ||
                 bulkRows.some((match) => match.status !== 'SCHEDULED')) && (
                 <span role="status" className="text-xs text-amber-200">
-                  Bulk changes require only visible scheduled matches.
+                  {tr('Bulk changes require only visible scheduled matches.')}
                 </span>
               )}
               <Button size="sm" variant="ghost" onClick={() => setSelectedMatches(new Set())}>
-                Clear selection
+                {tr('Clear selection')}
               </Button>
             </>
           )}
@@ -576,13 +564,13 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
         <>
           <div className="border-t md:hidden">
             {data.matches.map((m) => (
-              <article key={m.id} className="border-b py-4" aria-label={`Match ${m.code}`}>
+              <article key={m.id} className="border-b py-4" aria-label={tr('Match {0}', m.code)}>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
                   {can(actor, 'matches.manage') && (
                     <label className="flex min-h-11 items-center gap-2 pr-2">
                       <input
                         type="checkbox"
-                        aria-label={`Select match ${m.matchNumber}`}
+                        aria-label={tr('Select match {0}', m.matchNumber)}
                         disabled={m.status !== 'SCHEDULED'}
                         checked={selectedMatches.has(m.id)}
                         onChange={(event) =>
@@ -593,18 +581,18 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                           )
                         }
                       />
-                      Select
+                      {tr('Select')}
                     </label>
                   )}
                   <Link
                     href={`/admin/referee/${m.id}`}
                     className="min-w-0 max-w-full break-words font-mono text-primary"
                   >
-                    Match {m.matchNumber} · {m.stage.name}
-                    {m.code !== String(m.matchNumber) ? ` · Ref ${m.code}` : ''}
+                    {tr('Match')} {m.matchNumber} · {m.stage.name}
+                    {m.code !== String(m.matchNumber) ? tr(' · Ref {0}', m.code) : ''}
                   </Link>
                   <MatchStatusBadge status={m.status}>
-                    {MATCH_STATUS_LABELS[m.status]}
+                    {tr(MATCH_STATUS_LABELS[m.status])}
                   </MatchStatusBadge>
                 </div>
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
@@ -624,8 +612,8 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                   <p className="min-w-0 break-words text-xs text-muted">
                     {m.assignments.map((r) => r.user.username).join(', ') ||
                       matchCredits(m.source).referee ||
-                      'Unassigned'}
-                    <span className="mt-1 block">{m.published ? 'Public' : 'Private'}</span>
+                      tr('Unassigned')}
+                    <span className="mt-1 block">{m.published ? tr('Public') : tr('Private')}</span>
                   </p>
                   {matchActions(m)}
                 </div>
@@ -636,14 +624,14 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
             <table className="admin-table">
               <thead>
                 <tr>
-                  {can(actor, 'matches.manage') && <th>Select</th>}
-                  <th>Match</th>
-                  <th>Stage / date</th>
-                  <th>Teams</th>
-                  <th>Score</th>
-                  <th>Referees</th>
-                  <th>Status</th>
-                  <th>Open</th>
+                  {can(actor, 'matches.manage') && <th>{tr('Select')}</th>}
+                  <th>{tr('Match')}</th>
+                  <th>{tr('Stage / date')}</th>
+                  <th>{tr('Teams')}</th>
+                  <th>{tr('Score')}</th>
+                  <th>{tr('Referees')}</th>
+                  <th>{tr('Status')}</th>
+                  <th>{tr('Open')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -653,7 +641,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                       <td>
                         <input
                           type="checkbox"
-                          aria-label={`Select match ${m.matchNumber}`}
+                          aria-label={tr('Select match {0}', m.matchNumber)}
                           disabled={m.status !== 'SCHEDULED'}
                           checked={selectedMatches.has(m.id)}
                           onChange={(event) =>
@@ -667,9 +655,11 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                       </td>
                     )}
                     <td className="font-semibold">
-                      Match {m.matchNumber}
+                      {tr('Match')} {m.matchNumber}
                       {m.code !== String(m.matchNumber) && (
-                        <span className="ml-2 text-xs text-muted">Ref {m.code}</span>
+                        <span className="ml-2 text-xs text-muted">
+                          {tr('Ref')} {m.code}
+                        </span>
                       )}
                     </td>
                     <td>
@@ -681,8 +671,8 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                         <button
                           type="button"
                           className="mt-1 inline-flex min-h-8 items-center gap-1.5 rounded-md text-xs text-primary hover:underline"
-                          title="Edit scheduled time"
-                          aria-label={`Edit time for match ${m.matchNumber}`}
+                          title={tr('Edit scheduled time')}
+                          aria-label={tr('Edit time for match {0}', m.matchNumber)}
                           onClick={() => begin(m)}
                         >
                           <CalendarClock size={14} />
@@ -700,7 +690,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                           rel="noopener noreferrer"
                           className="text-xs text-primary"
                         >
-                          MP link
+                          {tr('MP link')}
                         </a>
                       )}
                     </td>
@@ -716,40 +706,42 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                         <button
                           type="button"
                           className="mb-1 inline-flex min-h-8 items-center gap-1 rounded-md text-xs text-primary hover:underline"
-                          title="Edit referee assignments"
-                          aria-label={`Edit referees for match ${m.matchNumber}`}
+                          title={tr('Edit referee assignments')}
+                          aria-label={tr('Edit referees for match {0}', m.matchNumber)}
                           onClick={() => begin(m)}
                         >
                           <Users size={14} />
-                          Assign
+                          {tr('Assign')}
                         </button>
                       )}
                       {matchCredits(m.source).referee && (
-                        <p className="text-xs">{matchCredits(m.source).referee} · Sheet</p>
+                        <p className="text-xs">
+                          {matchCredits(m.source).referee} {tr('· Sheet')}
+                        </p>
                       )}
                       {m.assignments.map((r) => (
                         <p key={r.userId} className="text-xs">
                           {r.user.username}
-                          {r.primary ? ' · Lead' : ''}
+                          {r.primary ? tr(' · Lead') : ''}
                         </p>
                       ))}
                       {matchCredits(m.source).streamer && (
                         <p className="mt-1 text-xs text-muted">
-                          Stream: {matchCredits(m.source).streamer}
+                          {tr('Stream:')} {matchCredits(m.source).streamer}
                         </p>
                       )}
                       {!!matchCredits(m.source).commentators.length && (
                         <p className="text-xs text-muted">
-                          Comms: {matchCredits(m.source).commentators.join(', ')}
+                          {tr('Comms:')} {matchCredits(m.source).commentators.join(', ')}
                         </p>
                       )}
                     </td>
                     <td>
                       <MatchStatusBadge status={m.status}>
-                        {MATCH_STATUS_LABELS[m.status]}
+                        {tr(MATCH_STATUS_LABELS[m.status])}
                       </MatchStatusBadge>
                       <p className="mt-1 text-xs text-muted">
-                        {m.published ? 'Public' : 'Private'}
+                        {m.published ? tr('Public') : tr('Private')}
                       </p>
                     </td>
                     <td>{matchActions(m)}</td>
@@ -762,16 +754,16 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
       ) : (
         <div className="border-y py-16 text-center text-muted">
           <Users size={30} className="mx-auto mb-4" />
-          No matches found.
+          {tr('No matches found.')}
         </div>
       )}
       <Modal
         open={bulkOpen}
         onOpenChange={(open) => {
-          if (open || !bulkDirty || window.confirm('Discard unsaved bulk match changes?'))
+          if (open || !bulkDirty || window.confirm(tr('Discard unsaved bulk match changes?')))
             setBulkOpen(open);
         }}
-        title={`Bulk edit ${bulkRows.length} matches`}
+        title={tr('Bulk edit {0} matches', bulkRows.length)}
         wide
       >
         <form
@@ -811,11 +803,11 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
               setSelectedMatches(new Set());
               setBulkDirty(false);
               await reload();
-            }, 'Bulk match changes saved.');
+            }, tr('Bulk match changes saved.'));
           }}
         >
           <fieldset className="flex flex-wrap gap-x-5 gap-y-2">
-            <legend className="mb-2 font-semibold">Change selected fields</legend>
+            <legend className="mb-2 font-semibold">{tr('Change selected fields')}</legend>
             {(
               [
                 ['referees', 'Referees'],
@@ -840,21 +832,23 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                     })
                   }
                 />
-                {label}
+                {tr(label)}
               </label>
             ))}
           </fieldset>
           {bulkInvalid && (
             <p role="alert">
-              A selected match changed or is no longer scheduled. Close and review the selection.
+              {tr(
+                'A selected match changed or is no longer scheduled. Close and review the selection.',
+              )}
             </p>
           )}
           {bulkFields.has('referees') && options && (
             <fieldset className="max-h-56 space-y-2 overflow-auto rounded-lg border p-3">
               <legend className="px-1 text-sm font-semibold">
-                Replace referee assignments
+                {tr('Replace referee assignments')}
                 {mixed((match) => match.assignments.map((ref) => ref.userId).sort())
-                  ? ' (Mixed)'
+                  ? tr(' (Mixed)')
                   : ''}
               </legend>
               {options.referees.map((referee) => (
@@ -873,23 +867,25 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                   {referee.username}
                 </label>
               ))}
-              <p className="text-xs text-muted">Leaving all unchecked clears assignments.</p>
+              <p className="text-xs text-muted">
+                {tr('Leaving all unchecked clears assignments.')}
+              </p>
             </fieldset>
           )}
           {bulkFields.has('time') && (
-            <Field label="Schedule change">
+            <Field label={tr('Schedule change')}>
               <select
                 value={bulkTimeMode}
                 onChange={(event) => setBulkTimeMode(event.target.value as typeof bulkTimeMode)}
               >
-                <option value="set">Set the same start time</option>
-                <option value="shift">Shift existing times</option>
-                <option value="clear">Clear start times</option>
+                <option value="set">{tr('Set the same start time')}</option>
+                <option value="shift">{tr('Shift existing times')}</option>
+                <option value="clear">{tr('Clear start times')}</option>
               </select>
             </Field>
           )}
           {bulkFields.has('time') && bulkTimeMode === 'set' && (
-            <Field label="Scheduled time (your timezone)">
+            <Field label={tr('Scheduled time (your timezone)')}>
               <input
                 required
                 type="datetime-local"
@@ -899,7 +895,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
             </Field>
           )}
           {bulkFields.has('time') && bulkTimeMode === 'shift' && (
-            <Field label="Shift minutes (negative moves earlier)">
+            <Field label={tr('Shift minutes (negative moves earlier)')}>
               <input
                 type="number"
                 min={-10080}
@@ -915,18 +911,23 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
             bulkTimeMode === 'shift' &&
             bulkRows.some((match) => !match.scheduledAt) && (
               <p role="alert" className="text-sm text-amber-200">
-                Every selected match needs a scheduled time before it can be shifted.
+                {tr('Every selected match needs a scheduled time before it can be shifted.')}
               </p>
             )}
           <div className="grid-fields">
             {bulkFields.has('stage') && (
-              <Field label={`Target stage${mixed((match) => match.stage.id) ? ' (Mixed)' : ''}`}>
+              <Field
+                label={tr(
+                  'Target stage{0}',
+                  mixed((match) => match.stage.id) ? tr(' (Mixed)') : '',
+                )}
+              >
                 <select
                   required
                   value={bulkStage}
                   onChange={(event) => setBulkStage(event.target.value)}
                 >
-                  <option value="">Select stage</option>
+                  <option value="">{tr('Select stage')}</option>
                   {options?.stages
                     .filter((stage) => stage.published && stage.kind !== 'QUALIFIERS')
                     .map((stage) => (
@@ -939,7 +940,10 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
             )}
             {bulkFields.has('streamer') && (
               <Field
-                label={`Streamer${mixed((match) => matchCredits(match.source).streamer) ? ' (Mixed)' : ''}`}
+                label={tr(
+                  'Streamer{0}',
+                  mixed((match) => matchCredits(match.source).streamer) ? tr(' (Mixed)') : '',
+                )}
               >
                 <input
                   maxLength={120}
@@ -950,7 +954,10 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
             )}
             {bulkFields.has('commentators') && (
               <Field
-                label={`Commentators, one per line${mixed((match) => matchCredits(match.source).commentators) ? ' (Mixed)' : ''}`}
+                label={tr(
+                  'Commentators, one per line{0}',
+                  mixed((match) => matchCredits(match.source).commentators) ? tr(' (Mixed)') : '',
+                )}
               >
                 <textarea
                   rows={3}
@@ -960,7 +967,9 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
               </Field>
             )}
             {bulkFields.has('notes') && (
-              <Field label={`Match notes${mixed((match) => match.notes) ? ' (Mixed)' : ''}`}>
+              <Field
+                label={tr('Match notes{0}', mixed((match) => match.notes) ? tr(' (Mixed)') : '')}
+              >
                 <textarea
                   maxLength={4000}
                   rows={3}
@@ -970,13 +979,18 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
               </Field>
             )}
             {bulkFields.has('published') && (
-              <Field label={`Publication${mixed((match) => match.published) ? ' (Mixed)' : ''}`}>
+              <Field
+                label={tr(
+                  'Publication{0}',
+                  mixed((match) => match.published) ? tr(' (Mixed)') : '',
+                )}
+              >
                 <select
                   value={String(bulkPublished)}
                   onChange={(event) => setBulkPublished(event.target.value === 'true')}
                 >
-                  <option value="false">Private</option>
-                  <option value="true">Public</option>
+                  <option value="false">{tr('Private')}</option>
+                  <option value="true">{tr('Public')}</option>
                 </select>
               </Field>
             )}
@@ -985,25 +999,27 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>Match</th>
-                  <th>Stage</th>
-                  <th>Scheduled time</th>
-                  <th>Referees</th>
+                  <th>{tr('Match')}</th>
+                  <th>{tr('Stage')}</th>
+                  <th>{tr('Scheduled time')}</th>
+                  <th>{tr('Referees')}</th>
                 </tr>
               </thead>
               <tbody>
                 {bulkRows.map((match) => (
                   <tr key={match.id}>
                     <td>
-                      <span className="font-semibold">Match {match.matchNumber}</span>
+                      <span className="font-semibold">
+                        {tr('Match')} {match.matchNumber}
+                      </span>
                       <p className="text-xs text-muted">
-                        {match.participants.A.name} vs {match.participants.B.name}
+                        {match.participants.A.name} {tr('vs')} {match.participants.B.name}
                       </p>
                     </td>
                     <td>
                       {bulkFields.has('stage')
                         ? options?.stages.find((stage) => stage.id === bulkStage)?.name ||
-                          'Select stage'
+                          tr('Select stage')
                         : match.stage.name}
                     </td>
                     <td>{matchTime(plannedTime(match))}</td>
@@ -1011,9 +1027,9 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                       {bulkFields.has('referees')
                         ? bulkReferees
                             .map((id) => options?.referees.find((ref) => ref.id === id)?.username)
-                            .join(', ') || 'Unassigned'
+                            .join(', ') || tr('Unassigned')
                         : match.assignments.map((ref) => ref.user.username).join(', ') ||
-                          'Unassigned'}
+                          tr('Unassigned')}
                     </td>
                   </tr>
                 ))}
@@ -1025,11 +1041,11 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
               type="button"
               variant="ghost"
               onClick={() => {
-                if (!bulkDirty || window.confirm('Discard unsaved bulk match changes?'))
+                if (!bulkDirty || window.confirm(tr('Discard unsaved bulk match changes?')))
                   setBulkOpen(false);
               }}
             >
-              Cancel
+              {tr('Cancel')}
             </Button>
             <Button
               type="submit"
@@ -1045,7 +1061,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                     bulkRows.some((match) => !match.scheduledAt)))
               }
             >
-              Apply to {bulkRows.length} matches
+              {tr('Apply to')} {bulkRows.length} {tr('matches')}
             </Button>
           </div>
         </form>
@@ -1053,10 +1069,10 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
       <Modal
         open={pasteOpen}
         onOpenChange={(open) => {
-          if (open || !pasteText.trim() || window.confirm('Discard the pasted schedule?'))
+          if (open || !pasteText.trim() || window.confirm(tr('Discard the pasted schedule?')))
             setPasteOpen(open);
         }}
-        title="Paste match schedule"
+        title={tr('Paste match schedule')}
         wide
       >
         <form
@@ -1081,10 +1097,10 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
               setPastePreview(null);
               setSelectedMatches(new Set());
               await reload();
-            }, 'Pasted schedule saved.');
+            }, tr('Pasted schedule saved.'));
           }}
         >
-          <Field label="Schedule TSV or CSV">
+          <Field label={tr('Schedule TSV or CSV')}>
             <textarea
               rows={8}
               value={pasteText}
@@ -1092,14 +1108,15 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                 setPasteText(event.target.value);
                 setPastePreview(null);
               }}
-              placeholder={
-                'match_number\tscheduled_at\treferee\n1\t2026-10-24 18:00\tReferee username'
-              }
+              placeholder={tr(
+                'match_number\tscheduled_at\treferee\n1\t2026-10-24 18:00\tReferee username',
+              )}
             />
           </Field>
           <p className="text-sm text-muted">
-            Blank cells keep existing values; - clears a time or assignment. Dates without a
-            timezone use your browser timezone.
+            {tr(
+              'Blank cells keep existing values; - clears a time or assignment. Dates without a timezone use your browser timezone.',
+            )}
           </p>
           {!!pastePreview?.errors.length && (
             <ul
@@ -1107,7 +1124,9 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
               className="max-h-40 list-inside list-disc overflow-auto text-sm text-red-200"
             >
               {pastePreview.errors.map((error, index) => (
-                <li key={index}>{error}</li>
+                <li key={index}>
+                  <Feedback message={error} />
+                </li>
               ))}
             </ul>
           )}
@@ -1116,26 +1135,30 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
               <table className="admin-table">
                 <thead>
                   <tr>
-                    <th>Match</th>
-                    <th>Current time</th>
-                    <th>New time</th>
-                    <th>Referees</th>
+                    <th>{tr('Match')}</th>
+                    <th>{tr('Current time')}</th>
+                    <th>{tr('New time')}</th>
+                    <th>{tr('Referees')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pastePreview.rows.map((row) => (
                     <tr key={row.id}>
-                      <td>Match {row.matchNumber}</td>
+                      <td>
+                        {tr('Match')} {row.matchNumber}
+                      </td>
                       <td>{matchTime(row.previousTime)}</td>
                       <td>
-                        {row.scheduledAt === undefined ? 'Unchanged' : matchTime(row.scheduledAt)}
+                        {row.scheduledAt === undefined
+                          ? tr('Unchanged')
+                          : matchTime(row.scheduledAt)}
                       </td>
                       <td>
                         {row.refereeIds === undefined
-                          ? 'Unchanged'
+                          ? tr('Unchanged')
                           : row.refereeIds
                               .map((id) => options?.referees.find((ref) => ref.id === id)?.username)
-                              .join(', ') || 'Unassigned'}
+                              .join(', ') || tr('Unassigned')}
                       </td>
                     </tr>
                   ))}
@@ -1150,7 +1173,9 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
               (!!pastePreview && (!!pastePreview.errors.length || !pastePreview.rows.length))
             }
           >
-            {pastePreview ? `Apply ${pastePreview.rows.length} schedule rows` : 'Preview schedule'}
+            {pastePreview
+              ? tr('Apply {0} schedule rows', pastePreview.rows.length)
+              : tr('Preview schedule')}
           </SaveButton>
         </form>
       </Modal>
@@ -1158,13 +1183,13 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
       <Modal
         open={create}
         onOpenChange={(open) => {
-          if (!open && (!dirty || window.confirm('Discard unsaved match changes?'))) {
+          if (!open && (!dirty || window.confirm(tr('Discard unsaved match changes?')))) {
             setCreate(false);
             setEdit(null);
             setDirty(false);
           }
         }}
-        title={edit ? 'Schedule & assignment' : 'New match'}
+        title={edit ? tr('Schedule & assignment') : tr('New match')}
         wide
       >
         {options && (
@@ -1210,14 +1235,14 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                   await reload();
                   return response;
                 },
-                edit ? 'Match assignment saved.' : 'Match scheduled.',
+                edit ? tr('Match assignment saved.') : tr('Match scheduled.'),
               );
             }}
           >
             <div className="grid-fields">
               {!edit && (
                 <>
-                  <Field label="Match code">
+                  <Field label={tr('Match code')}>
                     <input
                       required
                       maxLength={80}
@@ -1225,7 +1250,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                       onChange={(e) => setCode(e.target.value)}
                     />
                   </Field>
-                  <Field label="Tournament stage">
+                  <Field label={tr('Tournament stage')}>
                     <select
                       required
                       value={stageId}
@@ -1238,7 +1263,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                         setBestOf((stage?.rules || options.defaults).bestOf);
                       }}
                     >
-                      <option value="">Select stage</option>
+                      <option value="">{tr('Select stage')}</option>
                       {options.stages
                         .filter((s) => s.published && s.kind !== 'QUALIFIERS')
                         .map((s) => (
@@ -1248,9 +1273,9 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                         ))}
                     </select>
                   </Field>
-                  <Field label="Team A / red">
+                  <Field label={tr('Team A / red')}>
                     <select required value={teamAId} onChange={(e) => setTeamA(e.target.value)}>
-                      <option value="">Select approved entry</option>
+                      <option value="">{tr('Select approved entry')}</option>
                       {eligibleTeams.map((t) => (
                         <option value={t.id} key={t.id}>
                           {t.name}
@@ -1258,9 +1283,9 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                       ))}
                     </select>
                   </Field>
-                  <Field label="Team B / blue">
+                  <Field label={tr('Team B / blue')}>
                     <select required value={teamBId} onChange={(e) => setTeamB(e.target.value)}>
-                      <option value="">Select approved entry</option>
+                      <option value="">{tr('Select approved entry')}</option>
                       {eligibleTeams
                         .filter((t) => t.id !== teamAId)
                         .map((t) => (
@@ -1271,7 +1296,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                     </select>
                   </Field>
                   {paths.length > 0 && (
-                    <Field label="Competition path">
+                    <Field label={tr('Competition path')}>
                       <select
                         value={path?.id || ''}
                         required={!allowIneligible}
@@ -1281,7 +1306,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                           setTeamB('');
                         }}
                       >
-                        <option value="">Select competition path</option>
+                        <option value="">{tr('Select competition path')}</option>
                         {paths.map((p) => (
                           <option key={p.id} value={p.id}>
                             {p.name}
@@ -1297,12 +1322,12 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                         checked={allowIneligible}
                         onChange={(e) => setAllowIneligible(e.target.checked)}
                       />
-                      Allow ineligible participants (exhibition or custom match)
+                      {tr('Allow ineligible participants (exhibition or custom match)')}
                     </label>
                   )}
                   {path && path.teams.some((team) => !team.eligible) && (
                     <details className="text-sm text-muted">
-                      <summary>Unavailable participants</summary>
+                      <summary>{tr('Unavailable participants')}</summary>
                       <ul className="mt-2 space-y-1">
                         {path.teams
                           .filter((team) => !team.eligible)
@@ -1316,7 +1341,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                     </details>
                   )}
                   {allowIneligible && (
-                    <Field label="Eligibility override reason">
+                    <Field label={tr('Eligibility override reason')}>
                       <textarea
                         required
                         minLength={3}
@@ -1327,11 +1352,11 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                     </Field>
                   )}
                   <p className="self-end py-3 text-sm text-muted">
-                    Best of {bestOf} · Inherited from stage rules
+                    {tr('Best of')} {bestOf} {tr('· Inherited from stage rules')}
                   </p>
                 </>
               )}
-              <Field label="Scheduled time (your timezone)">
+              <Field label={tr('Scheduled time (your timezone)')}>
                 <input
                   type="datetime-local"
                   value={scheduledAt}
@@ -1343,7 +1368,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
             {edit?.status === 'SCHEDULED' && can(actor, 'matches.manage') && (
               <div className="grid-fields">
                 {(['A', 'B'] as const).map((side) => (
-                  <Field key={side} label={side === 'A' ? 'Red opponent' : 'Blue opponent'}>
+                  <Field key={side} label={side === 'A' ? tr('Red opponent') : tr('Blue opponent')}>
                     <select
                       value={side === 'A' ? teamAId : teamBId}
                       onChange={(e) =>
@@ -1351,7 +1376,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                       }
                     >
                       <option value="">
-                        {edit.participants[side].id ? 'Keep current' : 'Unresolved'} ·{' '}
+                        {edit.participants[side].id ? tr('Keep current') : tr('Unresolved')} ·{' '}
                         {edit.participants[side].name}
                       </option>
                       {options.teams.map((t) => (
@@ -1371,11 +1396,11 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                   checked={published}
                   onChange={(e) => setPublished(e.target.checked)}
                 />
-                Public match
+                {tr('Public match')}
               </label>
             )}
             <fieldset className="border-t pt-5">
-              <legend className="text-lg font-semibold">Referee assignments</legend>
+              <legend className="text-lg font-semibold">{tr('Referee assignments')}</legend>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 {options.referees.map((r) => (
                   <label key={r.id} className="flex items-center gap-3">
@@ -1392,28 +1417,28 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                     />
                     <span className="min-w-0 break-words">
                       {r.username}
-                      {refereeIds[0] === r.id ? ' · Lead' : ''}
+                      {refereeIds[0] === r.id ? tr(' · Lead') : ''}
                     </span>
                   </label>
                 ))}
               </div>
             </fieldset>
-            <Field label="Match notes">
+            <Field label={tr('Match notes')}>
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
             </Field>
             {!edit && !options.stages.some((s) => s.published) && (
               <p className="text-sm text-muted">
-                A published mappool is required.{' '}
+                {tr('A published mappool is required.')}{' '}
                 <Link className="text-primary" href="/admin/mappools">
-                  Stages & mappools
+                  {tr('Stages & mappools')}
                 </Link>
               </p>
             )}
             {!edit && options.teams.length < 2 && (
               <p className="text-sm text-muted">
-                Two approved entries are required.{' '}
+                {tr('Two approved entries are required.')}{' '}
                 <Link className="text-primary" href="/admin/teams">
-                  Teams & players
+                  {tr('Teams & players')}
                 </Link>
               </p>
             )}
@@ -1422,25 +1447,29 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                 type="button"
                 variant="outline"
                 onClick={() => {
-                  if (!dirty || window.confirm('Discard unsaved match changes?')) {
+                  if (!dirty || window.confirm(tr('Discard unsaved match changes?'))) {
                     setCreate(false);
                     setEdit(null);
                     setDirty(false);
                   }
                 }}
               >
-                Cancel
+                {tr('Cancel')}
               </Button>
-              <SaveButton busy={busy}>Save match</SaveButton>
+              <SaveButton busy={busy}>{tr('Save match')}</SaveButton>
             </div>
           </form>
         )}
       </Modal>
       <Modal
-        title={`Multiplayer link · ${lobby?.code || ''}`}
+        title={tr('Multiplayer link · {0}', lobby?.code || '')}
         open={!!lobby}
         onOpenChange={(open) => {
-          if (!open && !busy && (!dirty || window.confirm('Discard unsaved multiplayer link?'))) {
+          if (
+            !open &&
+            !busy &&
+            (!dirty || window.confirm(tr('Discard unsaved multiplayer link?')))
+          ) {
             setLobby(null);
             setDirty(false);
           }
@@ -1461,10 +1490,10 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                 setDirty(false);
                 setLobby(null);
                 await reload();
-              }, 'Multiplayer link saved.');
+              }, tr('Multiplayer link saved.'));
             }}
           >
-            <Field label="Multiplayer URL">
+            <Field label={tr('Multiplayer URL')}>
               <input
                 disabled={busy}
                 type="url"
@@ -1476,19 +1505,19 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                 placeholder="https://osu.ppy.sh/community/matches/123456"
               />
             </Field>
-            <SaveButton busy={busy}>Save multiplayer link</SaveButton>
+            <SaveButton busy={busy}>{tr('Save multiplayer link')}</SaveButton>
           </form>
         )}
       </Modal>
       <Modal
         open={ruleEditor}
         onOpenChange={(open) => {
-          if (!open && (!dirty || window.confirm('Discard rule changes?'))) {
+          if (!open && (!dirty || window.confirm(tr('Discard rule changes?')))) {
             setRuleEditor(false);
             setDirty(false);
           }
         }}
-        title="Match rule presets"
+        title={tr('Match rule presets')}
         wide
       >
         {rules && options && (
@@ -1506,22 +1535,22 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                 setDirty(false);
                 setRuleEditor(false);
                 await reload();
-              }, 'Rule preset saved. Existing matches unchanged.');
+              }, tr('Rule preset saved. Existing matches unchanged.'));
             }}
           >
-            <Field label="Rule scope">
+            <Field label={tr('Rule scope')}>
               <select
                 value={ruleStage}
                 onChange={(e) => {
-                  if (!dirty || window.confirm('Discard changes and switch rule scope?'))
+                  if (!dirty || window.confirm(tr('Discard changes and switch rule scope?')))
                     chooseRules(e.target.value);
                 }}
               >
-                <option value="">Tournament defaults</option>
+                <option value="">{tr('Tournament defaults')}</option>
                 {options.stages.map((s) => (
                   <option value={s.id} key={s.id}>
                     {s.name}
-                    {s.rules ? '' : ' · Inherits defaults'}
+                    {s.rules ? '' : tr(' · Inherits defaults')}
                   </option>
                 ))}
               </select>
@@ -1534,7 +1563,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
               }}
             />
             <div className="flex flex-wrap gap-3">
-              <SaveButton busy={busy}>Save rule preset</SaveButton>
+              <SaveButton busy={busy}>{tr('Save rule preset')}</SaveButton>
               {ruleStage && (
                 <Button
                   type="button"
@@ -1551,11 +1580,11 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                       setDirty(false);
                       setRuleEditor(false);
                       await reload();
-                    }, 'Stage now inherits tournament rules.')
+                    }, tr('Stage now inherits tournament rules.'))
                   }
                 >
                   <RefreshCw size={17} />
-                  Use tournament defaults
+                  {tr('Use tournament defaults')}
                 </Button>
               )}
             </div>

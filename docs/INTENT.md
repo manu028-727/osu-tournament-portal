@@ -26,6 +26,8 @@ it is not a requirement to keep a second spreadsheet as the live system of recor
   no installation depends on OIDC, Nigachi, private artwork or historical fixtures.
 - **Browser ownership.** Tournament identity and routine operations belong in the
   CMS, not a deployment branch or an organizer's source-code patches.
+- **Language choice.** English and Italian interfaces serve organizers and viewers
+  independently of the language authors choose for their tournament content.
 - **Trustworthy history.** Drafts, publications, played matches and corrections
   have distinct lifecycles. Convenience must not silently rewrite competition data.
 - **Efficient real work.** Compact lists, bulk edits, visible save states and direct

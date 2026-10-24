@@ -1,4 +1,7 @@
 'use client';
+import { humanizeCode, localeTag } from '@/lib/i18n';
+import { Feedback, useLocale, useT } from '@/components/locale';
+
 import Link from '@/components/tournament-scope';
 import { useState } from 'react';
 import { Tabs } from 'radix-ui';
@@ -35,7 +38,7 @@ import {
 } from './shared';
 import { MatchScoreDialog, type ScoreSelection } from './match-score-dialog';
 import { MatchTimer } from './match-timer';
-import { MATCH_STATUS_LABELS } from './matches-dashboard';
+import { MATCH_STATUS_LABELS } from '@/lib/match-display';
 import { useTournamentTime, useTournamentScope } from '@/components/tournament-scope';
 import { GuidedMatch } from './guided-match';
 import { MultiplayerGames } from './multiplayer-games';
@@ -69,6 +72,8 @@ export function RefereePanel({
   tournamentName: string;
   ircEnabled?: boolean;
 }) {
+  const language = useLocale();
+  const tr = useT();
   const matchTime = useTournamentTime();
   const { timezone } = useTournamentScope();
   const { data, error, reload } = useResource<{
@@ -194,7 +199,7 @@ export function RefereePanel({
     <>
       {error && (
         <p role="alert" className="mb-5 text-red-200">
-          Updates unavailable: {error}
+          {tr('Updates unavailable:')} <Feedback message={error} />
         </p>
       )}
       <Link
@@ -202,25 +207,25 @@ export function RefereePanel({
         className="mb-2 inline-flex items-center gap-2 text-sm text-primary"
       >
         <ArrowLeft size={18} />
-        Back to matches
+        {tr('Back to matches')}
       </Link>
-      <header className="referee-scoreboard border-b pb-3" aria-label="Match scoreboard">
+      <header className="referee-scoreboard border-b pb-3" aria-label={tr('Match scoreboard')}>
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
           <p>
-            {tournamentName} / {m.stage.name} / Match {m.matchNumber}
-            {m.code !== String(m.matchNumber) ? ` · Ref ${m.code}` : ''}
+            {tournamentName} / {m.stage.name} / {tr('Match')} {m.matchNumber}
+            {m.code !== String(m.matchNumber) ? tr(' · Ref {0}', m.code) : ''}
           </p>
-          <MatchStatusBadge status={m.status}>{MATCH_STATUS_LABELS[m.status]}</MatchStatusBadge>
+          <MatchStatusBadge status={m.status}>{tr(MATCH_STATUS_LABELS[m.status])}</MatchStatusBadge>
           <span>
             {access.editable
               ? access.assigned
-                ? 'Editing match · Assigned referee'
-                : 'Editing match · Authorized override'
-              : 'Viewing match · Read only'}
+                ? tr('Editing match · Assigned referee')
+                : tr('Editing match · Authorized override')
+              : tr('Viewing match · Read only')}
           </span>
         </div>
         <h1 className="sr-only">
-          {m.participants.A.name} versus {m.participants.B.name}
+          {m.participants.A.name} {tr('versus')} {m.participants.B.name}
         </h1>
         <div className="my-2 grid grid-cols-2 items-center gap-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
           {(['A', 'B'] as const).map((side, index) => (
@@ -243,7 +248,7 @@ export function RefereePanel({
             </div>
           ))}
           <p
-            aria-label="Match score"
+            aria-label={tr('Match score')}
             className="col-span-2 col-start-1 row-start-1 whitespace-nowrap text-center font-mono text-3xl font-bold sm:col-span-1 sm:col-start-2"
           >
             {m.scoreA} : {m.scoreB}
@@ -251,18 +256,20 @@ export function RefereePanel({
         </div>
         <div className="flex flex-wrap justify-between gap-2 text-xs text-muted">
           <p>
-            Best of {m.rules.bestOf} · First to {firstTo(m.rules)} · {matchTime(m.scheduledAt)} ·{' '}
-            {timezone}
+            {tr('Best of')} {m.rules.bestOf} {tr('· First to')} {firstTo(m.rules)} ·{' '}
+            {matchTime(m.scheduledAt)} · {timezone}
           </p>
           <p>
-            Referees:{' '}
+            {tr('Referees:')}{' '}
             {m.assignments.map((r) => r.user.username).join(', ') ||
               matchCredits(m.source).referee ||
-              'Unassigned'}
+              tr('Unassigned')}
           </p>
         </div>
         <details className="match-administration mt-2">
-          <summary className="cursor-pointer text-sm text-muted">Match administration</summary>
+          <summary className="cursor-pointer text-sm text-muted">
+            {tr('Match administration')}
+          </summary>
           <div className="mt-5 flex flex-wrap gap-2">
             {manager && (
               <label className="flex items-center gap-3 border-r pr-4">
@@ -279,13 +286,13 @@ export function RefereePanel({
                     ).finally(() => setPendingVisibility(null));
                   }}
                 />
-                Public match
+                {tr('Public match')}
               </label>
             )}
             {['SCHEDULED', 'IN_PROGRESS'].includes(m.status) && !m.winnerSide && access.submit && (
               <Button variant="outline" onClick={() => choose('forfeit')}>
                 <Flag size={17} />
-                Record forfeit
+                {tr('Record forfeit')}
               </Button>
             )}
             {active &&
@@ -307,33 +314,33 @@ export function RefereePanel({
                   }
                 >
                   <Flag size={17} />
-                  Record roll
+                  {tr('Record roll')}
                 </Button>
               )}
             {active && draftAllowed && actions.length > 0 && (
               <Button variant="outline" onClick={() => choose('undo')}>
                 <Undo2 size={17} />
-                Undo last action
+                {tr('Undo last action')}
               </Button>
             )}
             {['COMPLETED', 'AWAITING_CONFIRMATION', 'DISPUTED', 'CANCELLED'].includes(m.status) &&
               manager && (
                 <Button variant="outline" onClick={() => choose('reopen')}>
                   <RotateCcw size={17} />
-                  Reopen for correction
+                  {tr('Reopen for correction')}
                 </Button>
               )}
             {['IN_PROGRESS', 'AWAITING_CONFIRMATION', 'COMPLETED'].includes(m.status) &&
               access.submit && (
                 <Button variant="outline" onClick={() => choose('dispute')}>
                   <Flag size={17} />
-                  Dispute result
+                  {tr('Dispute result')}
                 </Button>
               )}
             {!['COMPLETED', 'CANCELLED'].includes(m.status) && manager && (
               <Button variant="destructive" onClick={() => choose('cancel')}>
                 <Ban size={17} />
-                Cancel match
+                {tr('Cancel match')}
               </Button>
             )}
             {can(actor, 'matches.delete') && (
@@ -342,7 +349,7 @@ export function RefereePanel({
                 onClick={() => setDeleting({ id: m.id, code: m.code, version: m.version })}
               >
                 <Trash2 size={17} className="text-red-200" />
-                Delete match
+                {tr('Delete match')}
               </Button>
             )}
           </div>
@@ -358,12 +365,12 @@ export function RefereePanel({
               {m.lobbyUrl}
             </a>
           ) : (
-            <span className="text-sm text-muted">No multiplayer link</span>
+            <span className="text-sm text-muted">{tr('No multiplayer link')}</span>
           )}
           {operate && !['COMPLETED', 'CANCELLED'].includes(m.status) && (
             <Button size="sm" variant="outline" onClick={editLobby}>
               <Link2 size={17} />
-              {m.lobbyUrl ? 'Edit multiplayer link' : 'Add multiplayer link'}
+              {m.lobbyUrl ? tr('Edit multiplayer link') : tr('Add multiplayer link')}
             </Button>
           )}
         </div>
@@ -380,31 +387,33 @@ export function RefereePanel({
       />
       {m.forfeitSide && (
         <p className="mt-5 font-semibold text-amber-200">
-          Win by forfeit · {m.participants[m.forfeitSide].name} forfeited.
+          {tr('Win by forfeit ·')} {m.participants[m.forfeitSide].name} {tr('forfeited.')}
         </p>
       )}
       {m.resultMode === 'SUMMARY' && (
         <p className="mt-5 border-y py-4 text-sm text-muted">
-          Imported historical result. Only the final match score was supplied; no individual map
-          results have been created.
+          {tr(
+            'Imported historical result. Only the final match score was supplied; no individual map results have been created.',
+          )}
         </p>
       )}
       {!m.poolRevision && (
         <p className="mt-5 text-sm text-muted">
-          Stage mappool not yet published. Resolve opponents and publish the pool before starting
-          this fixture.
+          {tr(
+            'Stage mappool not yet published. Resolve opponents and publish the pool before starting this fixture.',
+          )}
         </p>
       )}
       {!!data.dependencies?.length && (
-        <section className="mt-4 space-y-2 border-y py-3" aria-label="Bracket dependencies">
+        <section className="mt-4 space-y-2 border-y py-3" aria-label={tr('Bracket dependencies')}>
           {data.dependencies.map((dependency) => (
             <div
               key={dependency.side}
               className="flex flex-wrap items-center justify-between gap-2 text-sm"
             >
               <Link href={`/admin/referee/${dependency.id}`} className="text-primary">
-                Team {dependency.side}: {dependency.label} ·{' '}
-                {dependency.team || 'Awaiting confirmed result'}
+                {tr('Team')} {dependency.side}: {dependency.label} ·{' '}
+                {dependency.team || tr('Awaiting confirmed result')}
               </Link>
               {manager && dependency.team && m.status === 'SCHEDULED' && (
                 <Button
@@ -412,7 +421,9 @@ export function RefereePanel({
                   variant="outline"
                   disabled={busy}
                   onClick={() => {
-                    if (window.confirm(`Resolve ${dependency.label} to ${dependency.team}?`))
+                    if (
+                      window.confirm(tr('Resolve {0} to {1}?', dependency.label, dependency.team))
+                    )
                       void post(
                         {
                           type: 'match.resolve',
@@ -426,7 +437,7 @@ export function RefereePanel({
                       );
                   }}
                 >
-                  Resolve opponent
+                  {tr('Resolve opponent')}
                 </Button>
               )}
             </div>
@@ -460,7 +471,7 @@ export function RefereePanel({
               body: JSON.stringify({ id: m.id }),
             });
             await reload();
-          }, 'Multiplayer games synchronized for review.')
+          }, tr('Multiplayer games synchronized for review.'))
         }
         onCorrect={(actionId) =>
           setCorrection({
@@ -479,9 +490,12 @@ export function RefereePanel({
         enabled={ircEnabled}
         onLinked={reload}
       />
-      <section className="mt-5 border-t pt-3" aria-label="Secondary match tools">
+      <section className="mt-5 border-t pt-3" aria-label={tr('Secondary match tools')}>
         <Tabs.Root defaultValue="match" className="min-w-0">
-          <Tabs.List aria-label="Match views" className="mb-7 flex flex-wrap gap-2 border-b pb-3">
+          <Tabs.List
+            aria-label={tr('Match views')}
+            className="mb-7 flex flex-wrap gap-2 border-b pb-3"
+          >
             {[
               'match',
               'multiplayer',
@@ -495,7 +509,7 @@ export function RefereePanel({
                 value={tab}
                 className="rounded-md px-4 py-2 text-sm capitalize data-[state=active]:bg-primary/10 data-[state=active]:text-primary"
               >
-                {tab}
+                {tr(humanizeCode(tab)).toLowerCase()}
               </Tabs.Trigger>
             ))}
           </Tabs.List>
@@ -509,7 +523,7 @@ export function RefereePanel({
                 }
               >
                 <Flag size={16} />
-                Record incident
+                {tr('Record incident')}
               </Button>
             )}
             <MatchTimer
@@ -526,23 +540,23 @@ export function RefereePanel({
             />
             {m.rollA !== null && (
               <p className="text-sm text-muted">
-                Roll A: {m.rollA} · Roll B: {m.rollB} · First pick: Team {m.firstPickSide} · First
-                ban: Team {m.firstBanSide} · First protect: Team{' '}
-                {m.firstProtectSide || m.firstBanSide}
+                {tr('Roll A:')} {m.rollA} {tr('· Roll B:')} {m.rollB} {tr('· First pick: Team')}{' '}
+                {m.firstPickSide} {tr('· First ban: Team')} {m.firstBanSide}{' '}
+                {tr('· First protect: Team')} {m.firstProtectSide || m.firstBanSide}
               </p>
             )}
             <section className="border-t pt-7">
-              <h2 className="mb-4 text-xl font-semibold">Map results</h2>
+              <h2 className="mb-4 text-xl font-semibold">{tr('Map results')}</h2>
               <div className="overflow-x-auto">
                 <table className="admin-table">
                   <thead>
                     <tr>
-                      <th>Map</th>
-                      <th>Pick</th>
-                      <th>Team A</th>
-                      <th>Team B</th>
-                      <th>Winner</th>
-                      <th>Notes</th>
+                      <th>{tr('Map')}</th>
+                      <th>{tr('Pick')}</th>
+                      <th>{tr('Team A')}</th>
+                      <th>{tr('Team B')}</th>
+                      <th>{tr('Winner')}</th>
+                      <th>{tr('Notes')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -553,14 +567,18 @@ export function RefereePanel({
                         return (
                           <tr key={a.id}>
                             <td>{a.slotName}</td>
-                            <td>Team {a.side}</td>
                             <td>
-                              {r?.scoreA?.toLocaleString() ?? (r ? 'Winner only' : 'Pending')}
+                              {tr('Team')} {a.side}
                             </td>
                             <td>
-                              {r?.scoreB?.toLocaleString() ?? (r ? 'Winner only' : 'Pending')}
+                              {r?.scoreA?.toLocaleString(localeTag(language)) ??
+                                (r ? tr('Winner only') : tr('Pending'))}
                             </td>
-                            <td>{r ? m.participants[r.winnerSide].name : 'Pending'}</td>
+                            <td>
+                              {r?.scoreB?.toLocaleString(localeTag(language)) ??
+                                (r ? tr('Winner only') : tr('Pending'))}
+                            </td>
+                            <td>{r ? m.participants[r.winnerSide].name : tr('Pending')}</td>
                             <td className="min-w-32 whitespace-pre-wrap">{r?.notes}</td>
                           </tr>
                         );
@@ -571,7 +589,7 @@ export function RefereePanel({
             </section>
             <details className="border-y py-5">
               <summary className="cursor-pointer text-lg font-semibold">
-                Lobby & clipboard commands
+                {tr('Lobby & clipboard commands')}
               </summary>
               <div className="mt-5 space-y-4">
                 <div className="flex flex-wrap gap-2">
@@ -597,7 +615,7 @@ export function RefereePanel({
                     }
                   >
                     <Copy size={16} />
-                    Copy Setup Commands
+                    {tr('Copy Setup Commands')}
                   </Button>
                   <Button
                     size="sm"
@@ -607,14 +625,14 @@ export function RefereePanel({
                     }
                   >
                     <Copy size={16} />
-                    Copy Match Ping
+                    {tr('Copy Match Ping')}
                   </Button>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                   {m.lobbyUrl && (
                     <Button asChild variant="outline">
                       <a href={m.lobbyUrl} target="_blank" rel="noopener noreferrer">
-                        Open multiplayer lobby
+                        {tr('Open multiplayer lobby')}
                         <ExternalLink size={17} />
                       </a>
                     </Button>
@@ -630,7 +648,7 @@ export function RefereePanel({
                         })
                       }
                     >
-                      Edit lobby details
+                      {tr('Edit lobby details')}
                     </Button>
                   )}
                 </div>
@@ -644,8 +662,8 @@ export function RefereePanel({
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label={`Copy ${key} command`}
-                        title={`Copy ${key}`}
+                        aria-label={tr('Copy {0} command', key)}
+                        title={tr('Copy {0}', key)}
                         onClick={() => copy(value)}
                       >
                         <Copy size={17} />
@@ -656,12 +674,15 @@ export function RefereePanel({
                   m.participants[side].members.map((p) => (
                     <div className="flex items-center justify-between gap-3" key={p.osuId}>
                       <p className="text-sm">{p.username}</p>
-                      <code className="min-w-0 break-words text-sm">!mp invite #{p.osuId}</code>
+                      <code className="min-w-0 break-words text-sm">
+                        {tr('!mp invite #')}
+                        {p.osuId}
+                      </code>
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label={`Copy invite ${p.username}`}
-                        title="Copy invite command"
+                        aria-label={tr('Copy invite {0}', p.username)}
+                        title={tr('Copy invite command')}
                         onClick={() => copy(`!mp invite #${p.osuId}`)}
                       >
                         <Copy size={17} />
@@ -671,12 +692,15 @@ export function RefereePanel({
                 )}
                 {m.assignments.map((r) => (
                   <div key={r.userId} className="flex items-center justify-between gap-3">
-                    <code className="break-words text-sm">!mp addref #{r.user.osuId}</code>
+                    <code className="break-words text-sm">
+                      {tr('!mp addref #')}
+                      {r.user.osuId}
+                    </code>
                     <Button
                       variant="ghost"
                       size="icon"
-                      title={`Copy addref ${r.user.username}`}
-                      aria-label={`Copy addref ${r.user.username}`}
+                      title={tr('Copy addref {0}', r.user.username)}
+                      aria-label={tr('Copy addref {0}', r.user.username)}
                       onClick={() => copy(`!mp addref #${r.user.osuId}`)}
                     >
                       <Copy size={16} />
@@ -710,7 +734,11 @@ export function RefereePanel({
                           <p className="break-words font-semibold">{p.username}</p>
                           <p className="text-sm text-muted">
                             #{p.osuId} ·{' '}
-                            {p.captain ? 'Captain' : p.substitute ? 'Substitute' : 'Player'}
+                            {p.captain
+                              ? tr('Captain')
+                              : p.substitute
+                                ? tr('Substitute')
+                                : tr('Player')}
                           </p>
                         </div>
                       </a>
@@ -725,7 +753,7 @@ export function RefereePanel({
           </Tabs.Content>
           <Tabs.Content value="rules">
             <div className="space-y-7">
-              <h2 className="text-xl font-semibold">Match rules snapshot</h2>
+              <h2 className="text-xl font-semibold">{tr('Match rules snapshot')}</h2>
               <dl className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
                 {[
                   ['Game mode', m.rules.gameMode],
@@ -737,12 +765,12 @@ export function RefereePanel({
                   ['Protects per team', m.rules.protectsPerTeam],
                   ['Pick order', m.rules.pickOrder],
                   ['Ban order', m.rules.banOrder],
-                  ['NoFail', m.rules.enforceNoFail ? 'Required' : 'Optional'],
+                  ['NoFail', m.rules.enforceNoFail ? tr('Required') : tr('Optional')],
                   ['Warmups per team', m.rules.warmupsPerTeam],
                   ['Timeouts per team', m.rules.timeoutsPerTeam],
                 ].map(([label, value]) => (
                   <div key={label} className="border-b pb-3">
-                    <dt className="text-sm text-muted">{label}</dt>
+                    <dt className="text-sm text-muted">{tr(String(label))}</dt>
                     <dd className="mt-1 font-semibold">{value}</dd>
                   </div>
                 ))}
@@ -753,23 +781,29 @@ export function RefereePanel({
                 ['FreeMod', m.rules.freeModPolicy],
                 ['Tiebreaker', m.rules.tiebreakerPolicy],
                 ['Disconnects', m.rules.disconnectPolicy],
-                ['Warmups', m.rules.warmupPolicy || `${m.rules.warmupsPerTeam} per team`],
+                ['Warmups', m.rules.warmupPolicy || tr('{0} per team', m.rules.warmupsPerTeam)],
                 [
                   'Timeouts',
                   m.rules.timeoutPolicy ||
-                    `${m.rules.timeoutsPerTeam} per team, ${m.rules.timeoutSeconds} seconds`,
+                    tr(
+                      '{0} per team, {1} seconds',
+                      m.rules.timeoutsPerTeam,
+                      m.rules.timeoutSeconds,
+                    ),
                 ],
                 [
                   'Double picks',
-                  m.rules.doublePickPolicy || (m.rules.allowDoublePicks ? 'Allowed' : 'Restricted'),
+                  m.rules.doublePickPolicy ||
+                    (m.rules.allowDoublePicks ? tr('Allowed') : tr('Restricted')),
                 ],
                 [
                   'Double bans',
-                  m.rules.doubleBanPolicy || (m.rules.allowDoubleBans ? 'Allowed' : 'Restricted'),
+                  m.rules.doubleBanPolicy ||
+                    (m.rules.allowDoubleBans ? tr('Allowed') : tr('Restricted')),
                 ],
               ].map(([label, value]) => (
                 <section key={label}>
-                  <h3 className="mb-2 text-lg font-semibold">{label}</h3>
+                  <h3 className="mb-2 text-lg font-semibold">{tr(label)}</h3>
                   <p className="whitespace-pre-wrap text-muted">{value}</p>
                 </section>
               ))}
@@ -785,23 +819,25 @@ export function RefereePanel({
           <Tabs.Content value="discord" className="space-y-4">
             <Button disabled={m.status !== 'COMPLETED'} onClick={() => copy(matchDiscordResult(m))}>
               <Copy size={17} />
-              Copy Discord Result
+              {tr('Copy Discord Result')}
             </Button>
             <pre
-              aria-label="Discord result preview"
+              aria-label={tr('Discord result preview')}
               className="overflow-auto whitespace-pre-wrap break-words border-y py-4 font-mono text-sm"
             >
               {matchDiscordPreview(m).replaceAll('\r', '\n')}
             </pre>
             {m.importedHistory?.discord && (
               <details className="border-t pt-3">
-                <summary className="cursor-pointer text-sm">Original spreadsheet result</summary>
+                <summary className="cursor-pointer text-sm">
+                  {tr('Original spreadsheet result')}
+                </summary>
                 <p className="mt-2 text-xs text-muted">
-                  Worksheet {m.importedHistory.worksheet} · Imported version{' '}
+                  {tr('Worksheet')} {m.importedHistory.worksheet} {tr('· Imported version')}{' '}
                   {m.importedHistory.version}
                 </p>
                 <pre
-                  aria-label="Original spreadsheet Discord result"
+                  aria-label={tr('Original spreadsheet Discord result')}
                   className="mt-3 overflow-auto whitespace-pre-wrap break-words font-mono text-sm"
                 >
                   {m.importedHistory.discord.replaceAll('\r', '\n')}
@@ -822,13 +858,13 @@ export function RefereePanel({
                   ([label, value]) =>
                     value && (
                       <div key={label}>
-                        <dt className="text-muted">{label}</dt>
+                        <dt className="text-muted">{tr(label)}</dt>
                         <dd>{matchTime(value)}</dd>
                       </div>
                     ),
                 )}
               </dl>
-              <Field label="Search match history">
+              <Field label={tr('Search match history')}>
                 <input
                   type="search"
                   value={historyQuery}
@@ -836,7 +872,7 @@ export function RefereePanel({
                 />
               </Field>
               <section>
-                <h2 className="mb-5 text-xl font-semibold">Result revisions</h2>
+                <h2 className="mb-5 text-xl font-semibold">{tr('Result revisions')}</h2>
                 <div className="space-y-3">
                   {m.revisions
                     ?.filter((r) =>
@@ -851,10 +887,10 @@ export function RefereePanel({
                       >
                         <div>
                           <p className="font-semibold">
-                            Version {r.version} · {r.kind.replace('match.', '')}
+                            {tr('Version')} {r.version} · {r.kind.replace('match.', '')}
                           </p>
                           <p className="text-sm text-muted">
-                            {r.reason} · {r.creator?.username || 'System'} ·{' '}
+                            {r.reason} · {r.creator?.username || tr('System')} ·{' '}
                             {matchTime(r.createdAt)}
                           </p>
                         </div>
@@ -867,17 +903,17 @@ export function RefereePanel({
                                 `/api/admin/data?section=match-revision&id=${encodeURIComponent(m.id)}&revision=${encodeURIComponent(r.id)}`,
                               );
                               setRevision(value.snapshot);
-                            }, 'Revision loaded.')
+                            }, tr('Revision loaded.'))
                           }
                         >
-                          View revision
+                          {tr('View revision')}
                         </Button>
                       </div>
                     ))}
                 </div>
               </section>
               <section>
-                <h2 className="mb-5 text-xl font-semibold">Event log</h2>
+                <h2 className="mb-5 text-xl font-semibold">{tr('Event log')}</h2>
                 <ol className="space-y-4">
                   {events
                     .filter((e) =>
@@ -888,11 +924,12 @@ export function RefereePanel({
                     .map((e) => (
                       <li className="border-b pb-4" key={e.id}>
                         <p className="font-semibold">
-                          v{e.version} · {e.kind}
-                          {e.side ? ` · Team ${e.side}` : ''}
+                          {tr('v')}
+                          {e.version} · {e.kind}
+                          {e.side ? tr(' · Team {0}', e.side) : ''}
                         </p>
                         <p className="mt-1 text-sm text-muted">
-                          {e.actor?.username || 'System'} · {matchTime(e.createdAt)}
+                          {e.actor?.username || tr('System')} · {matchTime(e.createdAt)}
                         </p>
                         {e.notes && <p className="mt-2 whitespace-pre-wrap text-sm">{e.notes}</p>}
                         <Button
@@ -901,7 +938,7 @@ export function RefereePanel({
                           className="mt-2"
                           onClick={() => setRevision(e)}
                         >
-                          View event details
+                          {tr('View event details')}
                         </Button>
                       </li>
                     ))}
@@ -917,10 +954,10 @@ export function RefereePanel({
                         );
                         setOlderEvents((old) => [...old, ...rows]);
                         setHasOlder(rows.length === 250);
-                      }, 'Earlier events loaded.')
+                      }, tr('Earlier events loaded.'))
                     }
                   >
-                    Load earlier events
+                    {tr('Load earlier events')}
                   </Button>
                 )}
               </section>
@@ -929,7 +966,7 @@ export function RefereePanel({
         </Tabs.Root>
       </section>
       <Modal
-        title="Correct recorded map"
+        title={tr('Correct recorded map')}
         open={!!correction}
         onOpenChange={(open) => {
           if (!open) setCorrection(null);
@@ -944,27 +981,27 @@ export function RefereePanel({
                 await action({ type: 'match.correct', id: m.id, ...correction });
                 setCorrection(null);
                 await reload();
-              }, 'Action corrected.');
+              }, tr('Action corrected.'));
             }}
           >
             <p className="text-sm text-amber-200">
-              The selected action and its result will be replaced. Any following actions and results
-              must also be discarded and recorded again. Previous records remain in the audit
-              history.
+              {tr(
+                'The selected action and its result will be replaced. Any following actions and results must also be discarded and recorded again. Previous records remain in the audit history.',
+              )}
             </p>
-            <Field label="Replacement slot">
+            <Field label={tr('Replacement slot')}>
               <select
                 required
                 value={correction.slotName}
                 onChange={(e) => setCorrection({ ...correction, slotName: e.target.value })}
               >
-                <option value="">Select map</option>
+                <option value="">{tr('Select map')}</option>
                 {slots.map((s) => (
                   <option key={s.name}>{s.name}</option>
                 ))}
               </select>
             </Field>
-            <Field label="Correction reason">
+            <Field label={tr('Correction reason')}>
               <input
                 required
                 minLength={3}
@@ -980,10 +1017,10 @@ export function RefereePanel({
                   setCorrection({ ...correction, discardFollowing: e.target.checked })
                 }
               />
-              Discard following actions and results
+              {tr('Discard following actions and results')}
             </label>
             <SaveButton busy={busy} disabled={stale(correction.baseVersion)}>
-              Confirm correction
+              {tr('Confirm correction')}
             </SaveButton>
           </form>
         )}
@@ -999,7 +1036,7 @@ export function RefereePanel({
         onOpenChange={(open) => {
           if (!open) setSummary(null);
         }}
-        title="Correct historical result"
+        title={tr('Correct historical result')}
       >
         {summary && (
           <form
@@ -1015,10 +1052,10 @@ export function RefereePanel({
                 });
                 setSummary(null);
                 await reload();
-              }, 'Corrected summary submitted for confirmation.');
+              }, tr('Corrected summary submitted for confirmation.'));
             }}
           >
-            <Field label="Team A match points">
+            <Field label={tr('Team A match points')}>
               <input
                 type="number"
                 min={0}
@@ -1027,7 +1064,7 @@ export function RefereePanel({
                 onChange={(e) => setSummary({ ...summary, scoreA: Number(e.target.value) })}
               />
             </Field>
-            <Field label="Team B match points">
+            <Field label={tr('Team B match points')}>
               <input
                 type="number"
                 min={0}
@@ -1036,19 +1073,23 @@ export function RefereePanel({
                 onChange={(e) => setSummary({ ...summary, scoreB: Number(e.target.value) })}
               />
             </Field>
-            <Field label="Forfeiting team">
+            <Field label={tr('Forfeiting team')}>
               <select
                 value={summary.forfeitSide}
                 onChange={(e) =>
                   setSummary({ ...summary, forfeitSide: e.target.value as Side | '' })
                 }
               >
-                <option value="">No forfeit</option>
-                <option value="A">A · {m.participants.A.name}</option>
-                <option value="B">B · {m.participants.B.name}</option>
+                <option value="">{tr('No forfeit')}</option>
+                <option value="A">
+                  {tr('A ·')} {m.participants.A.name}
+                </option>
+                <option value="B">
+                  {tr('B ·')} {m.participants.B.name}
+                </option>
               </select>
             </Field>
-            <Field label="Correction reason">
+            <Field label={tr('Correction reason')}>
               <textarea
                 required
                 minLength={3}
@@ -1057,7 +1098,7 @@ export function RefereePanel({
               />
             </Field>
             <SaveButton busy={busy} disabled={stale(summary.baseVersion)}>
-              Submit corrected summary
+              {tr('Submit corrected summary')}
             </SaveButton>
           </form>
         )}
@@ -1067,7 +1108,7 @@ export function RefereePanel({
         onOpenChange={(open) => {
           if (!open) setRoll(null);
         }}
-        title="Record roll results"
+        title={tr('Record roll results')}
       >
         {roll && (
           <form
@@ -1087,10 +1128,10 @@ export function RefereePanel({
                 });
                 setRoll(null);
                 await reload();
-              }, 'Roll recorded.');
+              }, tr('Roll recorded.'));
             }}
           >
-            <Field label="Team A roll">
+            <Field label={tr('Team A roll')}>
               <input
                 type="number"
                 min={1}
@@ -1100,7 +1141,7 @@ export function RefereePanel({
                 onChange={(e) => setRoll({ ...roll, a: Number(e.target.value) })}
               />
             </Field>
-            <Field label="Team B roll">
+            <Field label={tr('Team B roll')}>
               <input
                 type="number"
                 min={1}
@@ -1110,35 +1151,47 @@ export function RefereePanel({
                 onChange={(e) => setRoll({ ...roll, b: Number(e.target.value) })}
               />
             </Field>
-            <Field label="First pick">
+            <Field label={tr('First pick')}>
               <select
                 value={roll.firstPick}
                 onChange={(e) => setRoll({ ...roll, firstPick: e.target.value as Side })}
               >
-                <option value="A">A · {m.participants.A.name}</option>
-                <option value="B">B · {m.participants.B.name}</option>
+                <option value="A">
+                  {tr('A ·')} {m.participants.A.name}
+                </option>
+                <option value="B">
+                  {tr('B ·')} {m.participants.B.name}
+                </option>
               </select>
             </Field>
-            <Field label="First ban">
+            <Field label={tr('First ban')}>
               <select
                 value={roll.firstBan}
                 onChange={(e) => setRoll({ ...roll, firstBan: e.target.value as Side })}
               >
-                <option value="A">A · {m.participants.A.name}</option>
-                <option value="B">B · {m.participants.B.name}</option>
+                <option value="A">
+                  {tr('A ·')} {m.participants.A.name}
+                </option>
+                <option value="B">
+                  {tr('B ·')} {m.participants.B.name}
+                </option>
               </select>
             </Field>
-            <Field label="First protect">
+            <Field label={tr('First protect')}>
               <select
                 value={roll.firstProtect}
                 onChange={(e) => setRoll({ ...roll, firstProtect: e.target.value as Side })}
               >
-                <option value="A">A · {m.participants.A.name}</option>
-                <option value="B">B · {m.participants.B.name}</option>
+                <option value="A">
+                  {tr('A ·')} {m.participants.A.name}
+                </option>
+                <option value="B">
+                  {tr('B ·')} {m.participants.B.name}
+                </option>
               </select>
             </Field>
             <SaveButton busy={busy} disabled={stale(roll.baseVersion)}>
-              Save roll
+              {tr('Save roll')}
             </SaveButton>
           </form>
         )}
@@ -1148,7 +1201,7 @@ export function RefereePanel({
         onOpenChange={(open) => {
           if (!open) setDecision(null);
         }}
-        title={decision ? decisionLabels[decision.kind] : 'Review match'}
+        title={decision ? tr(decisionLabels[decision.kind]) : tr('Review match')}
       >
         <form
           className="space-y-5"
@@ -1168,35 +1221,40 @@ export function RefereePanel({
                 });
                 setDecision(null);
                 await reload();
-              }, 'Match updated.');
+              }, tr('Match updated.'));
           }}
         >
           <p>
             {m.participants.A.name} {m.scoreA} : {m.scoreB} {m.participants.B.name}
           </p>
           {decision?.kind === 'forfeit' && (
-            <Field label="Winning team">
+            <Field label={tr('Winning team')}>
               <select
                 value={decision.winnerSide}
                 onChange={(e) => setDecision({ ...decision, winnerSide: e.target.value as Side })}
               >
-                <option value="A">A · {m.participants.A.name}</option>
-                <option value="B">B · {m.participants.B.name}</option>
+                <option value="A">
+                  {tr('A ·')} {m.participants.A.name}
+                </option>
+                <option value="B">
+                  {tr('B ·')} {m.participants.B.name}
+                </option>
               </select>
             </Field>
           )}
           {!!progressionImpact?.affected.length && (
             <section className="space-y-3 text-sm">
-              <h3 className="font-semibold">Affected downstream fixtures</h3>
+              <h3 className="font-semibold">{tr('Affected downstream fixtures')}</h3>
               <ul>
                 {progressionImpact.affected.map((change, i) => (
-                  <li key={i}>{change.code || 'Pending bracket position'}</li>
+                  <li key={i}>{change.code || tr('Pending bracket position')}</li>
                 ))}
               </ul>
               {progressionImpact.blocked ? (
                 <p role="alert">
-                  Started or completed downstream matches require manual reconciliation. This change
-                  is blocked.
+                  {tr(
+                    'Started or completed downstream matches require manual reconciliation. This change is blocked.',
+                  )}
                 </p>
               ) : (
                 <label className="flex items-center gap-3">
@@ -1206,12 +1264,12 @@ export function RefereePanel({
                     onChange={(e) => setApproveProgression(e.target.checked)}
                     required
                   />
-                  Approve updating these unstarted fixtures
+                  {tr('Approve updating these unstarted fixtures')}
                 </label>
               )}
             </section>
           )}
-          <Field label="Reason">
+          <Field label={tr('Reason')}>
             <textarea
               required
               minLength={3}
@@ -1224,7 +1282,7 @@ export function RefereePanel({
             busy={busy}
             disabled={!decision || stale(decision.baseVersion) || progressionImpact?.blocked}
           >
-            {decision ? decisionLabels[decision.kind] : 'Confirm'}
+            {decision ? tr(decisionLabels[decision.kind]) : tr('Confirm')}
           </SaveButton>
         </form>
       </Modal>
@@ -1233,7 +1291,7 @@ export function RefereePanel({
         onOpenChange={(open) => {
           if (!open) setSubmit(null);
         }}
-        title="Review match result"
+        title={tr('Review match result')}
       >
         {submit && (
           <form
@@ -1249,7 +1307,7 @@ export function RefereePanel({
                 });
                 setSubmit(null);
                 await reload();
-              }, 'Result submitted for confirmation.');
+              }, tr('Result submitted for confirmation.'));
             }}
           >
             <p className="text-xl font-semibold">
@@ -1260,20 +1318,20 @@ export function RefereePanel({
                 const r = results.find((r) => r.actionId === a.id);
                 return (
                   <li key={a.id}>
-                    {a.slotName} · {a.kind} · Team {a.side}
+                    {a.slotName} · {tr(humanizeCode(a.kind))} {tr('· Team')} {a.side}
                     {r ? ` · ${r.scoreA} : ${r.scoreB}` : ''}
                   </li>
                 );
               })}
             </ul>
-            <Field label="Final match notes">
+            <Field label={tr('Final match notes')}>
               <textarea
                 value={submit.notes}
                 onChange={(e) => setSubmit({ ...submit, notes: e.target.value })}
               />
             </Field>
             <SaveButton busy={busy} disabled={stale(submit.baseVersion)}>
-              Submit result
+              {tr('Submit result')}
             </SaveButton>
           </form>
         )}
@@ -1283,7 +1341,7 @@ export function RefereePanel({
         onOpenChange={(open) => {
           if (!open) setLobby(null);
         }}
-        title="Multiplayer lobby"
+        title={tr('Multiplayer lobby')}
       >
         {lobby && (
           <form
@@ -1300,10 +1358,10 @@ export function RefereePanel({
                 });
                 setLobby(null);
                 await reload();
-              }, 'Lobby saved.');
+              }, tr('Lobby saved.'));
             }}
           >
-            <Field label="osu! multiplayer URL">
+            <Field label={tr('osu! multiplayer URL')}>
               <input
                 type="url"
                 value={lobby.url}
@@ -1319,7 +1377,7 @@ export function RefereePanel({
                 }}
               />
             </Field>
-            <Field label="Multiplayer match ID">
+            <Field label={tr('Multiplayer match ID')}>
               <input
                 type="number"
                 min={1}
@@ -1336,7 +1394,7 @@ export function RefereePanel({
               />
             </Field>
             <SaveButton busy={busy} disabled={stale(lobby.baseVersion)}>
-              Save lobby
+              {tr('Save lobby')}
             </SaveButton>
           </form>
         )}
@@ -1346,7 +1404,7 @@ export function RefereePanel({
         onOpenChange={(open) => {
           if (!open) setIncident(null);
         }}
-        title="Record match incident"
+        title={tr('Record match incident')}
       >
         {incident && (
           <form
@@ -1364,10 +1422,10 @@ export function RefereePanel({
                 });
                 setIncident(null);
                 await reload();
-              }, 'Incident recorded.');
+              }, tr('Incident recorded.'));
             }}
           >
-            <Field label="Incident type">
+            <Field label={tr('Incident type')}>
               <select
                 value={incident.kind}
                 onChange={(e) =>
@@ -1375,21 +1433,27 @@ export function RefereePanel({
                 }
               >
                 {['TIMEOUT', 'DISCONNECT', 'DELAY', 'WARMUP'].map((type) => (
-                  <option key={type}>{type}</option>
+                  <option key={type} value={type}>
+                    {tr(humanizeCode(type))}
+                  </option>
                 ))}
               </select>
             </Field>
-            <Field label="Affected team">
+            <Field label={tr('Affected team')}>
               <select
                 value={incident.side}
                 onChange={(e) => setIncident({ ...incident, side: e.target.value as Side | '' })}
               >
-                <option value="">Both / not applicable</option>
-                <option value="A">A · {m.participants.A.name}</option>
-                <option value="B">B · {m.participants.B.name}</option>
+                <option value="">{tr('Both / not applicable')}</option>
+                <option value="A">
+                  {tr('A ·')} {m.participants.A.name}
+                </option>
+                <option value="B">
+                  {tr('B ·')} {m.participants.B.name}
+                </option>
               </select>
             </Field>
-            <Field label="Incident notes">
+            <Field label={tr('Incident notes')}>
               <textarea
                 required
                 minLength={3}
@@ -1398,7 +1462,7 @@ export function RefereePanel({
               />
             </Field>
             <SaveButton busy={busy} disabled={stale(incident.baseVersion)}>
-              Save incident
+              {tr('Save incident')}
             </SaveButton>
           </form>
         )}
@@ -1408,7 +1472,7 @@ export function RefereePanel({
         onOpenChange={(open) => {
           if (!open) setRevision(null);
         }}
-        title="Historical record"
+        title={tr('Historical record')}
         wide
       >
         <pre className="max-w-full overflow-auto whitespace-pre-wrap break-words text-xs">

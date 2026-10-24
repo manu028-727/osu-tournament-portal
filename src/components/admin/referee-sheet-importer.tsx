@@ -1,4 +1,7 @@
 'use client';
+import { Feedback, useT } from '@/components/locale';
+import { humanizeCode } from '@/lib/i18n';
+
 import { useState } from 'react';
 import { Upload, Check, RefreshCw, Plus } from 'lucide-react';
 import type { RefereeRecord } from '@/lib/referee-workbook';
@@ -35,6 +38,7 @@ type Preview = {
   teams: { id: string; name: string }[];
 };
 export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<unknown> }) {
+  const tr = useT();
   const scope = useTournamentScope();
   const [destinations, setDestinations] = useState<Destination[]>([]),
     [destination, setDestination] = useState(scope.slug),
@@ -91,10 +95,10 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
         }}
       >
         <Upload size={16} />
-        Import Match History
+        {tr('Import Match History')}
       </Button>
       <Modal
-        title="Import match history"
+        title={tr('Import match history')}
         wide
         open={open}
         onOpenChange={(value) => {
@@ -102,7 +106,7 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
         }}
       >
         <div className="space-y-4">
-          <Field label="Destination tournament">
+          <Field label={tr('Destination tournament')}>
             <select
               value={destination}
               disabled={busy}
@@ -115,7 +119,7 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
               }}
             >
               {!destinations.length && (
-                <option value={destination}>{scope.slug || 'Select tournament'}</option>
+                <option value={destination}>{scope.slug || tr('Select tournament')}</option>
               )}
               {destinations.map((d) => (
                 <option key={d.id} value={d.slug}>
@@ -124,7 +128,7 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
               ))}
             </select>
           </Field>
-          <Field label="Referee XLSX workbook">
+          <Field label={tr('Referee XLSX workbook')}>
             <input
               key={destination}
               type="file"
@@ -141,7 +145,7 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                     body,
                   });
                   setWorkbook(p);
-                }, 'Workbook preview ready. No match records have been changed.');
+                }, tr('Workbook preview ready. No match records have been changed.'));
               }}
             />
           </Field>
@@ -149,7 +153,7 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
             <>
               <div className="flex flex-wrap justify-between gap-3">
                 <p className="text-sm">
-                  {preview.filename} · {preview.records.length} match worksheets
+                  {preview.filename} · {preview.records.length} {tr('match worksheets')}
                 </p>
                 <Button
                   size="sm"
@@ -158,12 +162,12 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                   onClick={() =>
                     void run(
                       async () => setPreview(await api<Preview>(endpoint(`?id=${preview.id}`))),
-                      'Preview refreshed.',
+                      tr('Preview refreshed.'),
                     )
                   }
                 >
                   <RefreshCw size={14} />
-                  Refresh preview
+                  {tr('Refresh preview')}
                 </Button>
               </div>
               <p className="font-semibold">{preview.tournament.name}</p>
@@ -171,10 +175,10 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                 <table className="admin-table">
                   <thead>
                     <tr>
-                      <th>Select</th>
-                      <th>Match / stage</th>
-                      <th>Actions</th>
-                      <th>Review</th>
+                      <th>{tr('Select')}</th>
+                      <th>{tr('Match / stage')}</th>
+                      <th>{tr('Actions')}</th>
+                      <th>{tr('Review')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -183,7 +187,7 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                         <td>
                           <input
                             type="checkbox"
-                            aria-label={`Select match ${r.record.sheet}`}
+                            aria-label={tr('Select match {0}', r.record.sheet)}
                             disabled={busy || !!r.errors.length}
                             checked={included.includes(r.record.sheet)}
                             onChange={(e) =>
@@ -209,28 +213,28 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                             #{r.record.code} · {r.record.stage}
                           </button>
                           <p className="text-xs text-muted">
-                            {r.record.red} vs {r.record.blue}
+                            {r.record.red} {tr('vs')} {r.record.blue}
                           </p>
                           <p className="text-xs text-muted">
-                            {r.stageMapping.stageName || 'Unresolved stage'}
+                            {r.stageMapping.stageName || tr('Unresolved stage')}
                             {r.stageMapping.bracket ? ` / ${r.stageMapping.bracket}` : ''}
                           </p>
                         </td>
                         <td>
                           {r.record.actions.length} /{' '}
-                          {r.record.actions.filter((a) => a.winner).length} results
+                          {r.record.actions.filter((a) => a.winner).length} {tr('results')}
                         </td>
                         <td className="text-xs">
-                          {(r.alreadyImported ? 'Already imported' : '') ||
+                          {(r.alreadyImported ? tr('Already imported') : '') ||
                             r.errors.join(' ') ||
                             r.conflicts.join(' ') ||
                             (r.target
-                              ? 'Ready: add missing history'
-                              : 'Ready: create historical match')}
-                          {r.record.forfeitSide ? ' · Forfeit' : ''}
+                              ? tr('Ready: add missing history')
+                              : tr('Ready: create historical match'))}
+                          {r.record.forfeitSide ? tr(' · Forfeit') : ''}
                           {r.warnings.map((warning) => (
                             <p key={warning} className="mt-1 text-muted">
-                              {warning}
+                              <Feedback message={warning} />
                             </p>
                           ))}
                         </td>
@@ -247,7 +251,7 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                     disabled={busy}
                     onChange={(e) => setConfirmResults(e.target.checked)}
                   />
-                  Confirm completed historical results
+                  {tr('Confirm completed historical results')}
                 </label>
               )}
               <label className="flex items-start gap-3">
@@ -257,10 +261,11 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                   disabled={busy}
                   onChange={(e) => setReplaceBatch(e.target.checked)}
                 />
-                Replace conflicting data in selected matches; retain previous history in the audit
-                trail
+                {tr(
+                  'Replace conflicting data in selected matches; retain previous history in the audit trail',
+                )}
               </label>
-              <Field label="Batch import reason">
+              <Field label={tr('Batch import reason')}>
                 <input
                   value={reason}
                   disabled={busy}
@@ -283,7 +288,17 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                 onClick={() => {
                   if (
                     !window.confirm(
-                      `Import ${included.length} selected histories into ${preview.tournament.name}${confirmResults ? ' and confirm their finished results' : ''}?${replaceBatch ? ' Conflicting selected records will be replaced; previous history remains audited.' : ''}`,
+                      tr(
+                        'Import {0} selected histories into {1}{2}?{3}',
+                        included.length,
+                        preview.tournament.name,
+                        confirmResults ? tr(' and confirm their finished results') : '',
+                        replaceBatch
+                          ? tr(
+                              ' Conflicting selected records will be replaced; previous history remains audited.',
+                            )
+                          : '',
+                      ),
                     )
                   )
                     return;
@@ -312,18 +327,23 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                     setReport(result);
                     setPreview(await api<Preview>(endpoint(`?id=${preview.id}`)));
                     await onChanged();
-                  }, 'Match history import finished. Review the report.');
+                  }, tr('Match history import finished. Review the report.'));
                 }}
               >
                 <Upload size={16} />
-                Import selected histories ({included.length})
+                {tr('Import selected histories (')}
+                {included.length})
               </Button>
               {report && (
-                <section aria-label="Match history import report" className="border-y py-3 text-sm">
+                <section
+                  aria-label={tr('Match history import report')}
+                  className="border-y py-3 text-sm"
+                >
                   <p>
-                    {report.importedMatches} matches imported · {report.actionsImported} actions ·{' '}
-                    {report.resultsImported} map results · {report.alreadyImported} already imported
-                    · {report.skipped.length} skipped · {report.failedMatches} failed
+                    {report.importedMatches} {tr('matches imported ·')} {report.actionsImported}{' '}
+                    {tr('actions ·')} {report.resultsImported} {tr('map results ·')}{' '}
+                    {report.alreadyImported} {tr('already imported ·')} {report.skipped.length}{' '}
+                    {tr('skipped ·')} {report.failedMatches} {tr('failed')}
                   </p>
                   <ul className="mt-2 space-y-1">
                     {report.results.map((r) => (
@@ -335,7 +355,7 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                             className="ml-2 text-primary"
                             href={`/t/${report.tournament.slug}/admin/referee/${r.id}`}
                           >
-                            Open history
+                            {tr('Open history')}
                           </a>
                         )}
                       </li>
@@ -343,12 +363,13 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                   </ul>
                   {report.skipped.map((r) => (
                     <p key={r.sheet}>
-                      #{r.sheet}: skipped - {r.reason}
+                      #{r.sheet}
+                      {tr(': skipped -')} {r.reason}
                     </p>
                   ))}
                 </section>
               )}
-              <Field label="Worksheet">
+              <Field label={tr('Worksheet')}>
                 <select
                   value={selected}
                   onChange={(e) => {
@@ -362,8 +383,8 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                   {preview.records.map((r) => (
                     <option key={r.record.sheet} value={r.record.sheet}>
                       {r.record.sheet} - {r.record.stage} -{' '}
-                      {r.target ? 'Existing match' : 'Not found'}
-                      {r.record.issues.length ? ' - Review required' : ''}
+                      {r.target ? tr('Existing match') : tr('Not found')}
+                      {r.record.issues.length ? tr(' - Review required') : ''}
                     </option>
                   ))}
                 </select>
@@ -371,20 +392,24 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
               {item && (
                 <>
                   <p className="font-semibold">
-                    {item.record.red} vs {item.record.blue} · {item.record.scoreA} :{' '}
+                    {item.record.red} {tr('vs')} {item.record.blue} · {item.record.scoreA} :{' '}
                     {item.record.scoreB}
                   </p>
-                  <p className="break-all text-sm">{item.record.mp || 'No multiplayer link'}</p>
+                  <p className="break-all text-sm">{item.record.mp || tr('No multiplayer link')}</p>
                   <p className="text-sm text-muted">
-                    Stage: {item.record.stage} to {item.stageMapping.stageName || 'manual review'}
+                    {tr('Stage:')} {item.record.stage} {tr('to')}{' '}
+                    {item.stageMapping.stageName || tr('manual review')}
                     {item.stageMapping.bracket ? ` / ${item.stageMapping.bracket}` : ''}
-                    {' · '}Scoring: {item.scoring.source || 'Not supplied'} / Tournament:{' '}
-                    {item.scoring.target}
+                    {' · '}
+                    {tr('Scoring:')} {item.scoring.source || tr('Not supplied')} /{' '}
+                    {tr('Tournament:')} {item.scoring.target}
                   </p>
                   {!!item.warnings.length && (
                     <ul className="list-inside list-disc text-sm text-muted">
                       {item.warnings.map((warning) => (
-                        <li key={warning}>{warning}</li>
+                        <li key={warning}>
+                          <Feedback message={warning} />
+                        </li>
                       ))}
                     </ul>
                   )}
@@ -406,33 +431,35 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                     <table className="admin-table">
                       <thead>
                         <tr>
-                          <th>Source row</th>
-                          <th>Team</th>
-                          <th>Action</th>
-                          <th>Map</th>
-                          <th>Winner</th>
-                          <th>Website action / resolution</th>
+                          <th>{tr('Source row')}</th>
+                          <th>{tr('Team')}</th>
+                          <th>{tr('Action')}</th>
+                          <th>{tr('Map')}</th>
+                          <th>{tr('Winner')}</th>
+                          <th>{tr('Website action / resolution')}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {item.record.actions.map((a, index) => (
                           <tr key={a.row}>
                             <td>{a.row}</td>
-                            <td>{a.side === 'A' ? 'Red' : 'Blue'}</td>
-                            <td>{a.kind}</td>
+                            <td>{a.side === 'A' ? tr('Red') : tr('Blue')}</td>
+                            <td>{tr(humanizeCode(a.kind))}</td>
                             <td>{a.slotName}</td>
-                            <td>{a.winner ? (a.winner === 'A' ? 'Red' : 'Blue') : '-'}</td>
+                            <td>{a.winner ? (a.winner === 'A' ? tr('Red') : tr('Blue')) : '-'}</td>
                             <td>
                               {item.websiteActions[index] && (
                                 <>
                                   <p className="text-xs text-muted">
-                                    {item.websiteActions[index].side === 'A' ? 'Red' : 'Blue'}{' '}
+                                    {item.websiteActions[index].side === 'A'
+                                      ? tr('Red')
+                                      : tr('Blue')}{' '}
                                     {item.websiteActions[index].kind}{' '}
-                                    {item.websiteActions[index].slotName} · Winner{' '}
+                                    {item.websiteActions[index].slotName} {tr('· Winner')}{' '}
                                     {item.websiteActions[index].winner || '-'}
                                   </p>
                                   <select
-                                    aria-label={`Resolve source row ${a.row}`}
+                                    aria-label={tr('Resolve source row {0}', a.row)}
                                     value={resolutions[a.row] || 'SOURCE'}
                                     onChange={(e) =>
                                       setResolutions({
@@ -441,8 +468,8 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                                       })
                                     }
                                   >
-                                    <option value="SOURCE">Use source action</option>
-                                    <option value="WEBSITE">Keep website action</option>
+                                    <option value="SOURCE">{tr('Use source action')}</option>
+                                    <option value="WEBSITE">{tr('Keep website action')}</option>
                                   </select>
                                 </>
                               )}
@@ -453,7 +480,9 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                     </table>
                   </div>
                   <details>
-                    <summary className="cursor-pointer text-sm">Source Discord output</summary>
+                    <summary className="cursor-pointer text-sm">
+                      {tr('Source Discord output')}
+                    </summary>
                     <pre className="mt-2 overflow-auto whitespace-pre-wrap break-words text-xs">
                       {item.record.discord}
                     </pre>
@@ -467,13 +496,13 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                         onClick={() => setCreate(!create)}
                       >
                         <Plus size={14} />
-                        Create historical match
+                        {tr('Create historical match')}
                       </Button>
                       {create && (
                         <div className="grid-fields">
-                          <Field label="Historical stage">
+                          <Field label={tr('Historical stage')}>
                             <select value={stage} onChange={(e) => setStage(e.target.value)}>
-                              <option value="">Select existing stage</option>
+                              <option value="">{tr('Select existing stage')}</option>
                               {preview.stages.map((s) => (
                                 <option key={s.id} value={s.id}>
                                   {s.name}
@@ -487,9 +516,9 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                               ['Blue', blue, setBlue],
                             ] as const
                           ).map(([label, value, set]) => (
-                            <Field key={label} label={`Historical Team ${label}`}>
+                            <Field key={label} label={tr('Historical Team {0}', label)}>
                               <select value={value} onChange={(e) => set(e.target.value)}>
-                                <option value="">Select approved team</option>
+                                <option value="">{tr('Select approved team')}</option>
                                 {preview.teams.map((t) => (
                                   <option key={t.id} value={t.id}>
                                     {t.name}
@@ -509,12 +538,12 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                         checked={replace}
                         onChange={(e) => setReplace(e.target.checked)}
                       />
-                      Replace the reviewed match history while preserving frozen rules. Existing
-                      actions/results are retained as voided records; an updated result needs
-                      organizer confirmation.
+                      {tr(
+                        'Replace the reviewed match history while preserving frozen rules. Existing actions/results are retained as voided records; an updated result needs organizer confirmation.',
+                      )}
                     </label>
                   )}
-                  <Field label="Import reason">
+                  <Field label={tr('Import reason')}>
                     <input
                       required
                       minLength={3}
@@ -536,7 +565,10 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                       onClick={() => {
                         if (
                           !window.confirm(
-                            `Accept worksheet ${item.record.sheet} into this tournament? Existing records will not be silently merged.`,
+                            tr(
+                              'Accept worksheet {0} into this tournament? Existing records will not be silently merged.',
+                              item.record.sheet,
+                            ),
                           )
                         )
                           return;
@@ -564,11 +596,11 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                           setPreview(await api<Preview>(endpoint(`?id=${preview.id}`)));
                           setReplace(false);
                           await onChanged();
-                        }, 'Referee record accepted. Review and confirm the result in its match.');
+                        }, tr('Referee record accepted. Review and confirm the result in its match.'));
                       }}
                     >
                       <Check size={16} />
-                      Import selected match
+                      {tr('Import selected match')}
                     </Button>
                     <Button
                       variant="ghost"
@@ -580,7 +612,7 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                         setCreate(false);
                       }}
                     >
-                      Skip
+                      {tr('Skip')}
                     </Button>
                   </div>
                 </>

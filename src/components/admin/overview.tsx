@@ -1,4 +1,7 @@
 'use client';
+import { localeTag } from '@/lib/i18n';
+import { useLocale, useT } from '@/components/locale';
+
 import Link from '@/components/tournament-scope';
 import { ArrowRight, Pencil, Send } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -45,6 +48,8 @@ type Overview = {
   }[];
 };
 export function Overview({ actor }: { actor: Actor }) {
+  const language = useLocale();
+  const tr = useT();
   const { data, error, reload } = useResource<Overview>('overview');
   const { busy, run } = useTask();
   if (!data) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
@@ -152,9 +157,9 @@ export function Overview({ actor }: { actor: Actor }) {
       <div className={styles.overviewTop}>
         <section>
           <div className={styles.overviewHeading}>
-            <h1>Overview</h1>
+            <h1>{tr('Overview')}</h1>
             <span className={styles.publication} role="status">
-              {t.published ? 'Published' : 'Unpublished'}
+              {t.published ? tr('Published') : tr('Unpublished')}
             </span>
           </div>
           <div className={styles.actions}>
@@ -162,18 +167,20 @@ export function Overview({ actor }: { actor: Actor }) {
               <Button asChild>
                 <Link href="/admin/website">
                   <Pencil size={16} />
-                  Edit homepage
+                  {tr('Edit homepage')}
                 </Link>
               </Button>
             )}
             {can(actor, 'tournament.publish') && (
               <ConfirmButton
                 variant="outline"
-                title={t.published ? 'Unpublish tournament?' : 'Publish tournament?'}
+                title={t.published ? tr('Unpublish tournament?') : tr('Publish tournament?')}
                 description={
                   t.published
-                    ? 'The public website will become unavailable. Saved content is preserved.'
-                    : 'The tournament will become visible to visitors. Only published page revisions will be shown.'
+                    ? tr('The public website will become unavailable. Saved content is preserved.')
+                    : tr(
+                        'The tournament will become visible to visitors. Only published page revisions will be shown.',
+                      )
                 }
                 disabled={busy}
                 onConfirm={() =>
@@ -191,24 +198,24 @@ export function Overview({ actor }: { actor: Actor }) {
                       });
                       await reload();
                     },
-                    t.published ? 'Tournament unpublished.' : 'Tournament published.',
+                    t.published ? tr('Tournament unpublished.') : tr('Tournament published.'),
                   )
                 }
               >
                 <Send size={15} />
-                {t.published ? 'Unpublish' : 'Publish'}
+                {t.published ? tr('Unpublish') : tr('Publish')}
               </ConfirmButton>
             )}
           </div>
         </section>
         {t.settings.importantDates.length > 0 && (
           <section className={styles.dates}>
-            <h2>Key dates</h2>
+            <h2>{tr('Key dates')}</h2>
             <ul>
               {t.settings.importantDates.slice(0, 2).map((date, i) => (
                 <li key={i}>
                   {date.label}
-                  <time dateTime={date.date}>{formatDate(date.date, t.timezone)}</time>
+                  <time dateTime={date.date}>{formatDate(date.date, t.timezone, language)}</time>
                 </li>
               ))}
             </ul>
@@ -217,15 +224,17 @@ export function Overview({ actor }: { actor: Actor }) {
       </div>
       {data.setup.pendingPages > 0 && (can(actor, 'homepage.edit') || can(actor, 'rules.edit')) && (
         <p className="mt-6 text-sm text-muted">
-          Saved page drafts have unpublished changes.{' '}
+          {tr('Saved page drafts have unpublished changes.')}{' '}
           <Link className="text-primary" href="/admin/website">
-            Review website
+            {tr('Review website')}
           </Link>
         </p>
       )}
       {!!tasks.length && (
         <details open={!t.published} className="mt-6 border-y py-3">
-          <summary className="min-h-11 cursor-pointer py-2 font-semibold">Getting started</summary>
+          <summary className="min-h-11 cursor-pointer py-2 font-semibold">
+            {tr('Getting started')}
+          </summary>
           <ul className="divide-y">
             {tasks.map((task) => (
               <li key={task.href}>
@@ -233,7 +242,7 @@ export function Overview({ actor }: { actor: Actor }) {
                   className="flex min-h-11 items-center justify-between gap-3 py-3 text-sm"
                   href={task.href}
                 >
-                  {task.label}
+                  {tr(task.label)}
                   <ArrowRight size={16} aria-hidden="true" />
                 </Link>
               </li>
@@ -242,10 +251,10 @@ export function Overview({ actor }: { actor: Actor }) {
         </details>
       )}
       {destinations.length > 0 && (
-        <nav className={styles.destinations} aria-label="Tournament management">
+        <nav className={styles.destinations} aria-label={tr('Tournament management')}>
           {destinations.map((destination) => (
             <Link key={destination.href} href={destination.href} className={styles.destination}>
-              <strong>{destination.title}</strong>
+              <strong>{tr(destination.title)}</strong>
               {destination.detail && <small>{destination.detail}</small>}
               <ArrowRight size={17} aria-hidden="true" />
             </Link>
@@ -256,28 +265,30 @@ export function Overview({ actor }: { actor: Actor }) {
   );
 }
 export function AuditLogs() {
+  const language = useLocale();
+  const tr = useT();
   const { data, error, reload } = useResource<Audit[]>('audit');
   if (!data) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
   return (
     <>
-      <SectionTitle title="Audit logs" />
+      <SectionTitle title={tr('Audit logs')} />
       <div className="card overflow-x-auto">
         <table className="admin-table">
           <thead>
             <tr>
-              <th>Time</th>
-              <th>Actor</th>
-              <th>Action</th>
-              <th>Resource</th>
+              <th>{tr('Time')}</th>
+              <th>{tr('Actor')}</th>
+              <th>{tr('Action')}</th>
+              <th>{tr('Resource')}</th>
             </tr>
           </thead>
           <tbody>
             {data.map((a) => (
               <tr key={a.id}>
                 <td className="whitespace-nowrap text-xs text-muted">
-                  {new Date(a.createdAt).toLocaleString()}
+                  {new Date(a.createdAt).toLocaleString(localeTag(language))}
                 </td>
-                <td>{a.actor?.username || 'System'}</td>
+                <td>{a.actor?.username || tr('System')}</td>
                 <td className="font-mono text-xs text-primary">{a.action}</td>
                 <td className="max-w-48 truncate text-xs text-muted" title={a.entityId}>
                   {a.entityType} / {a.entityId}
@@ -288,15 +299,16 @@ export function AuditLogs() {
         </table>
         {!data.length && (
           <p className="p-12 text-center text-sm text-muted">
-            No administrative actions recorded yet.
+            {tr('No administrative actions recorded yet.')}
           </p>
         )}
       </div>
-      <p className="mt-4 text-xs text-muted">Showing the 150 most recent actions.</p>
+      <p className="mt-4 text-xs text-muted">{tr('Showing the 150 most recent actions.')}</p>
     </>
   );
 }
 export function SheetData() {
+  const tr = useT();
   const { data, error, reload } = useResource<{
     tournament: { name: string };
     mappools: { name: string; slug: string }[];
@@ -304,15 +316,15 @@ export function SheetData() {
   if (!data) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
   return (
     <>
-      <SectionTitle title="Sheet data" />
+      <SectionTitle title={tr('Sheet data')} />
       <div className="card p-6">
         <p className="mb-6 text-lg font-semibold">{data.tournament.name}</p>
         <div className="overflow-x-auto">
           <table className="admin-table">
             <thead>
               <tr>
-                <th>Stage</th>
-                <th>Published URL</th>
+                <th>{tr('Stage')}</th>
+                <th>{tr('Published URL')}</th>
               </tr>
             </thead>
             <tbody>
@@ -330,7 +342,7 @@ export function SheetData() {
           </table>
         </div>
         {!data.mappools.length && (
-          <p className="text-sm text-muted">No mappools have been published yet.</p>
+          <p className="text-sm text-muted">{tr('No mappools have been published yet.')}</p>
         )}
       </div>
     </>

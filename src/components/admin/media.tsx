@@ -1,4 +1,6 @@
 'use client';
+import { useT } from '@/components/locale';
+
 import { useRef, useState } from 'react';
 import { Upload, ImagePlus, Copy, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -23,6 +25,7 @@ type Asset = {
   createdAt: string;
 };
 export function MediaLibrary({ onSelect }: { onSelect?: (url: string) => void }) {
+  const tr = useT();
   const [page, setPage] = useState(1);
   const {
     data: result,
@@ -45,11 +48,11 @@ export function MediaLibrary({ onSelect }: { onSelect?: (url: string) => void })
         await api('/api/media', { method: 'POST', body: form });
       }
       await reload();
-    }, 'Images uploaded and optimized.');
+    }, tr('Images uploaded and optimized.'));
   };
   return (
     <>
-      {!onSelect && <SectionTitle title="Media library" />}
+      {!onSelect && <SectionTitle title={tr('Media library')} />}
       <input
         ref={input}
         type="file"
@@ -79,10 +82,10 @@ export function MediaLibrary({ onSelect }: { onSelect?: (url: string) => void })
       >
         <Upload size={24} className="text-primary" />
         <span className="text-sm font-medium">
-          {busy ? 'Uploading images…' : 'Drop your images here, or click to browse'}
+          {busy ? tr('Uploading images…') : tr('Drop your images here, or click to browse')}
         </span>
         <span className="w-full text-xs text-muted">
-          PNG, JPEG, WebP or AVIF · Up to 4 MB each · Optimized to WebP
+          {tr('PNG, JPEG, WebP or AVIF · Up to 4 MB each · Optimized to WebP')}
         </span>
       </button>
       {!data ? (
@@ -95,7 +98,7 @@ export function MediaLibrary({ onSelect }: { onSelect?: (url: string) => void })
                 className="block aspect-video w-full overflow-hidden bg-black/20"
                 disabled={!onSelect}
                 onClick={() => onSelect?.(`/api/media/${a.id}`)}
-                aria-label={`Select ${a.name}`}
+                aria-label={tr('Select {0}', a.name)}
               >
                 <img src={`/api/media/${a.id}`} alt={a.name} className="size-full object-contain" />
               </button>
@@ -104,12 +107,12 @@ export function MediaLibrary({ onSelect }: { onSelect?: (url: string) => void })
                   {a.name}
                 </p>
                 <p className="mt-2 text-xs text-muted">
-                  {a.width} × {a.height} · {Math.round(a.size / 1024)} KB
+                  {a.width} {tr('×')} {a.height} · {Math.round(a.size / 1024)} {tr('KB')}
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {onSelect ? (
                     <Button size="sm" onClick={() => onSelect(`/api/media/${a.id}`)}>
-                      Use image
+                      {tr('Use image')}
                     </Button>
                   ) : (
                     <Button
@@ -123,18 +126,20 @@ export function MediaLibrary({ onSelect }: { onSelect?: (url: string) => void })
                       }
                     >
                       <Copy size={12} />
-                      URL
+                      {tr('URL')}
                     </Button>
                   )}
                   <ConfirmButton
-                    title="Delete this image?"
-                    description="Images used in content or revision history are protected from deletion."
+                    title={tr('Delete this image?')}
+                    description={tr(
+                      'Images used in content or revision history are protected from deletion.',
+                    )}
                     disabled={busy}
                     onConfirm={() =>
                       void run(async () => {
                         await api(`/api/media/${a.id}`, { method: 'DELETE' });
                         await reload();
-                      }, 'Image deleted.')
+                      }, tr('Image deleted.'))
                     }
                   >
                     <Trash2 size={12} />
@@ -146,10 +151,18 @@ export function MediaLibrary({ onSelect }: { onSelect?: (url: string) => void })
         </div>
       ) : (
         <div className="border-b py-6">
-          <p className="text-sm text-muted">No images uploaded.</p>
+          <p className="text-sm text-muted">{tr('No images uploaded.')}</p>
         </div>
       )}
-      {result && <ListPagination {...result} onPage={setPage} busy={loading || busy} />}
+      {result && (
+        <ListPagination
+          page={result.page}
+          pageSize={result.pageSize}
+          total={result.total}
+          onPage={setPage}
+          busy={loading || busy}
+        />
+      )}
     </>
   );
 }
@@ -164,6 +177,7 @@ export function MediaField({
   onChange: (url: string) => void;
   canUpload?: boolean;
 }) {
+  const tr = useT();
   const [open, setOpen] = useState(false);
   return (
     <div className="space-y-3">
@@ -172,14 +186,14 @@ export function MediaField({
           <input
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            placeholder="Image URL or /api/media/…"
+            placeholder={tr('Image URL or /api/media/…')}
           />
           {canUpload && (
             <Button
               type="button"
               variant="outline"
               onClick={() => setOpen(true)}
-              aria-label={`Choose ${label}`}
+              aria-label={tr('Choose {0}', label)}
             >
               <ImagePlus size={16} />
             </Button>
@@ -189,15 +203,15 @@ export function MediaField({
       {value && (
         <img
           src={value}
-          alt={`${label} preview`}
+          alt={tr('{0} preview', label)}
           className="h-28 max-w-full rounded-lg bg-black/20 object-contain"
         />
       )}
       <Modal
         open={open}
         onOpenChange={setOpen}
-        title="Choose an image"
-        description="Upload a replacement or reuse an image from your library."
+        title={tr('Choose an image')}
+        description={tr('Upload a replacement or reuse an image from your library.')}
         wide
       >
         {open && (

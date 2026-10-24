@@ -1,4 +1,7 @@
 'use client';
+import { localeTag } from '@/lib/i18n';
+import { useLocale, useT } from '@/components/locale';
+
 import { useState, useEffect, useRef } from 'react';
 import { Check, RefreshCw, X, Link2, Play } from 'lucide-react';
 import type { MatchView } from '@/lib/matches-types';
@@ -21,6 +24,8 @@ export function MultiplayerGames({
   reload: () => Promise<unknown>;
   post: (body: object, message: string) => Promise<unknown>;
 }) {
+  const language = useLocale();
+  const tr = useT();
   const { busy, run } = useTask(),
     [selected, setSelected] = useState<Record<string, string>>({});
   const [history, setHistory] = useState<History | null>(null),
@@ -45,16 +50,19 @@ export function MultiplayerGames({
   const games = history?.games || m.multiplayerGames || [];
   const pending = m.actions.find((a) => !a.voided && a.id === m.workflow.currentActionId);
   return (
-    <section aria-label="Multiplayer game history" className="space-y-3">
+    <section aria-label={tr('Multiplayer game history')} className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="font-semibold">Multiplayer games</h2>
+          <h2 className="font-semibold">{tr('Multiplayer games')}</h2>
           <p className="text-xs text-muted">
-            {history?.count ?? games.length} games ·{' '}
+            {history?.count ?? games.length} {tr('games ·')}{' '}
             {m.multiplayerSyncedAt
-              ? `Synced ${new Date(m.multiplayerSyncedAt).toLocaleString()}`
-              : 'Not synchronized'}
-            {m.multiplayerSync?.pending ? ' · History incomplete' : ''}
+              ? tr(
+                  'Synced {0}',
+                  new Date(m.multiplayerSyncedAt).toLocaleString(localeTag(language)),
+                )
+              : tr('Not synchronized')}
+            {m.multiplayerSync?.pending ? tr(' · History incomplete') : ''}
           </p>
         </div>
         {access.score && m.multiplayerId && (
@@ -69,15 +77,17 @@ export function MultiplayerGames({
                   body: JSON.stringify({ id: m.id }),
                 });
                 await reload();
-              }, 'Multiplayer games synchronized for review.')
+              }, tr('Multiplayer games synchronized for review.'))
             }
           >
             <RefreshCw size={16} />
-            Sync games
+            {tr('Sync games')}
           </Button>
         )}
       </div>
-      {!m.multiplayerId && <p className="text-sm text-muted">No multiplayer lobby connected.</p>}
+      {!m.multiplayerId && (
+        <p className="text-sm text-muted">{tr('No multiplayer lobby connected.')}</p>
+      )}
       {m.multiplayerError && (
         <p role="alert" className="text-sm text-amber-200">
           {m.multiplayerError}
@@ -113,35 +123,38 @@ export function MultiplayerGames({
             <div key={game.id} className="space-y-2 border-b py-3 text-sm">
               <div className="flex flex-wrap justify-between gap-2">
                 <strong>
-                  Game {game.gameId} · {game.slotName || 'Unmatched'} ·{' '}
-                  {evidence?.endTime ? 'Completed' : 'Incomplete'}
+                  {tr('Game')} {game.gameId} · {game.slotName || tr('Unmatched')} ·{' '}
+                  {evidence?.endTime ? tr('Completed') : tr('Incomplete')}
                 </strong>
                 <span>
                   {game.confirmedAt
-                    ? 'Confirmed'
+                    ? tr('Confirmed')
                     : game.ignoredAt
-                      ? 'Ignored'
+                      ? tr('Ignored')
                       : game.actionId
-                        ? 'Linked to official pick'
-                        : 'Unreviewed'}
+                        ? tr('Linked to official pick')
+                        : tr('Unreviewed')}
                 </span>
               </div>
               <p className="text-xs text-muted">
-                Beatmap {game.beatmapId} · {evidence?.scoringType} ·{' '}
-                {evidence?.mods.join(' ') || 'No mods'} ·{' '}
-                {evidence?.startTime ? new Date(evidence.startTime).toLocaleString() : ''}
+                {tr('Beatmap')} {game.beatmapId} · {evidence?.scoringType} ·{' '}
+                {evidence?.mods.join(' ') || tr('No mods')} ·{' '}
+                {evidence?.startTime
+                  ? new Date(evidence.startTime).toLocaleString(localeTag(language))
+                  : ''}
               </p>
               {proposal && (
                 <p>
-                  Red {proposal.scoreA.toLocaleString()} : {proposal.scoreB.toLocaleString()} Blue ·
-                  Suggested {proposal.winnerSide === 'A' ? 'Red' : 'Blue'} win
+                  {tr('Red')} {proposal.scoreA.toLocaleString(localeTag(language))} :{' '}
+                  {proposal.scoreB.toLocaleString(localeTag(language))} {tr('Blue · Suggested')}{' '}
+                  {proposal.winnerSide === 'A' ? tr('Red') : tr('Blue')} {tr('win')}
                 </p>
               )}
               {evidence?.issue && <p className="text-xs text-amber-200">{evidence.issue}</p>}
               {evidence && (
                 <details>
                   <summary className="cursor-pointer text-xs text-muted">
-                    Player scores and technical details
+                    {tr('Player scores and technical details')}
                   </summary>
                   <pre className="mt-2 overflow-auto whitespace-pre-wrap break-words text-xs">
                     {JSON.stringify(evidence, null, 2)}
@@ -158,7 +171,11 @@ export function MultiplayerGames({
                       onClick={() => {
                         if (
                           window.confirm(
-                            `Confirm ${game.slotName} as ${m.participants[m.workflow.side!].name}'s official pick?`,
+                            tr(
+                              "Confirm {0} as {1}'s official pick?",
+                              game.slotName,
+                              m.participants[m.workflow.side!].name,
+                            ),
                           )
                         )
                           void post(
@@ -175,7 +192,7 @@ export function MultiplayerGames({
                       }}
                     >
                       <Play size={14} />
-                      Use as {m.workflow.side === 'A' ? 'Red' : 'Blue'} pick
+                      {tr('Use as')} {m.workflow.side === 'A' ? tr('Red') : tr('Blue')} {tr('pick')}
                     </Button>
                   )}
                   {proposal &&
@@ -187,7 +204,11 @@ export function MultiplayerGames({
                         onClick={() => {
                           if (
                             window.confirm(
-                              `Confirm game ${game.gameId} as the result of ${game.slotName}?`,
+                              tr(
+                                'Confirm game {0} as the result of {1}?',
+                                game.gameId,
+                                game.slotName,
+                              ),
                             )
                           )
                             void post(
@@ -203,29 +224,29 @@ export function MultiplayerGames({
                         }}
                       >
                         <Check size={14} />
-                        Confirm result
+                        {tr('Confirm result')}
                       </Button>
                     )}
                   {!game.actionId && known.length > 0 && (
                     <>
                       <select
-                        aria-label={`Official pick for game ${game.gameId}`}
+                        aria-label={tr('Official pick for game {0}', game.gameId)}
                         className="max-w-52"
                         value={selected[game.id] || ''}
                         onChange={(e) => setSelected({ ...selected, [game.id]: e.target.value })}
                       >
-                        <option value="">Associate official pick</option>
+                        <option value="">{tr('Associate official pick')}</option>
                         {known.map((a) => (
                           <option key={a.id} value={a.id}>
-                            {a.sequence}. {a.side === 'A' ? 'Red' : 'Blue'} - {a.slotName}
+                            {a.sequence}. {a.side === 'A' ? tr('Red') : tr('Blue')} - {a.slotName}
                           </option>
                         ))}
                       </select>
                       <Button
                         size="icon"
                         variant="outline"
-                        title="Confirm game association"
-                        aria-label={`Associate game ${game.gameId}`}
+                        title={tr('Confirm game association')}
+                        aria-label={tr('Associate game {0}', game.gameId)}
                         disabled={!selected[game.id] || busy}
                         onClick={() =>
                           void post(
@@ -248,8 +269,8 @@ export function MultiplayerGames({
                   <Button
                     size="icon"
                     variant="ghost"
-                    title="Ignore game"
-                    aria-label={`Ignore game ${game.gameId}`}
+                    title={tr('Ignore game')}
+                    aria-label={tr('Ignore game {0}', game.gameId)}
                     onClick={() =>
                       void post(
                         {
@@ -290,11 +311,11 @@ export function MultiplayerGames({
                   ...new Map([...(old?.games || []), ...next.games].map((g) => [g.id, g])).values(),
                 ],
               }));
-            }, 'Older multiplayer games loaded.')
+            }, tr('Older multiplayer games loaded.'))
           }
         >
           <RefreshCw size={14} />
-          Load older games
+          {tr('Load older games')}
         </Button>
       )}
     </section>

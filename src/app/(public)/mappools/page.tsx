@@ -1,10 +1,15 @@
+import { getServerT } from '@/lib/server-locale';
 import Link from '@/components/tournament-scope';
 import { ArrowUpRight } from 'lucide-react';
 import { PageHeading, EmptyState } from '@/components/content';
 import { publicPools, getTournament } from '@/lib/queries';
 import { siteCopy } from '@/lib/copy';
-export const metadata = { title: 'Mappools' };
+export async function generateMetadata() {
+  const tr = await getServerT();
+  return { title: tr('Mappools') };
+}
 export default async function Mappools() {
+  const tr = await getServerT();
   const [stages, t] = await Promise.all([publicPools(), getTournament()]);
   const copy = siteCopy(t.settings?.copy);
   return (
@@ -39,7 +44,7 @@ export default async function Mappools() {
                   <p className="mt-1 line-clamp-2 text-sm text-muted">{s.description}</p>
                 )}
                 <p className="mt-1 text-sm text-muted">
-                  {s.mappool?.publishedRevision?.slots.length || 0} mappe
+                  {s.mappool?.publishedRevision?.slots.length || 0} {tr('mappe')}
                 </p>
               </div>
               <ArrowUpRight size={20} className="shrink-0 text-muted group-hover:text-primary" />
@@ -47,7 +52,7 @@ export default async function Mappools() {
           ))}
         </div>
       ) : (
-        <EmptyState title="Nessun mappool pubblicato" />
+        <EmptyState title={tr('Nessun mappool pubblicato')} />
       )}
     </div>
   );

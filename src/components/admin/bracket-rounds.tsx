@@ -1,4 +1,6 @@
 'use client';
+import { useT } from '@/components/locale';
+
 import { useState } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -15,6 +17,7 @@ export function BracketRoundTools({
   options: CompetitionOptions;
   save: (input: CompetitionAction) => Promise<unknown>;
 }) {
+  const tr = useT();
   const [open, setOpen] = useState(false),
     [selected, setSelected] = useState<string[]>([]),
     [stageId, setStageId] = useState('');
@@ -31,9 +34,9 @@ export function BracketRoundTools({
         }}
       >
         <SlidersHorizontal size={16} />
-        Round stages
+        {tr('Round stages')}
       </Button>
-      <Modal title="Assign round stages" open={open} onOpenChange={setOpen}>
+      <Modal title={tr('Assign round stages')} open={open} onOpenChange={setOpen}>
         <div className="space-y-4">
           <div className="max-h-72 overflow-auto divide-y">
             {bracket.rounds.map((round) => {
@@ -59,16 +62,17 @@ export function BracketRoundTools({
                     {round.name}
                     <span className="block text-xs text-muted">
                       {options.stages.find((stage) => stage.id === round.stageId)?.name} ·{' '}
-                      {matches.length} positions{locked ? ' · history protected' : ''}
+                      {matches.length} {tr('positions')}
+                      {locked ? tr(' · history protected') : ''}
                     </span>
                   </span>
                 </label>
               );
             })}
           </div>
-          <Field label={`Stage for ${selected.length} selected rounds`}>
+          <Field label={tr('Stage for {0} selected rounds', selected.length)}>
             <select value={stageId} onChange={(event) => setStageId(event.target.value)}>
-              <option value="">Keep current stages</option>
+              <option value="">{tr('Keep current stages')}</option>
               {options.stages.map((stage) => (
                 <option key={stage.id} value={stage.id}>
                   {stage.name}
@@ -78,7 +82,7 @@ export function BracketRoundTools({
           </Field>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setOpen(false)}>
-              Cancel
+              {tr('Cancel')}
             </Button>
             <Button
               disabled={busy || !selected.length || !stageId}
@@ -92,10 +96,10 @@ export function BracketRoundTools({
                     stageId,
                   });
                   setOpen(false);
-                }, 'Round stages updated.')
+                }, tr('Round stages updated.'))
               }
             >
-              Apply stage
+              {tr('Apply stage')}
             </Button>
           </div>
         </div>

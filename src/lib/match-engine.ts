@@ -287,7 +287,9 @@ export function aggregateScores(
     const scores = players.filter((p) => p.side === side);
     if (scores.length !== rules.teamSize)
       throw new AppError(
-        `Enter exactly ${rules.teamSize} player scores for Team ${side}, or use aggregate entry.`,
+        'Enter exactly {0} player scores for Team {1}, or use aggregate entry.',
+        400,
+        [rules.teamSize, side],
       );
     let hidden = 0,
       hardrock = 0;

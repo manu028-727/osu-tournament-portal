@@ -27,6 +27,9 @@ in `/admin/tournaments`, then choose **Open tournament**. Its editors live at
 show tournament editing controls. There are no default
 tournaments or fake player accounts.
 
+Use the EN/IT control beside appearance to choose English or Italian. Tournament
+content stays in the language its authors used.
+
 See [deployment and configuration](docs/ARCHITECTURE.md#deployment-and-configuration)
 for proxy configuration and troubleshooting.
 

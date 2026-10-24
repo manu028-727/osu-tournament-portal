@@ -1,3 +1,5 @@
+'use client';
+import { useLocale, useT } from '@/components/locale';
 import Link from '@/components/tournament-scope';
 import { ArrowUpRight } from 'lucide-react';
 import type { PageContent, TournamentView } from '@/lib/types';
@@ -36,6 +38,8 @@ export function TournamentProfileHeader({
   page?: PageContent | null;
   tournament: TournamentView;
 }) {
+  const language = useLocale();
+  const tr = useT();
   const identityBlock = page?.blocks.find((block) => block.visible && block.type === 'hero');
   const banner = identityBlock?.content.image || tournament.settings.banner;
   const statuses: Record<string, string> = {
@@ -46,12 +50,12 @@ export function TournamentProfileHeader({
   };
   const dates = tournament.settings.importantDates;
   return (
-    <header className={styles.profile} aria-label="Tournament profile">
+    <header className={styles.profile} aria-label={tr('Tournament profile')}>
       <div className={styles.banner} data-has-banner={!!banner}>
         {banner && (
           <img
             src={banner}
-            alt={`${tournament.name} banner`}
+            alt={tr('{0} banner', tournament.name)}
             width={1486}
             height={435}
             fetchPriority="high"
@@ -72,12 +76,14 @@ export function TournamentProfileHeader({
           <p className={styles.identityTitle}>{identityBlock?.content.title || tournament.name}</p>
           <div className={styles.metadata}>
             {statuses[tournament.status] && (
-              <span className={styles.status}>{statuses[tournament.status]}</span>
+              <span className={styles.status}>{tr(statuses[tournament.status])}</span>
             )}
             {dates.slice(0, 2).map((date, i) => (
               <span key={i}>
                 {date.label}
-                <time dateTime={date.date}>{formatDate(date.date, tournament.timezone)}</time>
+                <time dateTime={date.date}>
+                  {formatDate(date.date, tournament.timezone, language)}
+                </time>
               </span>
             ))}
           </div>
@@ -97,6 +103,7 @@ export function HomepageContent({
   tournament: TournamentView;
   showHeader?: boolean;
 }) {
+  const language = useLocale();
   const blocks = page.blocks.filter((block) => block.visible);
   const identityBlock = blocks.find((block) => block.type === 'hero');
   const copy = siteCopy(tournament.settings.copy);
@@ -151,7 +158,7 @@ export function HomepageContent({
                       <li key={i}>
                         {date.label}
                         <time dateTime={date.date}>
-                          {formatDate(date.date, tournament.timezone)}
+                          {formatDate(date.date, tournament.timezone, language)}
                         </time>
                       </li>
                     ))}

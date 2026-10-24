@@ -131,8 +131,9 @@ export async function allocateMatchNumber(
     throw new AppError('The tournament has exhausted its available match numbers.', 409);
   if (preferred !== undefined && preferred !== null && preferred <= sequence)
     throw new AppError(
-      `Match number ${preferred} is already allocated or reserved in this tournament. Resolve the number conflict before importing.`,
+      'Match number {0} is already allocated or reserved in this tournament. Resolve the number conflict before importing.',
       409,
+      [preferred],
     );
   await tx.tournament.update({
     where: { id: tournamentId },

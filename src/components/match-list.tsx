@@ -1,3 +1,5 @@
+'use client';
+import { useLocale, useT } from '@/components/locale';
 import Link from '@/components/tournament-scope';
 import { ArrowUpRight } from 'lucide-react';
 import { MatchStatusBadge } from './ui/badge';
@@ -5,6 +7,8 @@ import { matchTime, PUBLIC_MATCH_STATUS } from '@/lib/match-display';
 import type { PublicMatch } from '@/lib/public-matches';
 
 export function MatchList({ matches }: { matches: PublicMatch[] }) {
+  const language = useLocale();
+  const tr = useT();
   return (
     <div>
       <div className="md:hidden">
@@ -14,16 +18,24 @@ export function MatchList({ matches }: { matches: PublicMatch[] }) {
             href={`/matches/${m.matchNumber}`}
             className="block border-b py-4"
             data-match-status={m.status}
-            aria-label={`Apri incontro ${m.code}`}
+            aria-label={tr('Apri incontro {0}', m.code)}
           >
             <div className="mb-3 flex items-start justify-between gap-3">
               <p className="min-w-0 text-xs text-muted">
-                <span className="font-semibold text-primary">Match {m.matchNumber}</span> ·{' '}
-                {m.stage.name}
-                {m.code !== String(m.matchNumber) && <span className="ml-1">· Ref {m.code}</span>}
+                <span className="font-semibold text-primary">
+                  {tr('Match')} {m.matchNumber}
+                </span>{' '}
+                · {m.stage.name}
+                {m.code !== String(m.matchNumber) && (
+                  <span className="ml-1">
+                    {tr('· Ref')} {m.code}
+                  </span>
+                )}
                 <span className="mt-1 block">{m.bracket}</span>
               </p>
-              <MatchStatusBadge status={m.status}>{PUBLIC_MATCH_STATUS[m.status]}</MatchStatusBadge>
+              <MatchStatusBadge status={m.status}>
+                {tr(PUBLIC_MATCH_STATUS[m.status])}
+              </MatchStatusBadge>
             </div>
             <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2">
               {(['A', 'B'] as const).map((side) => (
@@ -37,7 +49,7 @@ export function MatchList({ matches }: { matches: PublicMatch[] }) {
                     {m.status === 'SCHEDULED'
                       ? '?'
                       : m.forfeitSide === side
-                        ? 'FF'
+                        ? tr('FF')
                         : side === 'A'
                           ? m.scoreA
                           : m.scoreB}
@@ -46,7 +58,7 @@ export function MatchList({ matches }: { matches: PublicMatch[] }) {
               ))}
             </div>
             <p className="mt-4 flex items-center justify-between gap-3 text-xs text-muted">
-              {matchTime(m.scheduledAt, m.timezone)}
+              {matchTime(m.scheduledAt, m.timezone, language)}
               <ArrowUpRight size={17} className="shrink-0 text-primary" />
             </p>
           </Link>
@@ -56,13 +68,13 @@ export function MatchList({ matches }: { matches: PublicMatch[] }) {
         <table className="admin-table">
           <thead>
             <tr>
-              <th>Incontro</th>
-              <th>Squadre</th>
-              <th>Risultato</th>
-              <th>Data</th>
-              <th>Stato</th>
+              <th>{tr('Incontro')}</th>
+              <th>{tr('Squadre')}</th>
+              <th>{tr('Risultato')}</th>
+              <th>{tr('Data')}</th>
+              <th>{tr('Stato')}</th>
               <th>
-                <span className="sr-only">Dettagli</span>
+                <span className="sr-only">{tr('Dettagli')}</span>
               </th>
             </tr>
           </thead>
@@ -71,9 +83,11 @@ export function MatchList({ matches }: { matches: PublicMatch[] }) {
               <tr key={m.id} data-match-status={m.status}>
                 <td className="min-w-32">
                   <Link className="font-semibold text-primary" href={`/matches/${m.matchNumber}`}>
-                    Match {m.matchNumber}
+                    {tr('Match')} {m.matchNumber}
                     {m.code !== String(m.matchNumber) && (
-                      <span className="ml-2 text-xs text-muted">Ref {m.code}</span>
+                      <span className="ml-2 text-xs text-muted">
+                        {tr('Ref')} {m.code}
+                      </span>
                     )}
                   </Link>
                   <p className="mt-1 text-xs text-muted">
@@ -86,23 +100,23 @@ export function MatchList({ matches }: { matches: PublicMatch[] }) {
                 </td>
                 <td className="whitespace-nowrap font-mono text-lg tabular-nums">
                   {m.status === 'SCHEDULED'
-                    ? 'vs'
-                    : `${m.forfeitSide === 'A' ? 'FF' : m.scoreA} : ${m.forfeitSide === 'B' ? 'FF' : m.scoreB}`}
+                    ? tr('vs')
+                    : `${m.forfeitSide === 'A' ? tr('FF') : m.scoreA} : ${m.forfeitSide === 'B' ? tr('FF') : m.scoreB}`}
                 </td>
                 <td className="min-w-40 text-sm text-muted">
-                  {matchTime(m.scheduledAt, m.timezone)}
+                  {matchTime(m.scheduledAt, m.timezone, language)}
                 </td>
                 <td>
                   <MatchStatusBadge status={m.status}>
-                    {PUBLIC_MATCH_STATUS[m.status]}
+                    {tr(PUBLIC_MATCH_STATUS[m.status])}
                   </MatchStatusBadge>
                 </td>
                 <td>
                   <Link
                     className="inline-flex size-10 items-center justify-center rounded-md hover:bg-[var(--surface-hover)]"
                     href={`/matches/${m.matchNumber}`}
-                    aria-label={`Apri incontro ${m.code}`}
-                    title="Dettagli incontro"
+                    aria-label={tr('Apri incontro {0}', m.code)}
+                    title={tr('Dettagli incontro')}
                   >
                     <ArrowUpRight size={20} />
                   </Link>

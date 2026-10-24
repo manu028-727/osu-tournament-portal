@@ -1,4 +1,6 @@
 'use client';
+import { useT } from '@/components/locale';
+
 import Link from '@/components/tournament-scope';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { DropdownMenu } from 'radix-ui';
@@ -16,6 +18,7 @@ import { AppearanceControl } from './appearance';
 
 type Profile = { username: string; avatarUrl: string; osuId: number; workspace: boolean };
 export function PublicNav({ user }: { user?: Profile }) {
+  const tr = useT();
   const pathname = usePathname();
   const search = useSearchParams().toString();
   const login = `/api/auth/login?returnTo=${encodeURIComponent(pathname + (search ? '?' + search : ''))}`;
@@ -24,15 +27,17 @@ export function PublicNav({ user }: { user?: Profile }) {
   return (
     <header
       className="public-navigation sticky top-0 z-40 border-b bg-background"
-      aria-label="Platform controls"
+      aria-label={tr('Platform controls')}
     >
       <div className="wrap flex min-h-16 items-center justify-between gap-3 py-2">
         <Link
           href="/tournaments"
-          className="flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm text-muted hover:bg-card"
+          aria-label={tr('Tournaments')}
+          title={tr('Tournaments')}
+          className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-2 text-sm text-muted hover:bg-card"
         >
           <ArrowLeft size={16} />
-          Tournaments
+          <span className="hidden min-[375px]:inline">{tr('Tournaments')}</span>
         </Link>
         <div className="flex shrink-0 items-center gap-2">
           <AppearanceControl />
@@ -42,8 +47,8 @@ export function PublicNav({ user }: { user?: Profile }) {
                 <Button
                   variant="ghost"
                   className="gap-2 px-2"
-                  aria-label={`${user.username} profile menu`}
-                  title="Profile menu"
+                  aria-label={tr('{0} profile menu', user.username)}
+                  title={tr('Profile menu')}
                 >
                   <img
                     src={user.avatarUrl}
@@ -73,29 +78,29 @@ export function PublicNav({ user }: { user?: Profile }) {
                       rel="noopener noreferrer"
                     >
                       <ExternalLink size={18} />
-                      Profilo osu!
+                      {tr('Profilo osu!')}
                     </a>
                   </DropdownMenu.Item>
                   {user.workspace && (
                     <DropdownMenu.Item asChild>
                       <Link className={item} href="/admin/tournaments">
                         <LayoutDashboard size={18} />
-                        Organizer Workspace
+                        {tr('Organizer Workspace')}
                       </Link>
                     </DropdownMenu.Item>
                   )}
                   <DropdownMenu.Separator className="my-1 border-t" />
                   <DropdownMenu.Item asChild onSelect={(event) => event.preventDefault()}>
-                    <LogoutButton className={`${item} w-full`}>Esci</LogoutButton>
+                    <LogoutButton className={`${item} w-full`}>{tr('Esci')}</LogoutButton>
                   </DropdownMenu.Item>
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
           ) : (
             <Button asChild variant="outline" size="sm">
-              <a href={login} aria-label="Accedi con osu!" title="Accedi con osu!">
+              <a href={login} aria-label={tr('Accedi con osu!')} title={tr('Accedi con osu!')}>
                 <LogIn size={17} />
-                <span className="hidden sm:inline">Accedi con osu!</span>
+                <span className="hidden sm:inline">{tr('Accedi con osu!')}</span>
                 <ArrowUpRight size={14} />
               </a>
             </Button>

@@ -1,17 +1,24 @@
+import { localeTag } from '@/lib/i18n';
+import { getLocale, getServerT } from '@/lib/server-locale';
 import { PageHeading, EmptyState } from '@/components/content';
 import { publicPage, getTournament } from '@/lib/queries';
 import { siteCopy } from '@/lib/copy';
 import { tableOfContents } from '@/lib/rich-text';
-export const metadata = { title: 'Regolamento' };
+export async function generateMetadata() {
+  const tr = await getServerT();
+  return { title: tr('Regolamento') };
+}
 export default async function Rules() {
+  const language = await getLocale();
+  const tr = await getServerT();
   const [page, t] = await Promise.all([publicPage('rules'), getTournament()]);
   const copy = siteCopy(t.settings?.copy);
   if (!page)
     return (
       <div className="wrap py-20">
         <EmptyState
-          title="Regolamento in preparazione"
-          description="Il regolamento ufficiale sara pubblicato dagli organizzatori."
+          title={tr('Regolamento in preparazione')}
+          description={tr('Il regolamento ufficiale sara pubblicato dagli organizzatori.')}
         />
       </div>
     );
@@ -36,22 +43,22 @@ export default async function Rules() {
       <div className="rules-layout grid items-start gap-8 lg:grid-cols-[240px_1fr]">
         <aside className="rules-contents border-l pl-4 lg:sticky lg:top-24">
           <div className="hidden lg:block">
-            <p className="eyebrow mb-3">IN QUESTA PAGINA</p>
-            <nav aria-label="Rules sections" className="space-y-1">
+            <p className="eyebrow mb-3">{tr('IN QUESTA PAGINA')}</p>
+            <nav aria-label={tr('Rules sections')} className="space-y-1">
               {contents}
             </nav>
           </div>
           <details className="lg:hidden">
             <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold">
-              In questa pagina
+              {tr('In questa pagina')}
             </summary>
-            <nav aria-label="Rules sections" className="space-y-1">
+            <nav aria-label={tr('Rules sections')} className="space-y-1">
               {contents}
             </nav>
           </details>
           <p className="mt-6 border-t pt-4 text-xs text-muted">
-            Aggiornato il{' '}
-            {page.createdAt.toLocaleDateString('it-IT', {
+            {tr('Aggiornato il')}{' '}
+            {page.createdAt.toLocaleDateString(localeTag(language), {
               day: 'numeric',
               month: 'long',
               year: 'numeric',

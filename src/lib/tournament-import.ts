@@ -441,7 +441,7 @@ export async function importTournament(
           });
           counts[table] = rows.length;
           if (rows.length !== archive.data[table].length)
-            throw new AppError(`Imported ${table} verification failed.`, 409);
+            throw new AppError('Imported {0} verification failed.', 409, [table]);
         }
         const report = {
           tournamentId,

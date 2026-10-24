@@ -1,4 +1,6 @@
 'use client';
+import { humanizeCode } from '@/lib/i18n';
+import { Feedback, useT } from '@/components/locale';
 
 import { useState } from 'react';
 import {
@@ -24,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { action, Field, LoadingState, Modal, usePolling, useResource, useTask } from './shared';
 
 export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor }) {
+  const tr = useT();
   const { data, error, reload } = useResource<QualifierStandingsData>(
     `qualifier-standings&stageId=${encodeURIComponent(stageId)}`,
   );
@@ -106,22 +109,24 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
     URL.revokeObjectURL(href);
   };
   return (
-    <section className="min-w-0 space-y-5" aria-label="Qualifier standings review">
+    <section className="min-w-0 space-y-5" aria-label={tr('Qualifier standings review')}>
       <header className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
         <div className="min-w-0">
-          <h2 className="text-xl font-semibold break-words">{data.stage.name} standings</h2>
+          <h2 className="text-xl font-semibold break-words">
+            {data.stage.name} {tr('standings')}
+          </h2>
           <p className="mt-1 text-sm text-muted">
-            {QUALIFIER_METHOD_LABELS[calculation.policy.method]} · {calculation.gameplayScoring} ·{' '}
-            {calculation.policy.runs} run{calculation.policy.runs > 1 ? 's' : ''} ·{' '}
-            {calculation.policy.runSelection.replaceAll('_', ' ').toLowerCase()}
+            {tr(QUALIFIER_METHOD_LABELS[calculation.policy.method])} · {calculation.gameplayScoring}{' '}
+            · {tr('Runs: {0}', calculation.policy.runs)} ·{' '}
+            {tr(humanizeCode(calculation.policy.runSelection))}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="ghost"
             size="icon"
-            title="Refresh standings"
-            aria-label="Refresh standings"
+            title={tr('Refresh standings')}
+            aria-label={tr('Refresh standings')}
             disabled={busy}
             onClick={() => void run(reload)}
           >
@@ -130,8 +135,8 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
           <Button
             variant="ghost"
             size="icon"
-            title="Download calculation snapshot"
-            aria-label="Download calculation snapshot"
+            title={tr('Download calculation snapshot')}
+            aria-label={tr('Download calculation snapshot')}
             onClick={exportSnapshot}
           >
             <Download size={16} />
@@ -148,19 +153,19 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
               }
             >
               <RefreshCw size={16} />
-              Calculate standings
+              {tr('Calculate standings')}
             </Button>
           )}
         </div>
       </header>
       {error && (
         <p role="alert" className="text-sm text-red-400">
-          {error}
+          <Feedback message={error} />
         </p>
       )}
       <div className="flex flex-wrap items-end gap-4">
         {data.versions.length > 0 && (
-          <Field label="Calculation version">
+          <Field label={tr('Calculation version')}>
             <select
               value={versionId}
               onChange={(e) => {
@@ -168,12 +173,15 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
                 setReviewedHash('');
               }}
             >
-              <option value="latest">Latest version ({data.latest?.version})</option>
+              <option value="latest">
+                {tr('Latest version (')}
+                {data.latest?.version})
+              </option>
               {data.versions.map((v) => (
                 <option key={v.id} value={v.id}>
-                  Version {v.version} · {v.snapshot.state.toLowerCase()}
-                  {v.published ? ' · published' : ''}
-                  {v.stale ? ' · stale' : ''}
+                  {tr('Version')} {v.version} · {tr(humanizeCode(v.snapshot.state))}
+                  {v.published ? tr(' · published') : ''}
+                  {v.stale ? tr(' · stale') : ''}
                 </option>
               ))}
             </select>
@@ -181,28 +189,30 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
         )}
         <p role="status" className="py-2 text-sm text-muted">
           {version?.snapshot.state === 'FINALIZED'
-            ? 'Finalized'
+            ? tr('Finalized')
             : reopened
-              ? 'Reopened for correction'
-              : 'Provisional'}
-          {version?.published ? ' · Published' : ' · Private'}
-          {version?.stale ? ' · Source changed' : ''}
+              ? tr('Reopened for correction')
+              : tr('Provisional')}
+          {version?.published ? tr(' · Published') : tr(' · Private')}
+          {version?.stale ? tr(' · Source changed') : ''}
         </p>
       </div>
       {!sourceCurrent && (
         <p role="alert" className="border-l-2 border-amber-400 py-2 pl-3 text-sm">
-          This snapshot no longer matches qualifier sources.{' '}
+          {tr('This snapshot no longer matches qualifier sources.')}{' '}
           {data.locked
-            ? 'A controlled historical and downstream-bracket review is required.'
-            : 'Calculate a new version before finalizing.'}
+            ? tr('A controlled historical and downstream-bracket review is required.')
+            : tr('Calculate a new version before finalizing.')}
         </p>
       )}
       {calculation.issues.length > 0 && (
         <details open={errors.length > 0} className="border-b pb-4">
           <summary className="cursor-pointer text-sm font-medium">
-            {errors.length} blocking issue{errors.length === 1 ? '' : 's'} ·{' '}
-            {calculation.issues.length - errors.length} notice
-            {calculation.issues.length - errors.length === 1 ? '' : 's'}
+            {tr(
+              'Blocking issues: {0} · Notices: {1}',
+              errors.length,
+              calculation.issues.length - errors.length,
+            )}
           </summary>
           <ul className="mt-3 space-y-2 text-sm">
             {calculation.issues.map((issue, index) => (
@@ -210,7 +220,7 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
                 key={`${issue.code}-${index}`}
                 className={issue.severity === 'ERROR' ? 'text-red-400' : 'text-muted'}
               >
-                {issue.message}
+                <Feedback message={issue.message} />
               </li>
             ))}
           </ul>
@@ -222,16 +232,18 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
         cutoff={version?.snapshot.cutoff ?? null}
       />
       <details className="border-b pb-4 text-sm">
-        <summary className="cursor-pointer text-muted">Run and source records</summary>
+        <summary className="cursor-pointer text-muted">{tr('Run and source records')}</summary>
         <div className="mt-3 space-y-4">
           {calculation.rows.map((row) => (
             <div key={row.participantId}>
               <h3 className="font-semibold">{row.name}</h3>
               {row.runs.map((entry) => (
                 <p key={entry.run} className="mt-1 text-xs text-muted">
-                  Run {entry.run}: {entry.complete ? 'complete' : 'incomplete'} ·{' '}
+                  {tr('Run')} {entry.run}: {entry.complete ? tr('complete') : tr('incomplete')} ·{' '}
                   {entry.maps.map((m) => `${m.slotName}: ${m.score}`).join(', ')}
-                  {entry.comparisonValue !== null ? ` · Comparison: ${entry.comparisonValue}` : ''}
+                  {entry.comparisonValue !== null
+                    ? tr(' · Comparison: {0}', entry.comparisonValue)
+                    : ''}
                 </p>
               ))}
             </div>
@@ -240,10 +252,10 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
             <table className="w-full text-left text-xs">
               <thead>
                 <tr>
-                  <th className="pr-3">Player</th>
-                  <th className="pr-3">Map / run</th>
-                  <th className="pr-3">Raw / adjusted</th>
-                  <th className="pr-3">Provenance</th>
+                  <th className="pr-3">{tr('Player')}</th>
+                  <th className="pr-3">{tr('Map / run')}</th>
+                  <th className="pr-3">{tr('Raw / adjusted')}</th>
+                  <th className="pr-3">{tr('Provenance')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -257,9 +269,9 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
                       {s.raw} / {s.adjusted}
                     </td>
                     <td className="max-w-80 break-words">
-                      {s.source} · {s.actualScoring || 'Unknown'} · {s.representation} ·{' '}
-                      {s.verified ? 'Verified' : 'Unverified'}
-                      {s.gameId ? ` · Game ${s.gameId}` : ''}
+                      {s.source} · {s.actualScoring || tr('Unknown')} · {s.representation} ·{' '}
+                      {s.verified ? tr('Verified') : tr('Unverified')}
+                      {s.gameId ? tr(' · Game {0}', s.gameId) : ''}
                     </td>
                   </tr>
                 ))}
@@ -278,7 +290,7 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
           <div className="space-y-4 border-t pt-4">
             {ties.length > 0 && (
               <fieldset className="space-y-3">
-                <legend className="font-semibold">Tiebreak review</legend>
+                <legend className="font-semibold">{tr('Tiebreak review')}</legend>
                 <ol className="space-y-2">
                   {tiedRows.map((row) => {
                     const group = tiedRows.filter((r) => r.rank === row.rank),
@@ -291,14 +303,14 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
                         <span className="min-w-0 flex-1 break-words">
                           {row.name}{' '}
                           <span className="text-xs text-muted">
-                            Proposed seed {row.rank! + index}
+                            {tr('Proposed seed')} {row.rank! + index}
                           </span>
                         </span>
                         <Button
                           variant="ghost"
                           size="icon"
-                          aria-label={`Move ${row.name} up`}
-                          title="Move up"
+                          aria-label={tr('Move {0} up', row.name)}
+                          title={tr('Move up')}
                           disabled={busy || index === 0}
                           onClick={() => move(row.participantId, -1)}
                         >
@@ -307,8 +319,8 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
                         <Button
                           variant="ghost"
                           size="icon"
-                          aria-label={`Move ${row.name} down`}
-                          title="Move down"
+                          aria-label={tr('Move {0} down', row.name)}
+                          title={tr('Move down')}
                           disabled={busy || index === group.length - 1}
                           onClick={() => move(row.participantId, 1)}
                         >
@@ -318,7 +330,7 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
                     );
                   })}
                 </ol>
-                <Field label="Tiebreak decision">
+                <Field label={tr('Tiebreak decision')}>
                   <textarea
                     value={tieReason}
                     maxLength={2000}
@@ -334,7 +346,7 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
                     checked={approvedTies}
                     onChange={(e) => setApprovedTies(e.target.checked)}
                   />
-                  Approved seed order
+                  {tr('Approved seed order')}
                 </label>
                 <Button
                   variant="outline"
@@ -352,17 +364,17 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
                   }
                 >
                   <Save size={16} />
-                  Save tiebreak decision
+                  {tr('Save tiebreak decision')}
                 </Button>
               </fieldset>
             )}
             <div className="max-w-72">
-              <Field label="Advancement cutoff">
+              <Field label={tr('Advancement cutoff')}>
                 <input
                   type="number"
                   min={1}
                   max={calculation.rows.filter((r) => r.eligible).length}
-                  placeholder="All seeded participants"
+                  placeholder={tr('All seeded participants')}
                   value={cutoff}
                   onChange={(e) => setCutoff(e.target.value)}
                 />
@@ -375,7 +387,7 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
                 disabled={errors.length > 0}
                 onChange={(e) => setReviewedHash(e.target.checked ? reviewToken : '')}
               />
-              Reviewed source scores, run selection and final seed order
+              {tr('Reviewed source scores, run selection and final seed order')}
             </label>
             <Button
               disabled={
@@ -395,15 +407,17 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
               }
             >
               <Check size={16} />
-              Finalize seedings
+              {tr('Finalize seedings')}
             </Button>
           </div>
         )}
       {data.canManage && current && !provisional && version && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
           <p className="text-sm text-muted">
-            Finalized version {version.version}
-            {version.snapshot.cutoff !== null ? ` · Top ${version.snapshot.cutoff} advance` : ''}
+            {tr('Finalized version')} {version.version}
+            {version.snapshot.cutoff !== null
+              ? tr(' · Top {0} advance', version.snapshot.cutoff)
+              : ''}
           </p>
           {data.correctionImpact && (
             <Button
@@ -420,7 +434,7 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
               }}
             >
               <Undo2 size={16} />
-              Review correction
+              {tr('Review correction')}
             </Button>
           )}
           <Button
@@ -434,7 +448,7 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
             }
           >
             {version.published ? <EyeOff size={16} /> : <Eye size={16} />}
-            {version.published ? 'Unpublish standings' : 'Publish standings'}
+            {version.published ? tr('Unpublish standings') : tr('Publish standings')}
           </Button>
         </div>
       )}
@@ -443,22 +457,23 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
         onOpenChange={(open) => {
           if (!open && !busy) setCorrection(null);
         }}
-        title="Reopen qualifier results"
+        title={tr('Reopen qualifier results')}
       >
         {correction && (
           <div className="mt-4 space-y-4">
             <p className="text-sm">
-              Finalized version {correction.baseVersion} will be superseded and hidden. Existing
-              brackets will keep their participants and seed order, but their seed witnesses will no
-              longer be valid.
+              {tr('Finalized version')} {correction.baseVersion}{' '}
+              {tr(
+                'will be superseded and hidden. Existing brackets will keep their participants and seed order, but their seed witnesses will no longer be valid.',
+              )}
             </p>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b">
-                    <th className="py-2">Affected bracket</th>
-                    <th className="py-2">Version</th>
-                    <th className="py-2">Matches</th>
+                    <th className="py-2">{tr('Affected bracket')}</th>
+                    <th className="py-2">{tr('Version')}</th>
+                    <th className="py-2">{tr('Matches')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -472,7 +487,7 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
                   {!correction.impact.brackets.length && (
                     <tr>
                       <td colSpan={3} className="py-3 text-muted">
-                        No brackets use these qualifier seeds.
+                        {tr('No brackets use these qualifier seeds.')}
                       </td>
                     </tr>
                   )}
@@ -481,7 +496,7 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
             </div>
             {correction.impact.blockingMatches.length > 0 && (
               <div role="alert" className="text-sm text-red-400">
-                <p>Started or scored matches require manual historical reconciliation.</p>
+                <p>{tr('Started or scored matches require manual historical reconciliation.')}</p>
                 <ul className="mt-2 space-y-1">
                   {correction.impact.blockingMatches.map((match) => (
                     <li key={match.id}>
@@ -491,7 +506,7 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
                 </ul>
               </div>
             )}
-            <Field label="Correction reason">
+            <Field label={tr('Correction reason')}>
               <textarea
                 maxLength={2000}
                 value={correctionReason}
@@ -504,14 +519,15 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
                 checked={correctionApproved}
                 onChange={(e) => setCorrectionApproved(e.target.checked)}
               />
-              Reviewed every affected bracket and approved invalidating its existing qualifier seed
-              witness
+              {tr(
+                'Reviewed every affected bracket and approved invalidating its existing qualifier seed witness',
+              )}
             </label>
             {(correction.baseVersion !== data.latest?.version ||
               correction.sourceHash !== data.preview.sourceHash ||
               correction.impact.impactHash !== data.correctionImpact?.impactHash) && (
               <p role="alert" className="text-sm text-amber-500">
-                The review changed. Close this dialog and review the current state.
+                {tr('The review changed. Close this dialog and review the current state.')}
               </p>
             )}
             <Button
@@ -540,11 +556,11 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
                   setVersionId('latest');
                   setReviewedHash('');
                   await reload();
-                }, 'Qualifier results reopened for correction.')
+                }, tr('Qualifier results reopened for correction.'))
               }
             >
               <Undo2 size={16} />
-              Reopen for correction
+              {tr('Reopen for correction')}
             </Button>
           </div>
         )}

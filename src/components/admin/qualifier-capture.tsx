@@ -1,4 +1,7 @@
 'use client';
+import { localeTag } from '@/lib/i18n';
+import { useLocale, useT } from '@/components/locale';
+
 import { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import type { QualifierView } from '@/lib/qualifiers-types';
@@ -18,6 +21,8 @@ export function QualifierCaptureDialog({
   lobby: QualifierView;
   onChanged: () => Promise<unknown>;
 }) {
+  const language = useLocale();
+  const tr = useT();
   const [open, setOpen] = useState(false),
     [preview, setPreview] = useState<Preview | null>(null),
     [gameId, setGameId] = useState(''),
@@ -46,9 +51,9 @@ export function QualifierCaptureDialog({
         }}
       >
         <RefreshCw size={16} />
-        Capture from osu!
+        {tr('Capture from osu!')}
       </Button>
-      <Modal open={open} onOpenChange={setOpen} title="Review qualifier capture" wide>
+      <Modal open={open} onOpenChange={setOpen} title={tr('Review qualifier capture')} wide>
         <form
           className="space-y-4"
           onSubmit={(e) => {
@@ -67,25 +72,28 @@ export function QualifierCaptureDialog({
             <>
               {!preview.complete && (
                 <p role="alert">
-                  History exceeds the capture window. Import is disabled; use reviewed manual entry.
+                  {tr(
+                    'History exceeds the capture window. Import is disabled; use reviewed manual entry.',
+                  )}
                 </p>
               )}
-              <Field label="Multiplayer game">
+              <Field label={tr('Multiplayer game')}>
                 <select required value={gameId} onChange={(e) => setGameId(e.target.value)}>
-                  <option value="">Select played game</option>
+                  <option value="">{tr('Select played game')}</option>
                   {preview.proposals.map((g) => (
                     <option key={g.gameId} value={g.gameId}>
-                      {g.slotName} · game {g.gameId} · {new Date(g.startedAt).toLocaleString()} ·{' '}
-                      {g.players.length} scores
+                      {g.slotName} {tr('· game')} {g.gameId} ·{' '}
+                      {new Date(g.startedAt).toLocaleString(localeTag(language))} ·{' '}
+                      {g.players.length} {tr('scores')}
                     </option>
                   ))}
                 </select>
               </Field>
               {lobby.policy.runs === 2 && (
-                <Field label="Run">
+                <Field label={tr('Run')}>
                   <select value={run} onChange={(e) => setRun(Number(e.target.value))}>
-                    <option value={1}>Run 1</option>
-                    <option value={2}>Run 2</option>
+                    <option value={1}>{tr('Run 1')}</option>
+                    <option value={2}>{tr('Run 2')}</option>
                   </select>
                 </Field>
               )}
@@ -95,16 +103,18 @@ export function QualifierCaptureDialog({
                   <p key={p.osuId} className="text-sm">
                     {lobby.participants.flatMap((t) => t.members).find((m) => m.osuId === p.osuId)
                       ?.username || p.osuId}
-                    : {p.raw.toLocaleString()} · {p.mods.join(' ') || 'NM'}
+                    : {p.raw.toLocaleString(localeTag(language))} · {p.mods.join(' ') || tr('NM')}
                   </p>
                 ))}
               {preview.rejected.length > 0 && (
                 <details>
-                  <summary>{preview.rejected.length} games need manual review</summary>
+                  <summary>
+                    {preview.rejected.length} {tr('games need manual review')}
+                  </summary>
                   <ul className="mt-2 max-h-48 overflow-auto space-y-2 text-sm text-muted">
                     {preview.rejected.map((issue, i) => (
                       <li key={i}>
-                        Game {issue.gameId}: {issue.issue}
+                        {tr('Game')} {issue.gameId}: {issue.issue}
                       </li>
                     ))}
                   </ul>
@@ -116,9 +126,9 @@ export function QualifierCaptureDialog({
                   checked={replace}
                   onChange={(e) => setReplace(e.target.checked)}
                 />
-                Approve replacing existing scores for this map and run
+                {tr('Approve replacing existing scores for this map and run')}
               </label>
-              <Field label="Capture reason">
+              <Field label={tr('Capture reason')}>
                 <textarea
                   required
                   minLength={3}
@@ -131,12 +141,14 @@ export function QualifierCaptureDialog({
                 busy={busy}
                 disabled={!gameId || !preview.complete || preview.version !== lobby.version}
               >
-                Import selected game
+                {tr('Import selected game')}
               </SaveButton>
             </>
           ) : (
             <p className="text-sm text-muted">
-              {busy ? 'Loading multiplayer history...' : 'No preview available. Close and retry.'}
+              {busy
+                ? tr('Loading multiplayer history...')
+                : tr('No preview available. Close and retry.')}
             </p>
           )}
         </form>

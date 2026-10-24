@@ -1,4 +1,7 @@
 'use client';
+import { humanizeCode } from '@/lib/i18n';
+import { Feedback, useT } from '@/components/locale';
+
 import { useState } from 'react';
 import {
   ArrowDown,
@@ -28,6 +31,7 @@ import { action, Field, LoadingState, Modal, usePolling, useResource, useTask } 
 import { BracketRoundTools } from './bracket-rounds';
 
 export function CompetitionWorkspace({ actor }: { actor: Actor }) {
+  const tr = useT();
   const scope = useTournamentScope();
   const { data, error, reload } = useResource<CompetitionData>('competition', true);
   const [selected, setSelected] = useState(''),
@@ -50,7 +54,7 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <select
-          aria-label="Competition bracket"
+          aria-label={tr('Competition bracket')}
           className="min-w-0 max-w-full md:max-w-80"
           value={bracket?.id || ''}
           onChange={(e) => {
@@ -58,7 +62,7 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
             setApprove(false);
           }}
         >
-          {!data.brackets.length && <option value="">No brackets</option>}
+          {!data.brackets.length && <option value="">{tr('No brackets')}</option>}
           {data.brackets.map((b) => (
             <option key={b.id} value={b.id}>
               {b.name}
@@ -91,14 +95,14 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
                   onClick={() => setReviewingTies(true)}
                 >
                   <ListOrdered size={16} />
-                  Review ties
+                  {tr('Review ties')}
                 </Button>
               )}
               <Button
                 variant="ghost"
                 size="icon"
-                title="Edit bracket positions"
-                aria-label="Edit bracket positions"
+                title={tr('Edit bracket positions')}
+                aria-label={tr('Edit bracket positions')}
                 aria-pressed={editPositions}
                 onClick={() => setEditPositions((value) => !value)}
               >
@@ -107,8 +111,8 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
               <Button
                 variant="ghost"
                 size="icon"
-                title={bracket.published ? 'Unpublish bracket' : 'Publish bracket'}
-                aria-label={bracket.published ? 'Unpublish bracket' : 'Publish bracket'}
+                title={bracket.published ? tr('Unpublish bracket') : tr('Publish bracket')}
+                aria-label={bracket.published ? tr('Unpublish bracket') : tr('Publish bracket')}
                 disabled={busy}
                 onClick={() =>
                   void run(() =>
@@ -126,8 +130,8 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
               <Button
                 variant="ghost"
                 size="icon"
-                title="Recalculate progression"
-                aria-label="Recalculate progression"
+                title={tr('Recalculate progression')}
+                aria-label={tr('Recalculate progression')}
                 disabled={busy}
                 onClick={() =>
                   void run(() =>
@@ -147,20 +151,20 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
           {editable && data.options && (
             <Button size="sm" onClick={() => setCreating(true)}>
               <Plus size={16} />
-              Create bracket
+              {tr('Create bracket')}
             </Button>
           )}
         </div>
       </div>
       {error && (
         <p role="alert" className="text-sm text-red-400">
-          {error}
+          <Feedback message={error} />
         </p>
       )}
       {editable && bracket && (
         <label className="flex items-center gap-2 text-xs text-muted">
           <input type="checkbox" checked={approve} onChange={(e) => setApprove(e.target.checked)} />
-          Approve corrections to unstarted downstream fixtures
+          {tr('Approve corrections to unstarted downstream fixtures')}
         </label>
       )}
       {bracket ? (
@@ -186,7 +190,7 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
       ) : (
         <div className="flex min-h-48 items-center justify-center gap-3 text-sm text-muted">
           <GitBranch size={20} />
-          No competition brackets
+          {tr('No competition brackets')}
         </div>
       )}
       {creating && data.options && (
@@ -228,6 +232,7 @@ function CreateCompetition({
   close: () => void;
   save: (action: CompetitionCreate) => Promise<void>;
 }) {
+  const tr = useT();
   const [form, setForm] = useState<CompetitionCreate>(() => ({
     type: 'competition.create',
     name: 'Main bracket',
@@ -285,7 +290,7 @@ function CreateCompetition({
   };
   return (
     <Modal
-      title="Create bracket"
+      title={tr('Create bracket')}
       open
       onOpenChange={(open) => {
         if (!open) close();
@@ -304,7 +309,7 @@ function CreateCompetition({
         }}
       >
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Name">
+          <Field label={tr('Name')}>
             <input
               value={form.name}
               required
@@ -312,32 +317,32 @@ function CreateCompetition({
               onChange={(e) => change({ name: e.target.value })}
             />
           </Field>
-          <Field label="Format">
+          <Field label={tr('Format')}>
             <select
               value={form.format}
               onChange={(e) => change({ format: e.target.value as CompetitionCreate['format'] })}
             >
-              <option value="SINGLE_ELIMINATION">Single elimination</option>
-              <option value="DOUBLE_ELIMINATION">Double elimination</option>
-              <option value="GROUPS">Round-robin groups</option>
+              <option value="SINGLE_ELIMINATION">{tr('Single elimination')}</option>
+              <option value="DOUBLE_ELIMINATION">{tr('Double elimination')}</option>
+              <option value="GROUPS">{tr('Round-robin groups')}</option>
             </select>
           </Field>
-          <Field label="Gameplay stage">
+          <Field label={tr('Gameplay stage')}>
             <select
               required
               value={form.stageId}
               onChange={(e) => change({ stageId: e.target.value })}
             >
-              {!options.stages.length && <option value="">No configured stages</option>}
+              {!options.stages.length && <option value="">{tr('No configured stages')}</option>}
               {options.stages.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
-                  {s.ready ? '' : ' (pool pending)'}
+                  {s.ready ? '' : tr(' (pool pending)')}
                 </option>
               ))}
             </select>
           </Field>
-          <Field label="Seed source">
+          <Field label={tr('Seed source')}>
             <select
               value={
                 form.sourceBracketId
@@ -350,21 +355,21 @@ function CreateCompetition({
                   : chooseStanding(e.target.value)
               }
             >
-              <option value="">Participant seeds</option>
+              <option value="">{tr('Participant seeds')}</option>
               {finalized.map((s) => (
                 <option key={s.id} value={s.id}>
-                  Qualifier {s.stageId} / version {s.version}
+                  {tr('Qualifier')} {s.stageId} / {tr('Version')} {s.version}
                 </option>
               ))}
               {options.groupSources?.map((group) => (
                 <option key={group.id} value={`groups:${group.id}`}>
-                  {group.name} / Qualified groups
+                  {group.name} / {tr('Qualified groups')}
                 </option>
               ))}
             </select>
           </Field>
           {seededSource && (
-            <Field label="Advancing participants">
+            <Field label={tr('Advancing participants')}>
               <input
                 type="number"
                 min={2}
@@ -381,7 +386,7 @@ function CreateCompetition({
           )}
           {form.format === 'GROUPS' && (
             <>
-              <Field label="Groups">
+              <Field label={tr('Groups')}>
                 <input
                   type="number"
                   min={1}
@@ -390,7 +395,7 @@ function CreateCompetition({
                   onChange={(e) => change({ groupCount: Number(e.target.value) })}
                 />
               </Field>
-              <Field label="Advance per group">
+              <Field label={tr('Advance per group')}>
                 <input
                   type="number"
                   min={1}
@@ -409,7 +414,7 @@ function CreateCompetition({
               checked={form.thirdPlace}
               onChange={(e) => change({ thirdPlace: e.target.checked })}
             />
-            Third-place match
+            {tr('Third-place match')}
           </label>
         )}
         {form.format === 'DOUBLE_ELIMINATION' && (
@@ -419,7 +424,7 @@ function CreateCompetition({
               checked={form.grandFinalReset}
               onChange={(e) => change({ grandFinalReset: e.target.checked })}
             />
-            Grand Finals reset
+            {tr('Grand Finals reset')}
           </label>
         )}
         <label className="flex items-start gap-2 rounded-lg border p-3 text-sm">
@@ -430,16 +435,18 @@ function CreateCompetition({
             className="mt-1"
           />
           <span>
-            <span className="block font-medium">Link existing matches</span>
+            <span className="block font-medium">{tr('Link existing matches')}</span>
             <span className="text-xs text-muted">
-              Build the bracket without creating replacement matches. Attach existing records to
-              resolved positions while preserving their scores, referee actions, and match IDs.
+              {tr(
+                'Build the bracket without creating replacement matches. Attach existing records to resolved positions while preserving their scores, referee actions, and match IDs.',
+              )}
             </span>
           </span>
         </label>
         <fieldset>
           <legend className="mb-2 text-sm font-semibold">
-            Participants ({form.teamIds.length})
+            {tr('Participants (')}
+            {form.teamIds.length})
           </legend>
           <div className="max-h-64 overflow-auto divide-y divide-border border-y border-border">
             {(seededSource
@@ -477,8 +484,8 @@ function CreateCompetition({
                         type="button"
                         variant="ghost"
                         size="icon"
-                        title="Move seed up"
-                        aria-label={`Move ${team.name} up`}
+                        title={tr('Move seed up')}
+                        aria-label={tr('Move {0} up', team.name)}
                         disabled={index === 0}
                         onClick={() => move(index, -1)}
                       >
@@ -488,8 +495,8 @@ function CreateCompetition({
                         type="button"
                         variant="ghost"
                         size="icon"
-                        title="Move seed down"
-                        aria-label={`Move ${team.name} down`}
+                        title={tr('Move seed down')}
+                        aria-label={tr('Move {0} down', team.name)}
                         disabled={index === form.teamIds.length - 1}
                         onClick={() => move(index, 1)}
                       >
@@ -505,8 +512,8 @@ function CreateCompetition({
         {plan && (
           <div className="space-y-3 border-t border-border pt-3">
             <p className="text-sm text-muted">
-              {form.teamIds.length} participants / {plan.rounds.length} rounds / {plan.nodes.length}{' '}
-              positions
+              {form.teamIds.length} {tr('participants /')} {plan.rounds.length} {tr('rounds /')}{' '}
+              {plan.nodes.length} {tr('positions')}
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               {plan.rounds.map((round) => (
@@ -533,10 +540,10 @@ function CreateCompetition({
         )}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={close}>
-            Cancel
+            {tr('Cancel')}
           </Button>
           <Button type="submit" disabled={busy || form.teamIds.length < 2 || !form.stageId}>
-            {plan ? 'Generate bracket' : 'Preview bracket'}
+            {plan ? tr('Generate bracket') : tr('Preview bracket')}
           </Button>
         </div>
       </form>
@@ -552,6 +559,7 @@ function ReviewGroupTies({
   close: () => void;
   save: (input: CompetitionAction) => Promise<unknown>;
 }) {
+  const tr = useT();
   const [order, setOrder] = useState(() =>
     bracket.entries
       .map((entry) => entry.teamId)
@@ -574,7 +582,7 @@ function ReviewGroupTies({
     });
   return (
     <Modal
-      title="Review group ties"
+      title={tr('Review group ties')}
       open
       onOpenChange={(open) => {
         if (!open) close();
@@ -610,8 +618,8 @@ function ReviewGroupTies({
                 type="button"
                 variant="ghost"
                 size="icon"
-                title="Move participant up"
-                aria-label={`Move seed ${index + 1} up`}
+                title={tr('Move participant up')}
+                aria-label={tr('Move seed {0} up', index + 1)}
                 disabled={!index}
                 onClick={() => move(index, -1)}
               >
@@ -621,8 +629,8 @@ function ReviewGroupTies({
                 type="button"
                 variant="ghost"
                 size="icon"
-                title="Move participant down"
-                aria-label={`Move seed ${index + 1} down`}
+                title={tr('Move participant down')}
+                aria-label={tr('Move seed {0} down', index + 1)}
                 disabled={index === order.length - 1}
                 onClick={() => move(index, 1)}
               >
@@ -631,7 +639,7 @@ function ReviewGroupTies({
             </li>
           ))}
         </ol>
-        <Field label="Tiebreak decision">
+        <Field label={tr('Tiebreak decision')}>
           <textarea
             required
             minLength={3}
@@ -642,9 +650,9 @@ function ReviewGroupTies({
         </Field>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={close}>
-            Cancel
+            {tr('Cancel')}
           </Button>
-          <Button disabled={busy || reason.trim().length < 3}>Approve order</Button>
+          <Button disabled={busy || reason.trim().length < 3}>{tr('Approve order')}</Button>
         </div>
       </form>
     </Modal>
@@ -665,6 +673,7 @@ function EditCompetitionNode({
   close: () => void;
   save: (action: CompetitionAction) => Promise<unknown>;
 }) {
+  const tr = useT();
   const [side, setSide] = useState<'A' | 'B'>('A'),
     [teamId, setTeam] = useState(node.slots[0]?.teamId || ''),
     [mode, setMode] = useState<'AUTO' | 'MANUAL' | 'LOCKED'>(
@@ -695,9 +704,9 @@ function EditCompetitionNode({
     <Modal
       title={
         node.match
-          ? `Match ${node.match.matchNumber}`
+          ? tr('Match {0}', node.match.matchNumber)
           : node.matchNumber
-            ? `Match ${node.matchNumber}`
+            ? tr('Match {0}', node.matchNumber)
             : node.key
       }
       open
@@ -710,30 +719,31 @@ function EditCompetitionNode({
           <Button asChild variant="outline">
             <Link href={`/admin/referee/${node.matchId}`}>
               <ExternalLink size={16} />
-              Open match
+              {tr('Open match')}
             </Link>
           </Button>
         )}
         {bracket.manualMatches && !node.matchId && node.state === 'READY' && (
           <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
-            <Field label="Existing match">
+            <Field label={tr('Existing match')}>
               <select
                 value={existingMatchId}
                 onChange={(event) => setExistingMatchId(event.target.value)}
               >
-                <option value="">Choose an unlinked match</option>
+                <option value="">{tr('Choose an unlinked match')}</option>
                 {linkableMatches.map((match) => (
                   <option key={match.id} value={match.id}>
-                    Match {match.matchNumber} · {match.teamAName} vs {match.teamBName} ·{' '}
-                    {match.status.toLowerCase()} · {match.scoreA}-{match.scoreB}
-                    {match.teamAId !== slotA?.teamId ? ' · reversed sides' : ''}
+                    {tr('Match')} {match.matchNumber} · {match.teamAName} {tr('vs')}{' '}
+                    {match.teamBName} · {tr(humanizeCode(match.status))} · {match.scoreA}-
+                    {match.scoreB}
+                    {match.teamAId !== slotA?.teamId ? tr(' · reversed sides') : ''}
                   </option>
                 ))}
               </select>
             </Field>
             {selectedMatch && selectedMatch.teamAId !== slotA?.teamId && (
               <p className="text-xs text-muted">
-                Bracket sides will be swapped to match the original red and blue teams.
+                {tr('Bracket sides will be swapped to match the original red and blue teams.')}
               </p>
             )}
             {linkableMatches.length ? (
@@ -756,20 +766,22 @@ function EditCompetitionNode({
                   })
                 }
               >
-                Link existing match
+                {tr('Link existing match')}
               </Button>
             ) : (
               <p className="text-xs text-muted">
-                No unlinked matches have this stage and these participants.
+                {tr('No unlinked matches have this stage and these participants.')}
               </p>
             )}
           </div>
         )}
         {protectedMatch ? (
-          <p className="text-sm text-muted">Participants are protected after a match starts.</p>
+          <p className="text-sm text-muted">
+            {tr('Participants are protected after a match starts.')}
+          </p>
         ) : (
           <>
-            <Field label="Position">
+            <Field label={tr('Position')}>
               <select
                 value={side}
                 onChange={(e) => {
@@ -782,25 +794,25 @@ function EditCompetitionNode({
                   setOutcome(slot.outcome === 'LOSER' ? 'LOSER' : 'WINNER');
                 }}
               >
-                <option value="A">Side A</option>
-                <option value="B">Side B</option>
+                <option value="A">{tr('Side A')}</option>
+                <option value="B">{tr('Side B')}</option>
               </select>
             </Field>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Assignment">
+              <Field label={tr('Assignment')}>
                 <select value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
-                  <option value="AUTO">Automatic</option>
-                  <option value="MANUAL">Manual</option>
-                  <option value="LOCKED">Locked</option>
+                  <option value="AUTO">{tr('Automatic')}</option>
+                  <option value="MANUAL">{tr('Manual')}</option>
+                  <option value="LOCKED">{tr('Locked')}</option>
                 </select>
               </Field>
-              <Field label="Participant">
+              <Field label={tr('Participant')}>
                 <select
                   disabled={mode === 'AUTO'}
                   value={teamId}
                   onChange={(e) => setTeam(e.target.value)}
                 >
-                  <option value="">Bye</option>
+                  <option value="">{tr('Bye')}</option>
                   {(
                     options?.teams ||
                     bracket.entries.map((e) => ({ id: e.teamId, name: e.team.name }))
@@ -814,10 +826,10 @@ function EditCompetitionNode({
             </div>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={allow} onChange={(e) => setAllow(e.target.checked)} />
-              Allow ineligible participant
+              {tr('Allow ineligible participant')}
             </label>
             {allow && (
-              <Field label="Override reason">
+              <Field label={tr('Override reason')}>
                 <input
                   value={reason}
                   minLength={3}
@@ -842,14 +854,16 @@ function EditCompetitionNode({
                 })
               }
             >
-              Save position
+              {tr('Save position')}
             </Button>
             <details className="border-t border-border pt-3">
-              <summary className="cursor-pointer text-sm font-semibold">Progression</summary>
+              <summary className="cursor-pointer text-sm font-semibold">
+                {tr('Progression')}
+              </summary>
               <div className="mt-3 space-y-3">
-                <Field label="Source match">
+                <Field label={tr('Source match')}>
                   <select value={sourceNodeId} onChange={(e) => setSource(e.target.value)}>
-                    <option value="">No source</option>
+                    <option value="">{tr('No source')}</option>
                     {brackets.flatMap((b) =>
                       b.nodes
                         .filter((n) => n.id !== node.id)
@@ -857,22 +871,22 @@ function EditCompetitionNode({
                           <option key={n.id} value={n.id}>
                             {b.name} /{' '}
                             {n.match
-                              ? `Match ${n.match.matchNumber}`
+                              ? tr('Match {0}', n.match.matchNumber)
                               : n.matchNumber
-                                ? `Match ${n.matchNumber}`
+                                ? tr('Match {0}', n.matchNumber)
                                 : n.key}
                           </option>
                         )),
                     )}
                   </select>
                 </Field>
-                <Field label="Advancing result">
+                <Field label={tr('Advancing result')}>
                   <select
                     value={outcome}
                     onChange={(e) => setOutcome(e.target.value as typeof outcome)}
                   >
-                    <option value="WINNER">Winner</option>
-                    <option value="LOSER">Loser</option>
+                    <option value="WINNER">{tr('Winner')}</option>
+                    <option value="LOSER">{tr('Loser')}</option>
                   </select>
                 </Field>
                 <Button
@@ -890,7 +904,7 @@ function EditCompetitionNode({
                     })
                   }
                 >
-                  Save progression
+                  {tr('Save progression')}
                 </Button>
               </div>
             </details>

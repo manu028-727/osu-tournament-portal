@@ -1,6 +1,9 @@
 'use client';
+import { localDateTimeInput } from '@/lib/utils';
+import { Feedback, useT } from '@/components/locale';
+
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useGuardedRouter } from '@/components/unsaved-navigation';
 import { useTournamentScope } from '@/components/tournament-scope';
 import Link from '@/components/tournament-scope';
 import { Plus, Disc3, X, Layers } from 'lucide-react';
@@ -66,6 +69,7 @@ export function StagesEditor({
   newStage?: boolean;
   returnToPool?: boolean;
 }) {
+  const tr = useT();
   const { data, error, reload } = useResource<{
     stages: Stage[];
     defaults: MatchRules;
@@ -115,7 +119,7 @@ export function StagesEditor({
     [],
   );
   const { busy, run } = useTask();
-  const router = useRouter(),
+  const router = useGuardedRouter(),
     scope = useTournamentScope(),
     opened = useRef(false);
   const emptyStage = (position: number): Stage => ({
@@ -140,13 +144,15 @@ export function StagesEditor({
     } else if (initialStageId && can(actor, 'mappools.edit'))
       setDraft(data.stages.find((stage) => stage.id === initialStageId) || null);
   }, [data, newStage, initialStageId, actor]);
-  useUnsaved(dirty || dirtyRows.size > 0 || Object.keys(bulkPatch).length > 0);
+  const acknowledgeDraft = useUnsaved(dirty);
+  useUnsaved(dirtyRows.size > 0 || Object.keys(bulkPatch).length > 0);
   const update = (fields: Partial<Stage>) => {
     setDraft((d) => (d ? { ...d, ...fields } : d));
     setDirty(true);
   };
   const close = () => {
-    if (!dirty || window.confirm('Discard unsaved stage settings?')) {
+    if (!dirty || window.confirm(tr('Discard unsaved stage settings?'))) {
+      acknowledgeDraft();
       setDraft(null);
       setDirty(false);
       setDuplicating(false);
@@ -255,14 +261,17 @@ export function StagesEditor({
       [next[from], next[to]] = [next[to], next[from]];
       await action({ type: 'stage.reorder', stages: tokens(next) });
       await reload();
-    }, 'Stage order saved.');
+    }, tr('Stage order saved.'));
   return (
     <>
-      <SectionTitle title="Tournament stages" description={`${data.stages.length} stages`}>
+      <SectionTitle
+        title={tr('Tournament stages')}
+        description={tr('{0} stages', data.stages.length)}
+      >
         <Button asChild variant="outline">
           <Link href="/admin/mappools">
             <Disc3 size={17} />
-            Mappools
+            {tr('Mappools')}
           </Link>
         </Button>
         {can(actor, 'mappools.create') && (
@@ -274,12 +283,12 @@ export function StagesEditor({
             }}
           >
             <Plus size={17} />
-            New stage
+            {tr('New stage')}
           </Button>
         )}
       </SectionTitle>
       <div className="mb-4 flex flex-wrap items-end gap-3">
-        <Field label="Find stage">
+        <Field label={tr('Find stage')}>
           <input
             type="search"
             value={search}
@@ -289,7 +298,7 @@ export function StagesEditor({
             }}
           />
         </Field>
-        <Field label="Stage type">
+        <Field label={tr('Stage type')}>
           <select
             value={kindFilter}
             onChange={(event) => {
@@ -297,10 +306,10 @@ export function StagesEditor({
               setKindFilter(event.target.value);
             }}
           >
-            <option value="ALL">All types</option>
+            <option value="ALL">{tr('All types')}</option>
             {Object.entries(stageKinds).map(([key, label]) => (
               <option key={key} value={key}>
-                {label}
+                {tr(label)}
               </option>
             ))}
           </select>
@@ -308,12 +317,14 @@ export function StagesEditor({
       </div>
       {(!!chosen.length || !!copySource) && (
         <section
-          aria-label="Bulk stage editing"
+          aria-label={tr('Bulk stage editing')}
           className="mb-4 space-y-4 rounded-lg border border-primary/30 bg-primary/5 p-3"
         >
           <div className="flex flex-wrap items-end gap-3">
-            <strong className="self-center text-sm">{chosen.length} visible stages selected</strong>
-            <Field label="Rule source">
+            <strong className="self-center text-sm">
+              {chosen.length} {tr('visible stages selected')}
+            </strong>
+            <Field label={tr('Rule source')}>
               <select
                 value={copySource}
                 disabled={!canBulk || busy}
@@ -322,21 +333,21 @@ export function StagesEditor({
                   setBulkPatch({});
                 }}
               >
-                <option value="">Patch selected fields</option>
-                <option value="TOURNAMENT">Inherit tournament defaults</option>
+                <option value="">{tr('Patch selected fields')}</option>
+                <option value="TOURNAMENT">{tr('Inherit tournament defaults')}</option>
                 {data.stages
                   .filter((stage) => stage.kind !== 'QUALIFIERS' && !stage.archivedAt)
                   .map((stage) => (
                     <option key={stage.id} value={stage.id}>
-                      Copy {stage.name} rules
+                      {tr('Copy')} {stage.name} {tr('rules')}
                     </option>
                   ))}
               </select>
             </Field>
             {!copySource && (
-              <Field label="Best of">
+              <Field label={tr('Best of')}>
                 <select
-                  aria-label="Bulk best of"
+                  aria-label={tr('Bulk best of')}
                   value={bulkPatch.bestOf ?? ''}
                   disabled={!canBulk || busy}
                   onChange={(event) => {
@@ -357,12 +368,13 @@ export function StagesEditor({
                     {mixedStageValue(
                       chosen.map((stage) => (stage.matchRules || data.defaults).bestOf),
                     ) === 'MIXED'
-                      ? 'Mixed · keep each value'
-                      : `Keep BO${(chosen[0]?.matchRules || data.defaults).bestOf}`}
+                      ? tr('Mixed · keep each value')
+                      : tr('Keep BO{0}', (chosen[0]?.matchRules || data.defaults).bestOf)}
                   </option>
                   {Array.from({ length: 16 }, (_, index) => index * 2 + 1).map((bestOf) => (
                     <option key={bestOf} value={bestOf}>
-                      BO{bestOf}
+                      {tr('BO')}
+                      {bestOf}
                     </option>
                   ))}
                 </select>
@@ -376,7 +388,7 @@ export function StagesEditor({
                 onClick={() => setShowBulkActions((current) => !current)}
               >
                 <Layers size={16} />
-                Actions
+                {tr('Actions')}
               </Button>
             )}
             <Button
@@ -411,17 +423,17 @@ export function StagesEditor({
                   setWarnings(result.warnings);
                   resetSelection();
                   await reload();
-                }, 'Stage rules saved. Existing matches retain their snapshots.')
+                }, tr('Stage rules saved. Existing matches retain their snapshots.'))
               }
             >
-              Apply to {chosen.length} stages
+              {tr('Apply to')} {chosen.length} {tr('stages')}
             </Button>
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              title="Clear stage selection"
-              aria-label="Clear stage selection"
+              title={tr('Clear stage selection')}
+              aria-label={tr('Clear stage selection')}
               disabled={busy}
               onClick={resetSelection}
             >
@@ -437,39 +449,49 @@ export function StagesEditor({
           )}
           <div className="text-sm text-muted">
             {copySource === 'TOURNAMENT'
-              ? 'Selected customized rules will be removed; stages will follow tournament defaults.'
+              ? tr(
+                  'Selected customized rules will be removed; stages will follow tournament defaults.',
+                )
               : copySource
-                ? 'Selected stages will receive independent copies of the source rules.'
-                : `Changed fields: ${Object.keys(bulkPatch).join(', ') || 'none'}. Other stage settings remain as saved.`}
+                ? tr('Selected stages will receive independent copies of the source rules.')
+                : tr(
+                    'Changed fields: {0}. Other stage settings remain as saved.',
+                    Object.keys(bulkPatch).join(', ') || 'none',
+                  )}
           </div>
           <ul className="flex flex-wrap gap-2 text-sm">
             {chosen.map((stage, index) => (
               <li key={stage.id} className="rounded border px-2 py-1">
                 {stage.name}
-                {proposedRules[index] ? ` · BO${proposedRules[index]!.bestOf}` : ''}
-                {stage.matchRules ? ' · customized' : ' · inherited'}
+                {proposedRules[index] ? tr(' · BO{0}', proposedRules[index]!.bestOf) : ''}
+                {stage.matchRules ? tr(' · customized') : tr(' · inherited')}
               </li>
             ))}
           </ul>
           {!!bulkError && (Object.keys(bulkPatch).length > 0 || !!copySource) && (
             <p role="alert" className="text-sm text-red-300">
-              {bulkError}
+              <Feedback message={bulkError} />
             </p>
           )}
           {dirtyRows.size > 0 && (
             <p role="alert" className="text-sm text-muted">
-              Save or discard inline changes before bulk editing.
+              {tr('Save or discard inline changes before bulk editing.')}
             </p>
           )}
         </section>
       )}
       {!!warnings.length && (
         <div role="status" className="mb-4 rounded-lg border p-3 text-sm">
-          <strong>Rules saved. Pool readiness</strong>
+          <strong>{tr('Rules saved. Pool readiness')}</strong>
           <ul className="mt-2 space-y-1">
             {warnings.map((item) => (
               <li key={item.id}>
-                {item.name}: {item.messages.join(' ')}
+                {item.name}:{' '}
+                {item.messages.map((message, index) => (
+                  <span key={index}>
+                    <Feedback message={message} />{' '}
+                  </span>
+                ))}
               </li>
             ))}
           </ul>
@@ -482,7 +504,7 @@ export function StagesEditor({
               <th>
                 <input
                   type="checkbox"
-                  aria-label="Select all visible stages"
+                  aria-label={tr('Select all visible stages')}
                   checked={!!visible.length && chosen.length === visible.length}
                   disabled={busy || !canBulk}
                   ref={(node) => {
@@ -495,13 +517,13 @@ export function StagesEditor({
                   }}
                 />
               </th>
-              <th>Order</th>
-              <th>Stage</th>
-              <th>Type</th>
-              <th>Best of</th>
-              <th>Action sequence / policy</th>
-              <th>Mappool</th>
-              <th>Save / advanced</th>
+              <th>{tr('Order')}</th>
+              <th>{tr('Stage')}</th>
+              <th>{tr('Type')}</th>
+              <th>{tr('Best of')}</th>
+              <th>{tr('Action sequence / policy')}</th>
+              <th>{tr('Mappool')}</th>
+              <th>{tr('Save / advanced')}</th>
             </tr>
           </thead>
           <tbody>
@@ -554,7 +576,7 @@ export function StagesEditor({
                       await action(stageSavePayload(changedStage, can(actor, 'matches.manage')));
                       await reload();
                       await pools.reload().catch(() => {});
-                    }, 'Stage changes saved.')
+                    }, tr('Stage changes saved.'))
                   }
                   onAdvanced={() => {
                     setDraft(stage);
@@ -587,11 +609,11 @@ export function StagesEditor({
           </tbody>
         </table>
         {!visible.length && (
-          <p className="py-8 text-center text-sm text-muted">No matching stages.</p>
+          <p className="py-8 text-center text-sm text-muted">{tr('No matching stages.')}</p>
         )}
       </div>
       <Modal
-        title={draft?.id ? 'Stage settings' : 'New stage'}
+        title={draft?.id ? tr('Stage settings') : tr('New stage')}
         wide
         open={!!draft}
         onOpenChange={(open) => {
@@ -621,16 +643,17 @@ export function StagesEditor({
                 });
                 setDraft(null);
                 setDirty(false);
+                acknowledgeDraft();
                 setDuplicating(false);
                 await reload();
                 if (returnToPool)
                   router.push(`${scope.adminBase}/mappools?stage=${encodeURIComponent(result.id)}`);
-              }, 'Stage settings saved. Existing matches retain their snapshots.');
+              }, tr('Stage settings saved. Existing matches retain their snapshots.'));
             }}
           >
             {!draft.id && !duplicating && (
               <div className="grid-fields">
-                <Field label="Stage template">
+                <Field label={tr('Stage template')}>
                   <select
                     value={template}
                     onChange={(event) => {
@@ -651,12 +674,12 @@ export function StagesEditor({
                   >
                     {STAGE_TEMPLATES.map((preset) => (
                       <option key={preset.key} value={preset.key}>
-                        {preset.name}
+                        {tr(preset.name)}
                       </option>
                     ))}
                   </select>
                 </Field>
-                <Field label="Configuration source">
+                <Field label={tr('Configuration source')}>
                   <select
                     value={templateSource}
                     disabled={!can(actor, 'matches.manage')}
@@ -679,8 +702,8 @@ export function StagesEditor({
                   >
                     <option value="">
                       {draft.kind === 'QUALIFIERS'
-                        ? 'Default qualifier policy'
-                        : 'Inherit tournament defaults'}
+                        ? tr('Default qualifier policy')
+                        : tr('Inherit tournament defaults')}
                     </option>
                     {data.stages
                       .filter(
@@ -692,7 +715,7 @@ export function StagesEditor({
                       )
                       .map((stage) => (
                         <option key={stage.id} value={stage.id}>
-                          Copy {stage.name}
+                          {tr('Copy')} {stage.name}
                         </option>
                       ))}
                   </select>
@@ -700,7 +723,7 @@ export function StagesEditor({
               </div>
             )}
             <div className="grid-fields">
-              <Field label="Stage name">
+              <Field label={tr('Stage name')}>
                 <input
                   required
                   maxLength={120}
@@ -715,7 +738,7 @@ export function StagesEditor({
                   }
                 />
               </Field>
-              <Field label="URL slug">
+              <Field label={tr('URL slug')}>
                 <input
                   required
                   pattern="[a-z0-9]+(-[a-z0-9]+)*"
@@ -723,11 +746,11 @@ export function StagesEditor({
                   onChange={(e) => update({ slug: e.target.value })}
                 />
               </Field>
-              <Field label="Stage type">
+              <Field label={tr('Stage type')}>
                 <select value={draft.kind} onChange={(e) => update({ kind: e.target.value })}>
                   {['QUALIFIERS', 'ELIMINATION', 'GROUPS', 'CUSTOM'].map((k) => (
                     <option key={k} value={k}>
-                      {stageKinds[k] || k}
+                      {tr(stageKinds[k] || k)}
                     </option>
                   ))}
                 </select>
@@ -736,7 +759,7 @@ export function StagesEditor({
             {can(actor, 'matches.manage') && draft.kind !== 'QUALIFIERS' && (
               <section className="space-y-3">
                 <div className="grid-fields">
-                  <Field label="Stage Best-of">
+                  <Field label={tr('Stage Best-of')}>
                     <select
                       value={(draft.matchRules || data.defaults).bestOf}
                       onChange={(event) =>
@@ -750,7 +773,8 @@ export function StagesEditor({
                     >
                       {Array.from({ length: 16 }, (_, index) => 1 + index * 2).map((bestOf) => (
                         <option key={bestOf} value={bestOf}>
-                          BO{bestOf}
+                          {tr('BO')}
+                          {bestOf}
                         </option>
                       ))}
                     </select>
@@ -758,7 +782,7 @@ export function StagesEditor({
                 </div>
                 <details>
                   <summary className="cursor-pointer text-sm font-semibold">
-                    Action sequence and team order
+                    {tr('Action sequence and team order')}
                   </summary>
                   <div className="mt-3">
                     <StageActionEditor
@@ -769,14 +793,14 @@ export function StagesEditor({
                 </details>
               </section>
             )}
-            <Field label="Description">
+            <Field label={tr('Description')}>
               <textarea
                 value={draft.description}
                 onChange={(e) => update({ description: e.target.value })}
               />
             </Field>
             <MediaField
-              label="Stage banner"
+              label={tr('Stage banner')}
               canUpload={can(actor, 'media.upload')}
               value={draft.bannerImageId ? `/api/media/${draft.bannerImageId}` : ''}
               onChange={(url) =>
@@ -785,10 +809,10 @@ export function StagesEditor({
             />
             <details className="border-t pt-4">
               <summary className="min-h-11 cursor-pointer py-2 font-semibold">
-                Advanced stage settings
+                {tr('Advanced stage settings')}
               </summary>
               <div className="grid-fields mt-4">
-                <Field label="Order">
+                <Field label={tr('Order')}>
                   <input
                     type="number"
                     min={0}
@@ -796,12 +820,12 @@ export function StagesEditor({
                     onChange={(e) => update({ position: Number(e.target.value) })}
                   />
                 </Field>
-                <Field label="Next stage">
+                <Field label={tr('Next stage')}>
                   <select
                     value={draft.nextStageId || ''}
                     onChange={(e) => update({ nextStageId: e.target.value || null })}
                   >
-                    <option value="">None</option>
+                    <option value="">{tr('None')}</option>
                     {data.stages
                       .filter((s) => s.id !== draft.id)
                       .map((s) => (
@@ -811,19 +835,10 @@ export function StagesEditor({
                       ))}
                   </select>
                 </Field>
-                <Field label="Start date (your timezone)">
+                <Field label={tr('Start date (your timezone)')}>
                   <input
                     type="datetime-local"
-                    value={
-                      draft.startsAt
-                        ? new Date(
-                            new Date(draft.startsAt).getTime() -
-                              new Date(draft.startsAt).getTimezoneOffset() * 60000,
-                          )
-                            .toISOString()
-                            .slice(0, 16)
-                        : ''
-                    }
+                    value={localDateTimeInput(draft.startsAt)}
                     onChange={(e) =>
                       update({
                         startsAt: e.target.value ? new Date(e.target.value).toISOString() : null,
@@ -840,7 +855,7 @@ export function StagesEditor({
                     update({ archivedAt: e.target.checked ? new Date().toISOString() : null })
                   }
                 />
-                Archived
+                {tr('Archived')}
               </label>
               {can(actor, 'matches.manage') && draft.kind !== 'QUALIFIERS' && (
                 <section className="space-y-5 border-t pt-5">
@@ -856,7 +871,7 @@ export function StagesEditor({
                         })
                       }
                     />
-                    Inherit tournament match rules
+                    {tr('Inherit tournament match rules')}
                   </label>
                   {draft.matchRules && (
                     <MatchRulesFields
@@ -869,9 +884,9 @@ export function StagesEditor({
             </details>
             {can(actor, 'matches.manage') && draft.kind === 'QUALIFIERS' && (
               <section className="space-y-4 border-t pt-5">
-                <h2 className="font-semibold">Qualifier policy</h2>
+                <h2 className="font-semibold">{tr('Qualifier policy')}</h2>
                 <div className="grid-fields">
-                  <Field label="Seeding method">
+                  <Field label={tr('Seeding method')}>
                     <select
                       value={draft.qualifierPolicy?.method || 'RAW_SCORE'}
                       onChange={(e) =>
@@ -885,12 +900,12 @@ export function StagesEditor({
                     >
                       {Object.entries(QUALIFIER_METHOD_LABELS).map(([value, label]) => (
                         <option key={value} value={value}>
-                          {label}
+                          {tr(label)}
                         </option>
                       ))}
                     </select>
                   </Field>
-                  <Field label="Playthroughs">
+                  <Field label={tr('Playthroughs')}>
                     <select
                       value={draft.qualifierPolicy?.runs || 1}
                       onChange={(e) =>
@@ -903,12 +918,12 @@ export function StagesEditor({
                         })
                       }
                     >
-                      <option value={1}>Once</option>
-                      <option value={2}>Twice</option>
+                      <option value={1}>{tr('Once')}</option>
+                      <option value={2}>{tr('Twice')}</option>
                     </select>
                   </Field>
                   {draft.qualifierPolicy?.runs === 2 && (
-                    <Field label="Run selection">
+                    <Field label={tr('Run selection')}>
                       <select
                         value={draft.qualifierPolicy.runSelection}
                         onChange={(e) =>
@@ -920,14 +935,14 @@ export function StagesEditor({
                           })
                         }
                       >
-                        <option value="BEST_PER_MAP">Best per map</option>
-                        <option value="BEST_COMPLETE_RUN">Best complete run</option>
-                        <option value="FIRST_RUN">First run only</option>
-                        <option value="SECOND_RUN">Second run only</option>
+                        <option value="BEST_PER_MAP">{tr('Best per map')}</option>
+                        <option value="BEST_COMPLETE_RUN">{tr('Best complete run')}</option>
+                        <option value="FIRST_RUN">{tr('First run only')}</option>
+                        <option value="SECOND_RUN">{tr('Second run only')}</option>
                       </select>
                     </Field>
                   )}
-                  <Field label="Players counted per map">
+                  <Field label={tr('Players counted per map')}>
                     <input
                       type="number"
                       min={1}
@@ -943,7 +958,7 @@ export function StagesEditor({
                       }
                     />
                   </Field>
-                  <Field label="Team aggregation">
+                  <Field label={tr('Team aggregation')}>
                     <select
                       value={draft.qualifierPolicy?.teamAggregation || 'SUM'}
                       onChange={(e) =>
@@ -955,13 +970,13 @@ export function StagesEditor({
                         })
                       }
                     >
-                      <option value="SUM">Sum</option>
-                      <option value="AVERAGE">Average</option>
-                      <option value="TOP_N">Top N players</option>
+                      <option value="SUM">{tr('Sum')}</option>
+                      <option value="AVERAGE">{tr('Average')}</option>
+                      <option value="TOP_N">{tr('Top N players')}</option>
                     </select>
                   </Field>
                   {(!draft.qualifierPolicy || draft.qualifierPolicy.method === 'RAW_SCORE') && (
-                    <Field label="Pool aggregation">
+                    <Field label={tr('Pool aggregation')}>
                       <select
                         value={draft.qualifierPolicy?.rawAggregation || 'TOTAL'}
                         onChange={(e) =>
@@ -973,8 +988,8 @@ export function StagesEditor({
                           })
                         }
                       >
-                        <option value="TOTAL">Total</option>
-                        <option value="AVERAGE">Average</option>
+                        <option value="TOTAL">{tr('Total')}</option>
+                        <option value="AVERAGE">{tr('Average')}</option>
                       </select>
                     </Field>
                   )}
@@ -983,7 +998,7 @@ export function StagesEditor({
             )}
             <div className="flex justify-end gap-3">
               <Button type="button" variant="outline" disabled={busy} onClick={close}>
-                Cancel
+                {tr('Cancel')}
               </Button>
               <SaveButton
                 busy={busy}
@@ -993,14 +1008,14 @@ export function StagesEditor({
                   !matchRulesSchema.safeParse(draft.matchRules).success
                 }
               >
-                Save stage
+                {tr('Save stage')}
               </SaveButton>
             </div>
           </form>
         )}
       </Modal>
       <Modal
-        title="Duplicate stage"
+        title={tr('Duplicate stage')}
         open={duplicating && !!duplicateSource}
         onOpenChange={(open) => {
           if (!open) close();
@@ -1027,18 +1042,19 @@ export function StagesEditor({
                 setDuplicating(false);
                 setDuplicateSource(null);
                 setDirty(false);
+                acknowledgeDraft();
                 await reload();
                 await pools.reload();
                 if (returnToPool)
                   router.push(`${scope.adminBase}/mappools?stage=${encodeURIComponent(result.id)}`);
-              }, 'Stage duplicated as a new draft.');
+              }, tr('Stage duplicated as a new draft.'));
             }}
           >
             <p className="text-sm text-muted">
-              Source: {duplicateSource.name} ·{' '}
-              {stageKinds[duplicateSource.kind] || duplicateSource.kind}
+              {tr('Source:')} {duplicateSource.name} ·{' '}
+              {tr(stageKinds[duplicateSource.kind] || duplicateSource.kind)}
             </p>
-            <Field label="New stage name">
+            <Field label={tr('New stage name')}>
               <input
                 required
                 maxLength={120}
@@ -1051,7 +1067,7 @@ export function StagesEditor({
                 }}
               />
             </Field>
-            <Field label="New stage URL slug">
+            <Field label={tr('New stage URL slug')}>
               <input
                 required
                 maxLength={80}
@@ -1074,8 +1090,8 @@ export function StagesEditor({
                 }}
               />
               {duplicateSource.kind === 'QUALIFIERS'
-                ? 'Copy qualifier policy'
-                : 'Copy gameplay rules, Best-of and action sequence'}
+                ? tr('Copy qualifier policy')
+                : tr('Copy gameplay rules, Best-of and action sequence')}
             </label>
             <label className="flex items-center gap-3 text-sm">
               <input
@@ -1087,9 +1103,9 @@ export function StagesEditor({
                   setDirty(true);
                 }}
               />
-              Copy stage banner
+              {tr('Copy stage banner')}
             </label>
-            <Field label="Mappool copy">
+            <Field label={tr('Mappool copy')}>
               <select
                 value={poolMode}
                 disabled={busy}
@@ -1098,7 +1114,7 @@ export function StagesEditor({
                   setDirty(true);
                 }}
               >
-                <option value="EMPTY">Empty pool</option>
+                <option value="EMPTY">{tr('Empty pool')}</option>
                 <option
                   value="STRUCTURE"
                   disabled={
@@ -1107,7 +1123,7 @@ export function StagesEditor({
                     )
                   }
                 >
-                  Structure and difficulty targets only
+                  {tr('Structure and difficulty targets only')}
                 </option>
                 <option
                   value="CONTENTS"
@@ -1117,20 +1133,20 @@ export function StagesEditor({
                     )
                   }
                 >
-                  Structure, targets, beatmaps and saved notes
+                  {tr('Structure, targets, beatmaps and saved notes')}
                 </option>
               </select>
             </Field>
             <p className="text-xs text-muted">
-              The type and description are copied. Progression links, archive state, dates and pool
-              publication start fresh. Pool contents use the latest saved draft, or the published
-              version when no draft exists.
+              {tr(
+                'The type and description are copied. Progression links, archive state, dates and pool publication start fresh. Pool contents use the latest saved draft, or the published version when no draft exists.',
+              )}
             </p>
             <div className="flex justify-end gap-3">
               <Button type="button" variant="outline" disabled={busy} onClick={close}>
-                Cancel
+                {tr('Cancel')}
               </Button>
-              <SaveButton busy={busy}>Duplicate stage</SaveButton>
+              <SaveButton busy={busy}>{tr('Duplicate stage')}</SaveButton>
             </div>
           </form>
         )}

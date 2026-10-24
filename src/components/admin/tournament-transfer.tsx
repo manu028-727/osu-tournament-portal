@@ -1,4 +1,7 @@
 'use client';
+import { formatNumber, humanizeCode, localeTag } from '@/lib/i18n';
+import { Feedback, useLocale, useT } from '@/components/locale';
+
 import { useEffect, useState } from 'react';
 import { Upload, ArchiveRestore, ExternalLink } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -14,6 +17,8 @@ type Job = {
   report: Record<string, unknown>;
 };
 export function TournamentImporter({ onImported }: { onImported: () => Promise<unknown> }) {
+  const language = useLocale();
+  const tr = useT();
   const [open, setOpen] = useState(false),
     [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ArchivePreview | null>(null),
@@ -53,10 +58,10 @@ export function TournamentImporter({ onImported }: { onImported: () => Promise<u
     <>
       <Button variant="outline" onClick={() => setOpen(true)}>
         <Upload size={17} />
-        Import Tournament
+        {tr('Import Tournament')}
       </Button>
       <Modal
-        title="Import Tournament"
+        title={tr('Import Tournament')}
         open={open}
         onOpenChange={(value) => {
           if (!busy) setOpen(value);
@@ -64,7 +69,7 @@ export function TournamentImporter({ onImported }: { onImported: () => Promise<u
         wide
       >
         <div className="space-y-5">
-          <Field label="Tournament archive (.zip)">
+          <Field label={tr('Tournament archive (.zip)')}>
             <input
               type="file"
               accept=".zip,application/zip"
@@ -86,43 +91,48 @@ export function TournamentImporter({ onImported }: { onImported: () => Promise<u
                 setPreview(data);
                 setSlug(data.slugConflict ? data.slug + '-copy' : data.slug);
                 setConfirmed(false);
-              }, 'Archive validated.')
+              }, tr('Archive validated.'))
             }
           >
             <ArchiveRestore size={17} />
-            Preview archive
+            {tr('Preview archive')}
           </Button>
           {preview && !result && (
             <section className="space-y-4 border-t pt-4">
               <h3 className="text-lg font-semibold">{String(preview.name)}</h3>
               <p className="text-sm text-muted">
-                {preview.source} · Format v{preview.version} ·{' '}
-                {(preview.mediaBytes / 1048576).toFixed(1)} MB media
+                {preview.source} {tr('· Format v')}
+                {preview.version} · {formatNumber(preview.mediaBytes / 1048576, language, 1)}{' '}
+                {tr('MB media')}
               </p>
               <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
                 {Object.entries(preview.counts)
                   .filter(([, count]) => count)
                   .map(([name, count]) => (
                     <div key={name}>
-                      <dt className="text-muted">{name}</dt>
+                      <dt className="text-muted">
+                        {tr(humanizeCode(name.replace(/([A-Z])/g, ' $1')))}
+                      </dt>
                       <dd>{count}</dd>
                     </div>
                   ))}
               </dl>
               <ul className="list-inside list-disc space-y-1 text-sm text-muted">
                 {preview.warnings.map((warning, index) => (
-                  <li key={index}>{warning}</li>
+                  <li key={index}>
+                    <Feedback message={warning} />
+                  </li>
                 ))}
               </ul>
               <details>
                 <summary className="min-h-11 cursor-pointer py-2">
-                  Review source roles and assignments
+                  {tr('Review source roles and assignments')}
                 </summary>
                 <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded-lg border bg-background p-3 text-xs">
                   {JSON.stringify(preview.review, null, 2)}
                 </pre>
               </details>
-              <Field label="New tournament URL slug">
+              <Field label={tr('New tournament URL slug')}>
                 <input
                   value={slug}
                   maxLength={80}
@@ -138,8 +148,9 @@ export function TournamentImporter({ onImported }: { onImported: () => Promise<u
                   disabled={busy}
                   onChange={(event) => setConfirmed(event.target.checked)}
                 />
-                Create a separate unpublished tournament. Review access roles and assignments
-                manually.
+                {tr(
+                  'Create a separate unpublished tournament. Review access roles and assignments manually.',
+                )}
               </label>
               <Button
                 disabled={busy || !confirmed || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)}
@@ -148,22 +159,22 @@ export function TournamentImporter({ onImported }: { onImported: () => Promise<u
                     setResult(await upload('import'));
                     await onImported();
                     await loadJobs();
-                  }, 'Tournament imported privately.')
+                  }, tr('Tournament imported privately.'))
                 }
               >
                 <Upload size={17} />
-                {busy ? 'Importing...' : 'Import as unpublished'}
+                {busy ? tr('Importing...') : tr('Import as unpublished')}
               </Button>
             </section>
           )}
           {result && (
             <section role="status" className="space-y-3 border-t pt-4">
-              <h3 className="text-lg font-semibold">Import complete</h3>
+              <h3 className="text-lg font-semibold">{tr('Import complete')}</h3>
               <a
                 className="inline-flex min-h-11 items-center gap-2 text-primary"
                 href={`/t/${result.slug}/admin`}
               >
-                Review unpublished tournament <ExternalLink size={16} />
+                {tr('Review unpublished tournament')} <ExternalLink size={16} />
               </a>
               <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded-lg border bg-background p-3 text-xs">
                 {JSON.stringify(result, null, 2)}
@@ -171,17 +182,20 @@ export function TournamentImporter({ onImported }: { onImported: () => Promise<u
             </section>
           )}
           <section className="space-y-3 border-t pt-4">
-            <h3 className="font-semibold">Recent imports</h3>
+            <h3 className="font-semibold">{tr('Recent imports')}</h3>
             {error && (
               <p role="alert" className="text-sm text-red-300">
-                {error}
+                <Feedback message={error} />
               </p>
             )}
-            {jobs.length === 0 && !error && <p className="text-sm text-muted">No imports yet.</p>}
+            {jobs.length === 0 && !error && (
+              <p className="text-sm text-muted">{tr('No imports yet.')}</p>
+            )}
             {jobs.map((job) => (
               <details key={job.id} className="border-b pb-3">
                 <summary className="min-h-11 cursor-pointer py-2 text-sm">
-                  {job.status} · {new Date(job.createdAt).toLocaleString()}
+                  {tr(humanizeCode(job.status))} ·{' '}
+                  {new Date(job.createdAt).toLocaleString(localeTag(language))}
                 </summary>
                 <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded-lg border bg-background p-3 text-xs">
                   {JSON.stringify(job.report, null, 2)}
@@ -190,8 +204,10 @@ export function TournamentImporter({ onImported }: { onImported: () => Promise<u
                   (['PREPARING', 'CLEANING'].includes(job.status) &&
                     Date.now() - new Date(job.updatedAt).getTime() > 30 * 60000)) && (
                   <ConfirmButton
-                    title="Clean up this stopped import?"
-                    description="Only uncommitted import objects are removed. Ensure the old importing worker is stopped before recovering an interrupted transfer."
+                    title={tr('Clean up this stopped import?')}
+                    description={tr(
+                      'Only uncommitted import objects are removed. Ensure the old importing worker is stopped before recovering an interrupted transfer.',
+                    )}
                     onConfirm={() =>
                       void run(async () => {
                         await api('/api/tournament-transfer/import', {
@@ -199,11 +215,11 @@ export function TournamentImporter({ onImported }: { onImported: () => Promise<u
                           body: JSON.stringify({ id: job.id }),
                         });
                         await loadJobs();
-                      }, 'Recovery checked.')
+                      }, tr('Recovery checked.'))
                     }
                   >
                     <ArchiveRestore size={17} />
-                    Clean up failed import
+                    {tr('Clean up failed import')}
                   </ConfirmButton>
                 )}
               </details>

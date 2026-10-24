@@ -123,6 +123,11 @@ test.afterAll(async () => {
 async function noOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 }
+test.beforeEach(async ({ context }) => {
+  await context.addCookies([
+    { name: 'portal_language', value: 'it', url: 'http://localhost:3001' },
+  ]);
+});
 
 for (const width of [1920, 1366, 768, 390, 320]) {
   test(`public mappool grid and details at ${width}px`, async ({ browser }, testInfo) => {
@@ -133,6 +138,9 @@ for (const width of [1920, 1366, 768, 390, 320]) {
       isMobile: touch,
       reducedMotion: 'reduce',
     });
+    await context.addCookies([
+      { name: 'portal_language', value: 'it', url: 'http://localhost:3001' },
+    ]);
     const page = await context.newPage();
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
@@ -271,7 +279,7 @@ for (const width of [1920, 1366, 768, 390, 320]) {
         expect(box.x + box.width).toBeLessThanOrEqual(width);
         expect(box.y + box.height).toBeLessThanOrEqual(page.viewportSize()!.height);
         expect(await positions()).toEqual(before);
-        await expect(preview).toContainText('5.82');
+        await expect(preview).toContainText('5,82');
         await expect(preview).toContainText('180');
         await expect(preview).toContainText('2:05');
         await expect(preview).toContainText(String(baseId + index));
@@ -305,7 +313,7 @@ for (const width of [1920, 1366, 768, 390, 320]) {
         `Test artist - ${index === 0 ? longTitle : unbrokenTitle}`,
       );
       await expect(panel).toContainText('Mapper');
-      await expect(panel).toContainText('5.82');
+      await expect(panel).toContainText('5,82');
       await expect(panel).toContainText('180');
       await expect(panel).toContainText('2:05');
       const box = (await panel.boundingBox())!;

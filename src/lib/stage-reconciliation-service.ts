@@ -211,7 +211,7 @@ export async function applyStageReconciliation(
       continue;
     }
     if (match.version !== change.baseVersion)
-      throw new AppError(`Match ${match.code} changed after preview. Refresh the review.`, 409);
+      throw new AppError('Match {0} changed after preview. Refresh the review.', 409, [match.code]);
     const stage = stages.find(
       (stage) =>
         stage.id === change.stageId &&
@@ -245,7 +245,7 @@ export async function applyStageReconciliation(
         );
     }
     const problems = snapshotProblems(rules, slots);
-    if (problems.length) throw new AppError(problems.join(' '), 409);
+    if (problems.length) throw AppError.fromMessages(problems, 409, ' ');
     try {
       replayDraft(matchRulesSchema.parse(rules), match, slots!, match.actions, match.results);
     } catch {

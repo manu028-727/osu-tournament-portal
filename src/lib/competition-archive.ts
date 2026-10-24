@@ -25,7 +25,8 @@ export const competitionStoredConfigSchema = competitionActionSchema.options[0]
 
 function mapped(ids: ReadonlyMap<string, string>, id: string) {
   const target = ids.get(id);
-  if (!target) throw new AppError(`Competition archive reference ${id} has no imported identity.`);
+  if (!target)
+    throw new AppError('Competition archive reference {0} has no imported identity.', 400, [id]);
   return target;
 }
 export function remapCompetitionSeedOrder(value: unknown, ids: ReadonlyMap<string, string>) {

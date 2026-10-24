@@ -1,9 +1,14 @@
+import { getServerT } from '@/lib/server-locale';
 import { ArrowUpRight } from 'lucide-react';
 import { PageHeading, EmptyState } from '@/components/content';
 import { publicStaff, getTournament } from '@/lib/queries';
 import { siteCopy } from '@/lib/copy';
-export const metadata = { title: 'Staff' };
+export async function generateMetadata() {
+  const tr = await getServerT();
+  return { title: tr('Staff') };
+}
 export default async function Staff() {
+  const tr = await getServerT();
   const [groups, t] = await Promise.all([publicStaff(), getTournament()]);
   const categories = groups.filter((c) => c.assignments.length);
   const copy = siteCopy(t.settings?.copy);
@@ -36,7 +41,7 @@ export default async function Staff() {
                   >
                     <img
                       src={m.customImage || m.avatarUrl}
-                      alt={`Avatar di ${m.username}`}
+                      alt={tr('Avatar of {0}', m.username)}
                       className="size-11 shrink-0 rounded object-cover"
                     />
                     <div className="min-w-0 flex-1">
@@ -54,7 +59,7 @@ export default async function Staff() {
           ))}
         </div>
       ) : (
-        <EmptyState title="Nessun membro dello staff pubblicato" />
+        <EmptyState title={tr('Nessun membro dello staff pubblicato')} />
       )}
     </div>
   );

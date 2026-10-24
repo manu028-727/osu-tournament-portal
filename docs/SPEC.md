@@ -49,6 +49,13 @@ and Owners have full local access. Observers cannot overwrite another editor.
 
 ## Public Tournament Website
 
+Built-in public, organizer and referee interfaces support complete English and
+Italian copy, including controls, empty states, validation feedback and accessible
+labels. A visible language switch persists the visitor's choice and updates server
+and client rendering without discarding unsaved editing values. CMS text, names,
+descriptions, notes, imported histories and other authored content remain in their
+original language; selecting an interface language never rewrites saved content.
+
 **Current.** Provide homepage, mappools/stage pools, matches/details, brackets,
 qualifier standings, teams, staff and rules with useful empty/loading/error states,
 public metadata and responsive, accessible navigation.

@@ -302,7 +302,7 @@ export async function applyWorkbook(original: Actor, input: z.infer<typeof impor
         record.scoring,
         tournamentScoring(settings.gameplayScoring),
       );
-      if (compatibility.errors.length) throw new AppError(compatibility.errors.join(' '), 409);
+      if (compatibility.errors.length) throw AppError.fromMessages(compatibility.errors, 409, ' ');
       const stages = await tx.tournamentStage.findMany({
         where: { archivedAt: null, kind: { not: 'QUALIFIERS' } },
       });

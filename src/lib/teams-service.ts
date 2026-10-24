@@ -58,7 +58,8 @@ async function profilesFor(ids: number[]) {
     response.users.filter((p) => unique.includes(p.id)).forEach((p) => found.set(p.id, p));
   }
   const invalid = unique.filter((id) => !found.has(id));
-  if (invalid.length) throw new AppError(`Unknown or unavailable osu! IDs: ${invalid.join(', ')}`);
+  if (invalid.length)
+    throw new AppError('Unknown or unavailable osu! IDs: {0}', 400, [invalid.join(', ')]);
   return unique.map((id) => found.get(id)!);
 }
 export async function prepareTeamAction(
@@ -139,7 +140,7 @@ async function writeTeam(
     throw new AppError('A player already belongs to another team.');
   for (const member of fields.members) {
     const profile = profiles.find((p) => p.id === member.osuId);
-    if (!profile) throw new AppError(`Profile ${member.osuId} could not be verified.`);
+    if (!profile) throw new AppError('Profile {0} could not be verified.', 400, [member.osuId]);
     await tx.participant.upsert({
       where: { osuId: member.osuId },
       create: {
@@ -192,7 +193,7 @@ export async function applyTeamAction(
   if (a.type === 'team.import.preview') return prepared.plan;
   if (a.type === 'team.import.apply') {
     const plan = prepared.plan!;
-    if (plan.errors.length) throw new AppError(plan.errors.join(' '));
+    if (plan.errors.length) throw AppError.fromMessages(plan.errors, 400, ' ');
     if (plan.previewHash !== a.previewHash)
       throw new AppError('The import changed. Preview it again before applying.', 409);
     if (plan.teams.some((t) => t.id)) assertPermission(actor, 'teams.edit');

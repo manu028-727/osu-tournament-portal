@@ -1,3 +1,6 @@
+'use client';
+import { useT } from '@/components/locale';
+import { humanizeCode } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 export function Badge({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
@@ -12,6 +15,7 @@ export function Badge({ children, className }: { children: React.ReactNode; clas
   );
 }
 export function StateBadge({ state }: { state: string }) {
+  const tr = useT();
   return (
     <Badge
       className={
@@ -23,7 +27,7 @@ export function StateBadge({ state }: { state: string }) {
       }
     >
       <span className="size-1 rounded-full bg-current" />
-      {state.charAt(0) + state.slice(1).toLowerCase()}
+      {tr(humanizeCode(state))}
     </Badge>
   );
 }

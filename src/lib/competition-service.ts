@@ -107,7 +107,9 @@ async function checkedPlan(
           (team.format === 'INDIVIDUAL' && rules.teamSize !== 1),
       )
     )
-      throw new AppError(`Participants need sufficient starting players for ${stage.name}.`);
+      throw new AppError('Participants need sufficient starting players for {0}.', 400, [
+        stage.name,
+      ]);
   }
   if (a.sourceStandingId) {
     if (a.sourceBracketId) throw new AppError('Choose a single seeding source.');
@@ -178,17 +180,19 @@ async function persistRecalculation(
   const changes = competitionChanges(before, after);
   if (changes.some((c) => c.protected))
     throw new AppError(
-      `Started or completed downstream matches require manual reconciliation: ${changes
-        .filter((c) => c.protected)
-        .map((c) => c.code)
-        .join(', ')}.`,
+      'Started or completed downstream matches require manual reconciliation: {0}.',
       409,
+      [
+        changes
+          .filter((c) => c.protected)
+          .map((c) => c.code)
+          .join(', '),
+      ],
     );
   if (changes.length && !approveCorrections)
-    throw new AppError(
-      `Review and approve changed downstream fixtures: ${changes.map((c) => c.code).join(', ')}.`,
-      409,
-    );
+    throw new AppError('Review and approve changed downstream fixtures: {0}.', 409, [
+      changes.map((c) => c.code).join(', '),
+    ]);
   const snapshots = await snapshotTeams(tx, tournamentId, [
     ...new Set(after.flatMap((n) => n.slots.flatMap((s) => (s.teamId ? [s.teamId] : [])))),
   ]);
@@ -235,10 +239,9 @@ async function persistRecalculation(
     }
     if (node.match && (node.match.teamAId !== a.teamId || node.match.teamBId !== b.teamId)) {
       if (node.match.status !== 'SCHEDULED' || node.match.startedAt)
-        throw new AppError(
-          `Match ${node.match.code} has started; participants cannot be replaced.`,
-          409,
-        );
+        throw new AppError('Match {0} has started; participants cannot be replaced.', 409, [
+          node.match.code,
+        ]);
       const updated = await tx.match.updateMany({
         where: {
           id: node.match.id,
@@ -479,8 +482,9 @@ export async function applyCompetitionAction(
         match._count.results
       )
         throw new AppError(
-          `Match ${match.matchNumber} has operational history. Its round stage cannot be changed.`,
+          'Match {0} has operational history. Its round stage cannot be changed.',
           409,
+          [match.matchNumber],
         );
       const participants = match.participants as {
         [side: string]: { format?: string; members?: { substitute?: boolean }[] };
@@ -492,9 +496,10 @@ export async function applyCompetitionAction(
             rules.teamSize,
         )
       )
-        throw new AppError(
-          `Match ${match.matchNumber} needs ${rules.teamSize} starting players per side for this stage.`,
-        );
+        throw new AppError('Match {0} needs {1} starting players per side for this stage.', 400, [
+          match.matchNumber,
+          rules.teamSize,
+        ]);
     }
     for (const match of matches) {
       if (match.stageId === stage.id) continue;

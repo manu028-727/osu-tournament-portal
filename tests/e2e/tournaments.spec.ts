@@ -229,12 +229,12 @@ test('creates private tournaments, switches scoped CMS contexts and publishes in
     );
     await publicPage.goto(`/t/${prefix}-b/mappools`);
     await expect(
-      publicPage.getByRole('heading', { name: 'Nessun mappool pubblicato', exact: true }),
+      publicPage.getByRole('heading', { name: 'No mappools published', exact: true }),
     ).toBeVisible();
     await publicPage.screenshot({ path: 'test-results/neutral-copy-desktop.png', fullPage: true });
     await publicPage.setViewportSize({ width: 390, height: 844 });
     await expect(
-      publicPage.getByRole('heading', { name: 'Nessun mappool pubblicato', exact: true }),
+      publicPage.getByRole('heading', { name: 'No mappools published', exact: true }),
     ).toBeVisible();
     expect(
       await publicPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth),

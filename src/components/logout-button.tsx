@@ -1,7 +1,10 @@
 'use client';
+import { Feedback, useT } from '@/components/locale';
+
 import { useState, type ComponentProps } from 'react';
 import { Loader2, LogOut } from 'lucide-react';
 export function LogoutButton({ children, onClick, ...props }: ComponentProps<'button'>) {
+  const tr = useT();
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   return (
@@ -10,7 +13,7 @@ export function LogoutButton({ children, onClick, ...props }: ComponentProps<'bu
       type="button"
       disabled={busy || props.disabled}
       aria-busy={busy}
-      title={error || props.title || 'Sign out'}
+      title={error || props.title || tr('Sign out')}
       onClick={async (event) => {
         event.preventDefault();
         onClick?.(event);
@@ -36,7 +39,7 @@ export function LogoutButton({ children, onClick, ...props }: ComponentProps<'bu
       {busy ? <Loader2 size={17} className="animate-spin" /> : <LogOut size={17} />}
       {error ? (
         <span role="alert" className="max-w-60 text-sm text-red-200">
-          {error}
+          <Feedback message={error} />
         </span>
       ) : (
         children

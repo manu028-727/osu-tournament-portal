@@ -1,4 +1,6 @@
 'use client';
+import { useLocale, useT } from '@/components/locale';
+import { localeTag } from '@/lib/i18n';
 
 import { useId, useMemo, useRef, useState, useSyncExternalStore, useEffect } from 'react';
 import type { CSSProperties } from 'react';
@@ -32,31 +34,38 @@ function SlotBadge({ slot }: { slot: Pick<Slot, 'name' | 'color'> }) {
 }
 
 function MapStats({ slot }: { slot: Slot }) {
+  const tr = useT();
+  const language = useLocale();
   const map = slot.metadata;
   return (
     <>
       <dl className={styles.stats}>
         {[
-          ['Stelle', `${map.stars.toFixed(2)} ★`],
+          [
+            'Stelle',
+            `${map.stars.toLocaleString(localeTag(language), { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ★`,
+          ],
           ['BPM', map.bpm],
           ['Durata', duration(map.length)],
           ['AR', map.ar],
           ['CS', map.cs],
           ['OD', map.od],
-          [map.statisticsSource ? 'HP base' : 'HP', map.hp ?? 'n/d'],
+          [map.statisticsSource ? 'HP base' : 'HP', map.hp ?? tr('n/d')],
         ].map(([label, value]) => (
           <div key={label}>
-            <dt>{label}</dt>
-            <dd>{value}</dd>
+            <dt>{tr(String(label))}</dt>
+            <dd>{typeof value === 'number' ? value.toLocaleString(localeTag(language)) : value}</dd>
           </div>
         ))}
       </dl>
       <dl className={styles.mapper}>
-        <dt>Mapper</dt>
+        <dt>{tr('Mapper')}</dt>
         <dd>{map.mapper}</dd>
       </dl>
       {map.unavailable && (
-        <p className={styles.warning}>Mappa non disponibile nell'API osu!; dati dal main sheet.</p>
+        <p className={styles.warning}>
+          {tr("Mappa non disponibile nell'API osu!; dati dal main sheet.")}
+        </p>
       )}
     </>
   );
@@ -81,6 +90,7 @@ function MapCard({
   captureTheme: () => void;
   showDetails: (slot: Slot, trigger: HTMLButtonElement) => void;
 }) {
+  const tr = useT();
   const [hovered, setHovered] = useState(false);
   const previewId = useId();
   const map = slot.metadata;
@@ -91,7 +101,13 @@ function MapCard({
       target="_blank"
       rel="noopener noreferrer"
       className={styles.mapLink}
-      aria-label={`${slot.name}: ${map.artist} - ${map.title} [${map.difficulty}], apri su osu!`}
+      aria-label={tr(
+        '{0}: {1} - {2} [{3}], apri su osu!',
+        slot.name,
+        map.artist,
+        map.title,
+        map.difficulty,
+      )}
       aria-describedby={open ? previewId : undefined}
     >
       <SlotBadge slot={slot} />
@@ -120,8 +136,8 @@ function MapCard({
         <button
           type="button"
           className={styles.info}
-          aria-label={`Dettagli ${slot.name}`}
-          title={`Dettagli ${slot.name}`}
+          aria-label={tr('Dettagli {0}', slot.name)}
+          title={tr('Dettagli {0}', slot.name)}
           aria-haspopup="dialog"
           aria-expanded={selected}
           aria-controls={selected ? dialogId : undefined}
@@ -137,7 +153,7 @@ function MapCard({
         <HoverCard.Content
           id={previewId}
           role="tooltip"
-          aria-label={`Anteprima ${slot.name}`}
+          aria-label={tr('Anteprima {0}', slot.name)}
           className={styles.preview}
           style={theme}
           side="bottom"
@@ -162,6 +178,7 @@ function MapCard({
 }
 
 export function PublicMappool({ pool }: { pool: PoolContent }) {
+  const tr = useT();
   const slots = useMemo(() => sortPoolSlots(pool.slots), [pool.slots]);
   const groups = useMemo(() => {
     const categories = new Map<string, Slot[]>();
@@ -213,15 +230,17 @@ export function PublicMappool({ pool }: { pool: PoolContent }) {
   return (
     <div ref={root} className={styles.pool}>
       {pool.notes && <p className={styles.notes}>{pool.notes}</p>}
-      <p className={styles.count}>{slots.length} mappe</p>
-      <div role="group" aria-label="Mappool" className={styles.groups}>
+      <p className={styles.count}>
+        {slots.length} {tr('mappe')}
+      </p>
+      <div role="group" aria-label={tr('Mappool')} className={styles.groups}>
         {groups.map(({ category, maps }) => (
           <section
             key={category}
-            aria-label={`Categoria ${category}`}
+            aria-label={tr('Categoria {0}', category)}
             style={{ '--mod-color': maps[0].color } as CSSProperties}
           >
-            <ul aria-label={`Mappe ${category}`} className={styles.grid}>
+            <ul aria-label={tr('Mappe {0}', category)} className={styles.grid}>
               {maps.map((slot) => (
                 <MapCard
                   key={slot.id || slot.name}
@@ -239,7 +258,7 @@ export function PublicMappool({ pool }: { pool: PoolContent }) {
           </section>
         ))}
       </div>
-      {!slots.length && <p className={styles.notes}>Nessuna mappa pubblicata.</p>}
+      {!slots.length && <p className={styles.notes}>{tr('Nessuna mappa pubblicata.')}</p>}
       <Dialog.Root
         open={!!selected}
         onOpenChange={(open) => {
@@ -260,7 +279,11 @@ export function PublicMappool({ pool }: { pool: PoolContent }) {
             >
               <div className={styles.sheetHeader}>
                 <SlotBadge slot={selected} />
-                <Dialog.Close className={styles.close} aria-label="Chiudi" title="Chiudi">
+                <Dialog.Close
+                  className={styles.close}
+                  aria-label={tr('Chiudi')}
+                  title={tr('Chiudi')}
+                >
                   <X size={20} aria-hidden="true" />
                 </Dialog.Close>
               </div>
@@ -274,7 +297,7 @@ export function PublicMappool({ pool }: { pool: PoolContent }) {
                 <MapStats slot={selected} />
                 <div className={styles.idRow}>
                   <div>
-                    <span>Beatmap ID</span>
+                    <span>{tr('Beatmap ID')}</span>
                     <code>{selected.beatmapId}</code>
                   </div>
                   <Button
@@ -283,8 +306,8 @@ export function PublicMappool({ pool }: { pool: PoolContent }) {
                     variant="outline"
                     className="size-11"
                     onClick={() => void copyId(selected)}
-                    aria-label="Copia beatmap ID"
-                    title="Copia beatmap ID"
+                    aria-label={tr('Copia beatmap ID')}
+                    title={tr('Copia beatmap ID')}
                   >
                     {copied?.id === selected.beatmapId && copied.state === 'success' ? (
                       <Check size={18} />
@@ -296,13 +319,13 @@ export function PublicMappool({ pool }: { pool: PoolContent }) {
                 <p role="status" aria-live="polite" className={styles.copyStatus}>
                   {copied?.id === selected.beatmapId
                     ? copied.state === 'success'
-                      ? 'ID copiato'
-                      : "Impossibile copiare l'ID."
+                      ? tr('ID copiato')
+                      : tr("Impossibile copiare l'ID.")
                     : ''}
                 </p>
                 <Button asChild className="w-full">
                   <a href={selected.metadata.url} target="_blank" rel="noopener noreferrer">
-                    Apri su osu!
+                    {tr('Apri su osu!')}
                     <ExternalLink size={16} />
                   </a>
                 </Button>

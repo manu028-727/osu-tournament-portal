@@ -1,10 +1,16 @@
 'use client';
+import { humanizeCode } from '@/lib/i18n';
+import { Feedback, useT } from '@/components/locale';
 
 import { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, Copy, Pencil, Save, X, Layers } from 'lucide-react';
 import Link from '@/components/tournament-scope';
 import { matchRulesSchema, type MatchRules } from '@/lib/match-rules';
-import { qualifierPolicySchema, type QualifierPolicy } from '@/lib/qualifier-policy';
+import {
+  QUALIFIER_METHOD_LABELS,
+  qualifierPolicySchema,
+  type QualifierPolicy,
+} from '@/lib/qualifier-policy';
 import { stagePoolIssues } from '@/lib/stage-workflows-validation';
 import { Button } from '@/components/ui/button';
 import { Field, useUnsaved } from './shared';
@@ -48,13 +54,14 @@ export function StageActionEditor({
   disabled?: boolean;
   onChange: (rules: MatchRules) => void;
 }) {
+  const tr = useT();
   const [first, setFirst] = useState<'A' | 'B'>('A');
   const sequence = rules.draftSequence;
   const parsed = matchRulesSchema.safeParse(rules);
   return (
     <div className="space-y-3">
       <label className="block text-sm">
-        Action preset
+        {tr('Action preset')}
         <select
           disabled={disabled}
           value=""
@@ -68,11 +75,11 @@ export function StageActionEditor({
               );
           }}
         >
-          <option value="">Custom / current configuration</option>
-          <option value="ONE_BAN">One ban each</option>
-          <option value="TWO_BANS">Two bans each</option>
-          <option value="PROTECT_BANS">Protect then two bans each</option>
-          <option value="ALTERNATING">Alternating picks</option>
+          <option value="">{tr('Custom / current configuration')}</option>
+          <option value="ONE_BAN">{tr('One ban each')}</option>
+          <option value="TWO_BANS">{tr('Two bans each')}</option>
+          <option value="PROTECT_BANS">{tr('Protect then two bans each')}</option>
+          <option value="ALTERNATING">{tr('Alternating picks')}</option>
         </select>
       </label>
       <div className="grid gap-3 sm:grid-cols-3">
@@ -81,10 +88,10 @@ export function StageActionEditor({
             key={key}
             label={
               key === 'banOrder'
-                ? 'Ban order'
+                ? tr('Ban order')
                 : key === 'pickOrder'
-                  ? 'Pick order'
-                  : 'Protect order'
+                  ? tr('Pick order')
+                  : tr('Protect order')
             }
           >
             <select
@@ -92,9 +99,9 @@ export function StageActionEditor({
               value={rules[key]}
               onChange={(event) => onChange({ ...rules, [key]: event.target.value })}
             >
-              {key === 'banOrder' && <option value="AB">AB (one ban each)</option>}
-              <option value="ABAB">ABAB</option>
-              <option value="ABBA">ABBA</option>
+              {key === 'banOrder' && <option value="AB">{tr('AB (one ban each)')}</option>}
+              <option value="ABAB">{tr('ABAB')}</option>
+              <option value="ABBA">{tr('ABBA')}</option>
             </select>
           </Field>
         ))}
@@ -105,10 +112,10 @@ export function StageActionEditor({
             key={key}
             label={
               key === 'firstBanRule'
-                ? 'First ban'
+                ? tr('First ban')
                 : key === 'firstPickRule'
-                  ? 'First pick'
-                  : 'First protect'
+                  ? tr('First pick')
+                  : tr('First protect')
             }
           >
             <select
@@ -116,11 +123,11 @@ export function StageActionEditor({
               value={rules[key]}
               onChange={(event) => onChange({ ...rules, [key]: event.target.value })}
             >
-              <option value="CHOICE">Referee records choice</option>
-              <option value="ROLL_WINNER">Roll winner</option>
-              <option value="ROLL_LOSER">Roll loser</option>
-              <option value="RED">Red</option>
-              <option value="BLUE">Blue</option>
+              <option value="CHOICE">{tr('Referee records choice')}</option>
+              <option value="ROLL_WINNER">{tr('Roll winner')}</option>
+              <option value="ROLL_LOSER">{tr('Roll loser')}</option>
+              <option value="RED">{tr('Red')}</option>
+              <option value="BLUE">{tr('Blue')}</option>
             </select>
           </Field>
         ))}
@@ -132,7 +139,7 @@ export function StageActionEditor({
           disabled={disabled}
           onChange={(event) => onChange({ ...rules, rollRequired: event.target.checked })}
         />
-        Roll required
+        {tr('Roll required')}
       </label>
       <div className="flex flex-wrap gap-1.5">
         {(['PROTECT', 'BAN', 'PICK', 'TB_BAN'] as const).map((kind) => (
@@ -153,7 +160,7 @@ export function StageActionEditor({
               onChange(withStageActionSequence(rules, next));
             }}
           >
-            + {kind === 'TB_BAN' ? 'TB ban pair' : `${kind.toLowerCase()} pair`}
+            + {kind === 'TB_BAN' ? tr('TB ban pair') : tr('{0} pair', tr(humanizeCode(kind)))}
           </Button>
         ))}
         <Button
@@ -163,7 +170,7 @@ export function StageActionEditor({
           disabled={disabled || !sequence.length}
           onClick={() => onChange(withStageActionSequence(rules, []))}
         >
-          Count-based
+          {tr('Count-based')}
         </Button>
       </div>
       <ol className="max-h-64 space-y-1 overflow-y-auto">
@@ -171,7 +178,7 @@ export function StageActionEditor({
           (kind, index, displayed) => (
             <li key={`${kind}-${index}`} className="flex items-center gap-2 text-sm">
               <span className="min-w-0 flex-1">
-                {index + 1}. {kind.replace('_', ' ')} pair
+                {index + 1}. {tr(kind.replace('_', ' '))} {tr('pair')}
               </span>
               {([-1, 1] as const).map((offset) => (
                 <Button
@@ -179,8 +186,8 @@ export function StageActionEditor({
                   type="button"
                   size="icon"
                   variant="ghost"
-                  title={`Move action ${offset < 0 ? 'up' : 'down'}`}
-                  aria-label={`Move action ${index + 1} ${offset < 0 ? 'up' : 'down'}`}
+                  title={tr('Move action {0}', tr(offset < 0 ? 'up' : 'down'))}
+                  aria-label={tr('Move action {0} {1}', index + 1, tr(offset < 0 ? 'up' : 'down'))}
                   disabled={
                     disabled ||
                     kind === 'TB_BAN' ||
@@ -204,8 +211,8 @@ export function StageActionEditor({
                 type="button"
                 size="icon"
                 variant="ghost"
-                title="Remove action pair"
-                aria-label={`Remove action ${index + 1}`}
+                title={tr('Remove action pair')}
+                aria-label={tr('Remove action {0}', index + 1)}
                 disabled={disabled}
                 onClick={() =>
                   onChange(
@@ -223,23 +230,26 @@ export function StageActionEditor({
         )}
       </ol>
       <details>
-        <summary className="cursor-pointer text-sm">Effective team order</summary>
+        <summary className="cursor-pointer text-sm">{tr('Effective team order')}</summary>
         <label className="mt-2 block text-sm">
-          Preview roll winner and choice
+          {tr('Preview roll winner and choice')}
           <select value={first} onChange={(event) => setFirst(event.target.value as 'A' | 'B')}>
-            <option value="A">Red</option>
-            <option value="B">Blue</option>
+            <option value="A">{tr('Red')}</option>
+            <option value="B">{tr('Blue')}</option>
           </select>
         </label>
         <p className="my-2 text-xs text-muted">
-          This team wins the preview roll and starts choice-based actions. Fixed and roll-based
-          rules determine the other starters. Preview assumes a tied match through the deciding map.
+          {tr(
+            'This team wins the preview roll and starts choice-based actions. Fixed and roll-based rules determine the other starters. Preview assumes a tied match through the deciding map.',
+          )}
         </p>
         <ol className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto text-xs">
           {previewStageActions(rules, first).map((step, index) => (
             <li key={index} className="rounded border px-2 py-1">
-              {index + 1}. {step.side === 'A' ? 'Red' : 'Blue'}{' '}
-              {step.tiebreaker ? `TB ${step.kind.toLowerCase()}` : step.kind.toLowerCase()}
+              {index + 1}. {step.side === 'A' ? tr('Red') : tr('Blue')}{' '}
+              {step.tiebreaker
+                ? tr('TB {0}', tr(humanizeCode(step.kind)).toLowerCase())
+                : tr(humanizeCode(step.kind)).toLowerCase()}
             </li>
           ))}
         </ol>
@@ -290,6 +300,7 @@ export function StageOverviewRow({
   onApply?: () => void;
   onDirtyChange?: (id: string, dirty: boolean) => void;
 }) {
+  const tr = useT();
   const [draft, setDraft] = useState(stage);
   useEffect(() => {
     setDraft(stage);
@@ -313,7 +324,7 @@ export function StageOverviewRow({
       <td className="w-12">
         <input
           type="checkbox"
-          aria-label={`Select ${stage.name}`}
+          aria-label={tr('Select {0}', stage.name)}
           checked={selected}
           disabled={busy || !canEdit || !onSelect}
           onChange={(event) =>
@@ -332,8 +343,8 @@ export function StageOverviewRow({
                   type="button"
                   size="icon"
                   variant="ghost"
-                  title={`Move ${stage.name} ${offset < 0 ? 'up' : 'down'}`}
-                  aria-label={`Move ${stage.name} ${offset < 0 ? 'up' : 'down'}`}
+                  title={tr('Move {0} {1}', stage.name, tr(offset < 0 ? 'up' : 'down'))}
+                  aria-label={tr('Move {0} {1}', stage.name, tr(offset < 0 ? 'up' : 'down'))}
                   disabled={
                     busy || !canEdit || changed || (offset < 0 ? moveUpDisabled : moveDownDisabled)
                   }
@@ -348,7 +359,7 @@ export function StageOverviewRow({
       </td>
       <td className="min-w-48">
         <input
-          aria-label={`Stage name: ${stage.name}`}
+          aria-label={tr('Stage name: {0}', stage.name)}
           className="w-full min-w-40"
           maxLength={120}
           value={draft.name}
@@ -356,17 +367,17 @@ export function StageOverviewRow({
           onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
         />
         <span className="mt-1 block text-xs text-muted">
-          {draft.archivedAt ? 'Archived · ' : ''}
+          {draft.archivedAt ? tr('Archived · ') : ''}
           {isQualifier
-            ? 'Qualifier policy'
+            ? tr('Qualifier policy')
             : draft.matchRules
-              ? 'Customized · overrides tournament defaults'
-              : 'Inherited · tournament defaults'}
+              ? tr('Customized · overrides tournament defaults')
+              : tr('Inherited · tournament defaults')}
         </span>
       </td>
       <td className="min-w-36">
         <select
-          aria-label={`Stage type: ${stage.name}`}
+          aria-label={tr('Stage type: {0}', stage.name)}
           value={draft.kind}
           disabled={!canEdit || !canManageRules || busy}
           onChange={(event) => {
@@ -385,18 +396,18 @@ export function StageOverviewRow({
             }));
           }}
         >
-          <option value="QUALIFIERS">Qualifiers</option>
-          <option value="ELIMINATION">Elimination</option>
-          <option value="GROUPS">Groups</option>
-          <option value="CUSTOM">Custom</option>
+          <option value="QUALIFIERS">{tr('Qualifiers')}</option>
+          <option value="ELIMINATION">{tr('Elimination')}</option>
+          <option value="GROUPS">{tr('Groups')}</option>
+          <option value="CUSTOM">{tr('Custom')}</option>
         </select>
       </td>
       <td className="min-w-28">
         {isQualifier ? (
-          <span className="text-sm text-muted">Full pool</span>
+          <span className="text-sm text-muted">{tr('Full pool')}</span>
         ) : (
           <select
-            aria-label={`Best of: ${stage.name}`}
+            aria-label={tr('Best of: {0}', stage.name)}
             value={activeRules.bestOf}
             disabled={!canEdit || !canManageRules || busy}
             onChange={(event) =>
@@ -408,7 +419,8 @@ export function StageOverviewRow({
           >
             {Array.from({ length: 16 }, (_, index) => 1 + index * 2).map((bestOf) => (
               <option key={bestOf} value={bestOf}>
-                BO{bestOf}
+                {tr('BO')}
+                {bestOf}
               </option>
             ))}
           </select>
@@ -417,13 +429,13 @@ export function StageOverviewRow({
       <td className="min-w-64">
         {isQualifier ? (
           <span className="text-sm text-muted">
-            {draft.qualifierPolicy?.method?.replaceAll('_', ' ') || 'Raw score'} ·{' '}
-            {draft.qualifierPolicy?.runs || 1} run(s)
+            {tr(QUALIFIER_METHOD_LABELS[draft.qualifierPolicy?.method || 'RAW_SCORE'])} ·{' '}
+            {draft.qualifierPolicy?.runs || 1} {tr('run(s)')}
           </span>
         ) : (
           <details>
             <summary className="max-w-72 cursor-pointer truncate text-sm text-muted">
-              {stageActionSequenceLabel(activeRules)}
+              {stageActionSequenceLabel(activeRules, tr)}
             </summary>
             <div className="mt-3 min-w-72 space-y-3">
               <StageActionEditor
@@ -438,7 +450,7 @@ export function StageOverviewRow({
                 disabled={!canEdit || !canManageRules || busy || !draft.matchRules}
                 onClick={() => setDraft((current) => ({ ...current, matchRules: null }))}
               >
-                Use tournament defaults
+                {tr('Use tournament defaults')}
               </Button>
             </div>
           </details>
@@ -452,27 +464,31 @@ export function StageOverviewRow({
       <td className="min-w-40">
         <span className="block text-sm">
           {pool === undefined
-            ? 'Pool status unavailable'
+            ? tr('Pool status unavailable')
             : !pool.exists
-              ? 'No pool record'
+              ? tr('No pool record')
               : pool.state === 'PUBLISHED'
-                ? 'Published'
-                : 'Draft'}
+                ? tr('Published')
+                : tr('Draft')}
         </span>
         {canEdit && (
           <Link
             className="text-xs text-primary hover:underline"
             href={`/admin/mappools?stage=${encodeURIComponent(stage.id)}`}
           >
-            Edit stage pool
+            {tr('Edit stage pool')}
           </Link>
         )}
         {!!issues.length && (
           <details className="mt-1 text-xs text-muted">
-            <summary className="cursor-pointer">{issues.length} readiness issue(s)</summary>
+            <summary className="cursor-pointer">
+              {issues.length} {tr('readiness issue(s)')}
+            </summary>
             <ul className="mt-1 space-y-1">
               {issues.map((issue) => (
-                <li key={issue.code}>{issue.message}</li>
+                <li key={issue.code}>
+                  <Feedback message={issue.message} />
+                </li>
               ))}
             </ul>
           </details>
@@ -489,14 +505,14 @@ export function StageOverviewRow({
                 onClick={() => onSave(draft)}
               >
                 <Save size={15} />
-                Save
+                {tr('Save')}
               </Button>
               <Button
                 type="button"
                 size="icon"
                 variant="ghost"
-                title="Discard inline changes"
-                aria-label={`Discard changes to ${stage.name}`}
+                title={tr('Discard inline changes')}
+                aria-label={tr('Discard changes to {0}', stage.name)}
                 disabled={busy}
                 onClick={() => setDraft(stage)}
               >
@@ -509,8 +525,8 @@ export function StageOverviewRow({
               type="button"
               size="icon"
               variant="ghost"
-              title="Apply these rules to other stages"
-              aria-label={`Apply ${stage.name} rules to other stages`}
+              title={tr('Apply these rules to other stages')}
+              aria-label={tr('Apply {0} rules to other stages', stage.name)}
               disabled={busy || changed || !canEdit || !canManageRules || !!stage.archivedAt}
               onClick={onApply}
             >
@@ -522,8 +538,8 @@ export function StageOverviewRow({
               type="button"
               size="icon"
               variant="ghost"
-              title="Duplicate stage"
-              aria-label={`Duplicate ${stage.name}`}
+              title={tr('Duplicate stage')}
+              aria-label={tr('Duplicate {0}', stage.name)}
               disabled={busy || changed}
               onClick={onDuplicate}
             >
@@ -534,8 +550,8 @@ export function StageOverviewRow({
             type="button"
             size="icon"
             variant="ghost"
-            title="Advanced stage settings"
-            aria-label={`Edit advanced settings for ${stage.name}`}
+            title={tr('Advanced stage settings')}
+            aria-label={tr('Edit advanced settings for {0}', stage.name)}
             disabled={!canEdit || busy || changed}
             onClick={onAdvanced}
           >

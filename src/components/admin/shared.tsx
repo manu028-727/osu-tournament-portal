@@ -1,4 +1,8 @@
 'use client';
+import { useLocale, useT } from '@/components/locale';
+import { translateGeneratedMessage } from '@/lib/i18n';
+import { validationFeedback } from '@/lib/validation-feedback';
+
 import { tournamentApiUrl } from '@/components/tournament-scope';
 import {
   createContext,
@@ -17,6 +21,7 @@ import { AlertDialog, Dialog } from 'radix-ui';
 import { X, Check, AlertCircle, Loader2, ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { startPolling } from '@/lib/polling';
+export { useUnsaved } from '@/components/unsaved-navigation';
 export function usePolling(reload: () => Promise<unknown>, delay = 3000, enabled = true) {
   useEffect(() => {
     if (!enabled) return;
@@ -84,6 +89,8 @@ export function useResource<T>(section: string, keepPreviousData = false) {
 }
 const NoticeContext = createContext<(message: string, error?: boolean) => void>(() => {});
 export function Notices({ children }: { children: ReactNode }) {
+  const tr = useT();
+  const language = useLocale();
   const [notice, setNotice] = useState<{ message: string; error: boolean } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
@@ -111,8 +118,8 @@ export function Notices({ children }: { children: ReactNode }) {
             ) : (
               <Check size={18} className="shrink-0 text-primary" />
             )}
-            <span>{notice.message}</span>
-            <button aria-label="Dismiss notification" onClick={() => setNotice(null)}>
+            <span>{translateGeneratedMessage(language, notice.message)}</span>
+            <button aria-label={tr('Dismiss notification')} onClick={() => setNotice(null)}>
               <X size={14} />
             </button>
           </div>
@@ -122,6 +129,7 @@ export function Notices({ children }: { children: ReactNode }) {
   );
 }
 export function useTask() {
+  const language = useLocale();
   const notify = useContext(NoticeContext);
   const [busy, setBusy] = useState(false);
   const run = async <T,>(fn: () => Promise<T>, message = 'Changes saved.') => {
@@ -131,50 +139,18 @@ export function useTask() {
       notify(message);
       return value;
     } catch (e) {
-      notify((e as Error).message, true);
+      notify(
+        e && typeof e === 'object' && 'issues' in e && Array.isArray(e.issues)
+          ? validationFeedback(e.issues, language)
+          : (e as Error).message,
+        true,
+      );
       return undefined;
     } finally {
       setBusy(false);
     }
   };
   return { run, busy, notify };
-}
-export function useUnsaved(dirty: boolean) {
-  useEffect(() => {
-    if (!dirty) return;
-    const before = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-    };
-    const click = (e: MouseEvent) => {
-      const a = (e.target as HTMLElement).closest('a');
-      if (
-        e.defaultPrevented ||
-        e.button !== 0 ||
-        e.metaKey ||
-        e.ctrlKey ||
-        e.shiftKey ||
-        e.altKey ||
-        a?.target === '_blank' ||
-        a?.hasAttribute('download')
-      )
-        return;
-      if (
-        a &&
-        a.href !== location.href &&
-        !a.href.startsWith(location.href + '#') &&
-        !window.confirm('You have unsaved changes. Leave this editor?')
-      ) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    };
-    window.addEventListener('beforeunload', before);
-    document.addEventListener('click', click, true);
-    return () => {
-      window.removeEventListener('beforeunload', before);
-      document.removeEventListener('click', click, true);
-    };
-  }, [dirty]);
 }
 export function useWorkspacePortal() {
   const [container, setContainer] = useState<HTMLElement | null>(null);
@@ -198,12 +174,24 @@ export function Modal({
   children: ReactNode;
   wide?: boolean;
 }) {
+  const tr = useT();
   const container = useWorkspacePortal();
+  const returnFocus = useRef<HTMLElement | null>(null);
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal container={container}>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/75" />
         <Dialog.Content
+          onOpenAutoFocus={() => {
+            returnFocus.current =
+              document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          }}
+          onCloseAutoFocus={(event) => {
+            if (returnFocus.current?.isConnected) {
+              event.preventDefault();
+              returnFocus.current.focus({ preventScroll: true });
+            }
+          }}
           className={`workspace-dialog fixed left-1/2 top-1/2 z-50 max-h-[90dvh] w-[calc(100%-32px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border bg-card p-5 shadow-xl md:p-6 ${wide ? 'max-w-6xl' : 'max-w-xl'}`}
         >
           <Dialog.Title className="pr-10 text-xl font-semibold">{title}</Dialog.Title>
@@ -212,7 +200,7 @@ export function Modal({
           </Dialog.Description>
           <Dialog.Close
             className="absolute right-2 top-2 flex size-11 items-center justify-center rounded-xl text-muted hover:bg-[var(--surface-hover)] hover:text-foreground"
-            aria-label="Close dialog"
+            aria-label={tr('Close dialog')}
           >
             <X size={18} />
           </Dialog.Close>
@@ -225,8 +213,8 @@ export function Modal({
 export function ConfirmButton({
   onConfirm,
   children,
-  title = 'Confirm this action',
-  description = 'This action takes effect immediately. Please review before continuing.',
+  title,
+  description,
   disabled = false,
   variant = 'destructive',
 }: {
@@ -237,8 +225,11 @@ export function ConfirmButton({
   disabled?: boolean;
   variant?: 'destructive' | 'outline' | 'default';
 }) {
+  const tr = useT();
   const container = useWorkspacePortal();
   const iconOnly = isValidElement<{ size?: number }>(children) && children.props.size !== undefined;
+  title ??= tr('Confirm this action');
+  description ??= tr('This action takes effect immediately. Please review before continuing.');
   return (
     <AlertDialog.Root>
       <AlertDialog.Trigger asChild>
@@ -263,12 +254,12 @@ export function ConfirmButton({
           <div className="mt-7 flex justify-end gap-3">
             <AlertDialog.Cancel asChild>
               <Button type="button" variant="outline" size="sm">
-                Cancel
+                {tr('Cancel')}
               </Button>
             </AlertDialog.Cancel>
             <AlertDialog.Action asChild>
               <Button type="button" variant={variant} size="sm" onClick={onConfirm}>
-                Confirm
+                {tr('Confirm')}
               </Button>
             </AlertDialog.Action>
           </div>
@@ -309,16 +300,18 @@ export function Field({
   );
 }
 export function LoadingState({ error, retry }: { error?: string; retry?: () => void }) {
+  const tr = useT();
+  const language = useLocale();
   return error ? (
     <div role="alert" className="border-l-2 border-red-300 bg-red-300/5 p-5">
       <AlertCircle size={20} className="mb-3 text-red-300" />
-      <p className="mb-4 text-sm">{error}</p>
+      <p className="mb-4 text-sm">{translateGeneratedMessage(language, error)}</p>
       <Button variant="outline" onClick={retry}>
-        Try again
+        {tr('Try again')}
       </Button>
     </div>
   ) : (
-    <div role="status" aria-label="Loading" className="space-y-3">
+    <div role="status" aria-label={tr('Loading')} className="space-y-3">
       <div className="skeleton h-8 max-w-64 rounded" />
       <div className="skeleton h-12 rounded" />
       <div className="skeleton h-12 rounded" />
@@ -328,13 +321,14 @@ export function LoadingState({ error, retry }: { error?: string; retry?: () => v
 }
 export function SaveButton({
   busy,
-  children = 'Save changes',
+  children,
   ...props
 }: { busy: boolean; children?: ReactNode } & React.ComponentProps<typeof Button>) {
+  const tr = useT();
   return (
     <Button type="submit" disabled={busy} {...props}>
       {busy && <Loader2 size={14} className="animate-spin" />}
-      {children}
+      {children === undefined ? tr('Save changes') : children}
     </Button>
   );
 }
@@ -351,6 +345,7 @@ export function ReorderList<T>({
   keyOf: (item: T, index: number) => string;
   compact?: boolean;
 }) {
+  const tr = useT();
   const drag = useRef<number | null>(null);
   const move = (from: number, to: number) => {
     if (to < 0 || to >= items.length) return;
@@ -384,7 +379,7 @@ export function ReorderList<T>({
                 drag.current = i;
               }}
               className={`cursor-grab p-1 text-muted ${compact ? 'hidden sm:inline-flex' : ''}`}
-              title="Drag to reorder"
+              title={tr('Drag to reorder')}
             >
               <GripVertical size={16} />
             </span>
@@ -395,7 +390,7 @@ export function ReorderList<T>({
                 size="icon"
                 onClick={() => move(i, i - 1)}
                 disabled={i === 0}
-                aria-label="Move up"
+                aria-label={tr('Move up')}
               >
                 <ArrowUp size={14} />
               </Button>
@@ -405,7 +400,7 @@ export function ReorderList<T>({
                 size="icon"
                 onClick={() => move(i, i + 1)}
                 disabled={i === items.length - 1}
-                aria-label="Move down"
+                aria-label={tr('Move down')}
               >
                 <ArrowDown size={14} />
               </Button>

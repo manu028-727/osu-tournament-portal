@@ -81,7 +81,8 @@ export async function assertScoringChange(
     return;
   if (impact.locked)
     throw new AppError(
-      `Gameplay scoring is locked: ${impact.affected.length} match/session records have begun or contain results. Historical scores will not be converted.`,
+      'Gameplay scoring is locked: {0} match/session records have begun or contain results. Historical scores will not be converted.',
       409,
+      [impact.affected.length],
     );
 }

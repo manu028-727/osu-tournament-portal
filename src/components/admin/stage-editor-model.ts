@@ -1,4 +1,6 @@
 import type { MatchRules } from '@/lib/match-rules';
+import { formatMessage } from '@/lib/messages';
+import type { Translator } from '@/lib/i18n';
 import { nextDraftStep, startingSide, type DraftState } from '@/lib/match-engine';
 import { stageRulesWithSequence } from '@/lib/stage-workflows-validation';
 
@@ -48,12 +50,20 @@ export function moveStageActionSequence(
   return next;
 }
 
-export function stageActionSequenceLabel(rules: MatchRules): string {
+export function stageActionSequenceLabel(
+  rules: MatchRules,
+  tr: Translator = (message, ...values) => formatMessage(message, values),
+): string {
   if (!rules.draftSequence.length) {
-    return `Count-based · BO${rules.bestOf} · ${rules.bansPerTeam} bans · ${rules.protectsPerTeam} protects`;
+    return tr(
+      'Count-based · BO{0} · {1} bans · {2} protects',
+      rules.bestOf,
+      rules.bansPerTeam,
+      rules.protectsPerTeam,
+    );
   }
 
-  return rules.draftSequence.map((action) => action.replace('_', ' ')).join(' → ');
+  return rules.draftSequence.map((action) => tr(action.replace('_', ' '))).join(' → ');
 }
 
 export const STAGE_TEMPLATES = [

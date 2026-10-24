@@ -1,4 +1,7 @@
 'use client';
+import { localeTag } from '@/lib/i18n';
+import { useLocale, useT } from '@/components/locale';
+
 import { useEffect, useState } from 'react';
 import { Eye, Plus, Trash2, Save, Send, ArrowUp, ArrowDown, Ellipsis } from 'lucide-react';
 import { RichEditor } from './rich-editor';
@@ -43,6 +46,8 @@ export function PageEditor({
   actor: Actor;
   tournament: TournamentView;
 }) {
+  const language = useLocale();
+  const tr = useT();
   const { data, error, reload } = useResource<PageData>(kind);
   const [title, setTitle] = useState(''),
     [html, setHtml] = useState(''),
@@ -81,26 +86,26 @@ export function PageEditor({
         baseRevisionId: base,
       });
       await reload();
-    }, 'Draft saved. The public version is unchanged.');
+    }, tr('Draft saved. The public version is unchanged.'));
   if (!data) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
   const revision = data.draftRevision || data.publishedRevision;
   const ruleSections = html.split(/(?=<h2(?:\s|>))/).filter(Boolean);
   return (
     <>
-      <SectionTitle title={kind === 'homepage' ? 'Homepage editor' : 'Rules editor'}>
+      <SectionTitle title={kind === 'homepage' ? tr('Homepage editor') : tr('Rules editor')}>
         <div className="flex flex-wrap items-center gap-2">
           <StateBadge state={data.state} />
-          {dirty && <span className="text-xs text-amber-200">Unsaved changes</span>}
+          {dirty && <span className="text-xs text-amber-200">{tr('Unsaved changes')}</span>}
         </div>
       </SectionTitle>
       <p role="status" className="mb-4 text-sm text-muted">
         {dirty
-          ? 'Unsaved changes'
+          ? tr('Unsaved changes')
           : !data.draftRevisionId
-            ? 'No saved draft yet'
+            ? tr('No saved draft yet')
             : data.draftRevisionId !== data.publishedRevisionId
-              ? 'Saved draft · Unpublished changes'
-              : 'Published · No unpublished changes'}
+              ? tr('Saved draft · Unpublished changes')
+              : tr('Published · No unpublished changes')}
       </p>
       <div className="editor-actionbar mb-6 flex flex-wrap items-center justify-between gap-3 border-b bg-background pb-4">
         <div className="flex flex-wrap gap-2">
@@ -111,18 +116,18 @@ export function PageEditor({
             disabled={!revision || dirty}
           >
             <Eye size={14} />
-            Preview draft
+            {tr('Preview draft')}
           </Button>
           {kind === 'rules' ? (
             <Button variant="ghost" size="sm" onClick={() => setHistory(true)}>
-              Revision history
+              {tr('Revision history')}
             </Button>
           ) : (
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Page options"
-              title="Page options"
+              aria-label={tr('Page options')}
+              title={tr('Page options')}
               onClick={() => setTools(true)}
             >
               <Ellipsis size={18} />
@@ -133,14 +138,14 @@ export function PageEditor({
           {edit && (
             <SaveButton size="sm" busy={busy} onClick={() => void save()} disabled={busy || !dirty}>
               <Save size={13} />
-              Save draft
+              {tr('Save draft')}
             </SaveButton>
           )}
           {publish && (
             <ConfirmButton
               variant="default"
-              title="Publish this draft?"
-              description="The current saved draft will replace the page visitors see."
+              title={tr('Publish this draft?')}
+              description={tr('The current saved draft will replace the page visitors see.')}
               disabled={
                 busy ||
                 dirty ||
@@ -155,38 +160,38 @@ export function PageEditor({
                     revisionId: data.draftRevisionId,
                   });
                   await reload();
-                }, 'Page published.')
+                }, tr('Page published.'))
               }
             >
               <Send size={13} />
-              Publish
+              {tr('Publish')}
             </ConfirmButton>
           )}
           {kind === 'rules' && publish && data.state === 'PUBLISHED' && (
             <ConfirmButton
-              title="Unpublish this page?"
-              description="The public page will be hidden until a draft is published again."
+              title={tr('Unpublish this page?')}
+              description={tr('The public page will be hidden until a draft is published again.')}
               disabled={busy}
               onConfirm={() =>
                 void run(async () => {
                   await action({ type: 'page.unpublish', slug: data.slug });
                   await reload();
-                }, 'Page unpublished.')
+                }, tr('Page unpublished.'))
               }
             >
-              Unpublish
+              {tr('Unpublish')}
             </ConfirmButton>
           )}
         </div>
       </div>
       {dirty && (
         <p className="mb-5 text-xs text-muted">
-          Save your draft to preview the sanitized content before publishing.
+          {tr('Save your draft to preview the sanitized content before publishing.')}
         </p>
       )}
       <fieldset disabled={!edit || busy} className="space-y-6">
         <div className="max-w-3xl">
-          <Field label="Page title">
+          <Field label={tr('Page title')}>
             <input
               value={title}
               onChange={(e) => {
@@ -210,22 +215,22 @@ export function PageEditor({
             />
             {ruleSections.length > 1 && (
               <div className="card p-6">
-                <h2 className="mb-4 text-sm font-semibold">Section order</h2>
+                <h2 className="mb-4 text-sm font-semibold">{tr('Section order')}</h2>
                 <p className="mb-4 text-xs text-muted">
-                  Rename headings in the editor. Move major sections here.
+                  {tr('Rename headings in the editor. Move major sections here.')}
                 </p>
                 {ruleSections.map((s, i) => (
                   <div key={i} className="flex items-center justify-between border-b py-2 text-xs">
                     <span>
                       {s.match(/<h2[^>]*>(.*?)<\/h2>/)?.[1].replace(/<[^>]+>/g, '') ||
-                        'Introduction'}
+                        tr('Introduction')}
                     </span>
                     <div className="flex gap-1">
                       <Button
                         variant="ghost"
                         size="icon"
                         disabled={i === 0}
-                        aria-label="Move section up"
+                        aria-label={tr('Move section up')}
                         onClick={() => {
                           const next = [...ruleSections];
                           [next[i - 1], next[i]] = [next[i], next[i - 1]];
@@ -239,7 +244,7 @@ export function PageEditor({
                         variant="ghost"
                         size="icon"
                         disabled={i === ruleSections.length - 1}
-                        aria-label="Move section down"
+                        aria-label={tr('Move section down')}
                         onClick={() => {
                           const next = [...ruleSections];
                           [next[i + 1], next[i]] = [next[i], next[i + 1]];
@@ -272,12 +277,12 @@ export function PageEditor({
                     </span>
                     {b.content.title || b.type}
                     {!b.visible && (
-                      <span className="ml-3 text-xs font-normal text-muted">Hidden</span>
+                      <span className="ml-3 text-xs font-normal text-muted">{tr('Hidden')}</span>
                     )}
                   </summary>
                   <div className="space-y-5 border-t pt-4">
                     <div className="flex flex-wrap items-center gap-4">
-                      <Field label="Block type">
+                      <Field label={tr('Block type')}>
                         <select
                           value={b.type}
                           onChange={(e) => update(i, { type: e.target.value as Block['type'] })}
@@ -285,7 +290,7 @@ export function PageEditor({
                           {['hero', 'text', 'image', 'announcements', 'buttons', 'timeline'].map(
                             (v) => (
                               <option key={v} value={v}>
-                                {v[0].toUpperCase() + v.slice(1)}
+                                {tr(v[0].toUpperCase() + v.slice(1))}
                               </option>
                             ),
                           )}
@@ -297,11 +302,13 @@ export function PageEditor({
                           checked={b.visible}
                           onChange={(e) => update(i, { visible: e.target.checked })}
                         />
-                        Visible
+                        {tr('Visible')}
                       </label>
                       <ConfirmButton
-                        title="Remove this section?"
-                        description="Save the draft to persist this change. Previous revisions remain available."
+                        title={tr('Remove this section?')}
+                        description={tr(
+                          'Save the draft to persist this change. Previous revisions remain available.',
+                        )}
                         onConfirm={() => {
                           setBlocks(blocks.filter((_, j) => j !== i));
                           setDirty(true);
@@ -311,7 +318,7 @@ export function PageEditor({
                       </ConfirmButton>
                     </div>
                     <div className="grid-fields">
-                      <Field label="Eyebrow / small label">
+                      <Field label={tr('Eyebrow / small label')}>
                         <input
                           value={b.content.eyebrow || ''}
                           onChange={(e) =>
@@ -319,7 +326,7 @@ export function PageEditor({
                           }
                         />
                       </Field>
-                      <Field label="Section title">
+                      <Field label={tr('Section title')}>
                         <textarea
                           rows={2}
                           className="min-h-20"
@@ -332,7 +339,7 @@ export function PageEditor({
                     </div>
                     {b.type === 'text' ? (
                       <div className="space-y-2">
-                        <p className="text-xs font-medium">Rich text content</p>
+                        <p className="text-xs font-medium">{tr('Rich text content')}</p>
                         <RichEditor
                           value={
                             b.content.html ||
@@ -342,7 +349,7 @@ export function PageEditor({
                         />
                       </div>
                     ) : (
-                      <Field label="Body text">
+                      <Field label={tr('Body text')}>
                         <textarea
                           value={b.content.text || ''}
                           onChange={(e) =>
@@ -353,21 +360,21 @@ export function PageEditor({
                     )}
                     {['hero', 'image', 'announcements'].includes(b.type) && (
                       <MediaField
-                        label="Section image"
+                        label={tr('Section image')}
                         value={b.content.image || ''}
                         canUpload={can(actor, 'media.upload')}
                         onChange={(image) => update(i, { content: { ...b.content, image } })}
                       />
                     )}
                     <div className="space-y-3">
-                      <p className="text-xs font-medium">Buttons</p>
+                      <p className="text-xs font-medium">{tr('Buttons')}</p>
                       {b.content.buttons?.map((button, j) => (
                         <div key={j} className="flex flex-wrap gap-2">
                           <input
-                            aria-label={`Button ${j + 1} label`}
+                            aria-label={tr('Button {0} label', j + 1)}
                             className="min-w-32 flex-1"
                             value={button.label}
-                            placeholder="Button label"
+                            placeholder={tr('Button label')}
                             onChange={(e) =>
                               update(i, {
                                 content: {
@@ -380,7 +387,7 @@ export function PageEditor({
                             }
                           />
                           <input
-                            aria-label={`Button ${j + 1} link`}
+                            aria-label={tr('Button {0} link', j + 1)}
                             className="min-w-40 flex-[2]"
                             value={button.href}
                             placeholder="/mappools or https://…"
@@ -398,7 +405,7 @@ export function PageEditor({
                           <Button
                             variant="ghost"
                             size="icon"
-                            aria-label="Remove button"
+                            aria-label={tr('Remove button')}
                             onClick={() =>
                               update(i, {
                                 content: {
@@ -428,12 +435,12 @@ export function PageEditor({
                         }
                       >
                         <Plus size={13} />
-                        Add button
+                        {tr('Add button')}
                       </Button>
                     </div>
                     {b.type === 'timeline' && (
                       <p className="text-xs text-muted">
-                        Dates are managed in Tournament settings.
+                        {tr('Dates are managed in Tournament settings.')}
                       </p>
                     )}
                   </div>
@@ -452,13 +459,13 @@ export function PageEditor({
               }}
             >
               <Plus size={15} />
-              Add section
+              {tr('Add section')}
             </Button>
           </>
         )}
       </fieldset>
       {kind === 'homepage' && (
-        <Modal open={tools} onOpenChange={setTools} title="Page options">
+        <Modal open={tools} onOpenChange={setTools} title={tr('Page options')}>
           <div className="flex flex-wrap items-center gap-4">
             <Button
               variant="outline"
@@ -467,22 +474,22 @@ export function PageEditor({
                 setHistory(true);
               }}
             >
-              Revision history
+              {tr('Revision history')}
             </Button>
             {publish && data.state === 'PUBLISHED' && (
               <ConfirmButton
-                title="Unpublish this page?"
-                description="The public page will be hidden until a draft is published again."
+                title={tr('Unpublish this page?')}
+                description={tr('The public page will be hidden until a draft is published again.')}
                 disabled={busy}
                 onConfirm={() =>
                   void run(async () => {
                     await action({ type: 'page.unpublish', slug: data.slug });
                     await reload();
                     setTools(false);
-                  }, 'Page unpublished.')
+                  }, tr('Page unpublished.'))
                 }
               >
-                Unpublish
+                {tr('Unpublish')}
               </ConfirmButton>
             )}
           </div>
@@ -491,8 +498,8 @@ export function PageEditor({
       <Modal
         open={preview}
         onOpenChange={setPreview}
-        title="Draft preview"
-        description="Only authorized editors can see this saved draft."
+        title={tr('Draft preview')}
+        description={tr('Only authorized editors can see this saved draft.')}
         wide
       >
         {revision &&
@@ -505,23 +512,25 @@ export function PageEditor({
       <Modal
         open={history}
         onOpenChange={setHistory}
-        title="Revision history"
-        description="Restoring creates a new draft. The published page stays visible."
+        title={tr('Revision history')}
+        description={tr('Restoring creates a new draft. The published page stays visible.')}
       >
         {data.revisions.map((r) => (
           <div className="flex items-center justify-between gap-4 border-b py-4" key={r.id}>
             <div>
               <p className="text-sm">{r.title}</p>
               <p className="mt-1 text-xs text-muted">
-                {new Date(r.createdAt).toLocaleString()}{' '}
-                {r.id === data.publishedRevisionId ? '· Published' : ''}
+                {new Date(r.createdAt).toLocaleString(localeTag(language))}{' '}
+                {r.id === data.publishedRevisionId ? tr('· Published') : ''}
               </p>
             </div>
             {edit && (
               <ConfirmButton
                 variant="outline"
-                title="Restore this revision?"
-                description="Your current draft will be replaced with a copy of this revision."
+                title={tr('Restore this revision?')}
+                description={tr(
+                  'Your current draft will be replaced with a copy of this revision.',
+                )}
                 disabled={busy || dirty}
                 onConfirm={() =>
                   void run(async () => {
@@ -533,10 +542,10 @@ export function PageEditor({
                     });
                     await reload();
                     setHistory(false);
-                  }, 'Revision restored as a new draft.')
+                  }, tr('Revision restored as a new draft.'))
                 }
               >
-                Restore
+                {tr('Restore')}
               </ConfirmButton>
             )}
           </div>

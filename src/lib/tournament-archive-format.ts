@@ -546,7 +546,7 @@ export function checkJson(value: unknown, depth = 0): void {
       child &&
       !(/^\/(?!\/)[^\\]*$/.test(child) || /^https?:\/\//i.test(child))
     )
-      throw new AppError(`Unsafe URL in archive field ${key}.`);
+      throw new AppError('Unsafe URL in archive field {0}.', 400, [key]);
     checkJson(child, depth + 1);
   }
 }
@@ -572,7 +572,7 @@ export function validateArchiveData(input: unknown): ArchiveData {
     for (const row of data[table])
       if (identity in row) {
         if (index.has(row[identity]))
-          throw new AppError(`Duplicate archive identifier in ${table}.`);
+          throw new AppError('Duplicate archive identifier in {0}.', 400, [table]);
         if (typeof row[identity] === 'string') {
           if (globalIds.has(row[identity] as string))
             throw new AppError('Archive identifiers must be unique across tables.');
@@ -586,10 +586,10 @@ export function validateArchiveData(input: unknown): ArchiveData {
   for (const table of tableNames)
     for (const row of data[table]) {
       if ('tournamentId' in row && row.tournamentId !== tournamentId)
-        throw new AppError(`Cross-tournament record in ${table}.`);
+        throw new AppError('Cross-tournament record in {0}.', 400, [table]);
       for (const [field, target] of Object.entries(ARCHIVE_TABLES[table].refs)) {
         if (row[field] != null && !indices.get(target as ArchiveTable)?.has(row[field]))
-          throw new AppError(`Broken relationship: ${table}.${field}.`);
+          throw new AppError('Broken relationship: {0}.{1}.', 400, [table, field]);
       }
     }
   for (const [parents, revisions, owner] of [
@@ -599,7 +599,7 @@ export function validateArchiveData(input: unknown): ArchiveData {
     for (const row of data[parents])
       for (const pointer of ['draftRevisionId', 'publishedRevisionId']) {
         if (row[pointer] && indices.get(revisions)!.get(row[pointer])?.[owner] !== row.id)
-          throw new AppError(`Revision belongs to a different ${parents} record.`);
+          throw new AppError('Revision belongs to a different {0} record.', 400, [parents]);
       }
   for (const result of [...data.mapResults, ...data.multiplayerGames.filter((row) => row.actionId)])
     if (indices.get('actions')!.get(result.actionId)?.matchId !== result.matchId)
@@ -697,7 +697,8 @@ export function validateArchiveData(input: unknown): ArchiveData {
       for (const row of data[table as ArchiveTable]) {
         if (fields.some((field) => row[field] == null)) continue;
         const key = JSON.stringify(fields.map((field) => row[field]));
-        if (seen.has(key)) throw new AppError(`Duplicate ${table} fields: ${fields.join(', ')}.`);
+        if (seen.has(key))
+          throw new AppError('Duplicate {0} fields: {1}.', 400, [table, fields.join(', ')]);
         seen.add(key);
       }
     }

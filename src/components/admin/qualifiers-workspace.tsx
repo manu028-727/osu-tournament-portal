@@ -1,4 +1,9 @@
 'use client';
+import { QUALIFIER_METHOD_LABELS } from '@/lib/qualifier-policy';
+import { localeTag } from '@/lib/i18n';
+import { localDateTimeInput } from '@/lib/utils';
+import { Feedback, useLocale, useT } from '@/components/locale';
+
 import Link from '@/components/tournament-scope';
 import { useState } from 'react';
 import { Copy, Plus, Save, CalendarClock, ArrowLeft, ExternalLink, Trash2 } from 'lucide-react';
@@ -21,7 +26,7 @@ import {
 } from './shared';
 import { RefereePool } from './referee-pool';
 import { FreeModCalculator } from './freemod-calculator';
-import { MATCH_STATUS_LABELS } from './matches-dashboard';
+import { MATCH_STATUS_LABELS } from '@/lib/match-display';
 import { useTournamentTime } from '@/components/tournament-scope';
 import { QualifierCaptureDialog } from './qualifier-capture';
 import { QualifierLobbyList } from './qualifier-bulk-tools';
@@ -35,6 +40,8 @@ export function QualifiersWorkspace({
   acronym: string;
   id?: string;
 }) {
+  const language = useLocale();
+  const tr = useT();
   const matchTime = useTournamentTime();
   const { data, error, reload } = useResource<QualifierData>(
     `qualifiers${id ? `&id=${encodeURIComponent(id)}` : ''}`,
@@ -95,7 +102,7 @@ export function QualifiersWorkspace({
     values.includes(value) ? values.filter((v) => v !== value) : [...values, value];
   const refs = (ids: string[], change: (ids: string[]) => void) => (
     <fieldset className="space-y-2">
-      <legend className="mb-2 font-semibold">Assigned referees</legend>
+      <legend className="mb-2 font-semibold">{tr('Assigned referees')}</legend>
       {options?.referees.map((ref) => (
         <label key={ref.id} className="flex items-center gap-2">
           <input
@@ -111,12 +118,7 @@ export function QualifiersWorkspace({
   const selected = m?.scores.find(
     (s) => s.osuId === score?.osuId && s.slotName === score?.slotName && s.run === score?.run,
   );
-  const localDate = (iso: string | null) =>
-    iso
-      ? new Date(new Date(iso).getTime() - new Date(iso).getTimezoneOffset() * 60000)
-          .toISOString()
-          .slice(0, 16)
-      : '';
+
   const roster =
     m?.participants.flatMap((team) => team.members.map((p) => ({ ...p, team: team.name }))) || [];
   const next = m
@@ -173,30 +175,30 @@ export function QualifiersWorkspace({
         href="/admin/referee"
       >
         <ArrowLeft size={16} />
-        All tournament matches
+        {tr('All tournament matches')}
       </Link>
       {error && (
         <p role="alert" className="mb-3 text-red-200">
-          Updates unavailable: {error}
+          {tr('Updates unavailable:')} <Feedback message={error} />
         </p>
       )}
       {!m ? (
         <>
           <header className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b pb-4">
-            <h1 className="text-2xl font-semibold">Qualifier lobbies</h1>
+            <h1 className="text-2xl font-semibold">{tr('Qualifier lobbies')}</h1>
             {manager && (
               <Button disabled={options?.scoringNeedsReview} onClick={() => setCreate(true)}>
                 <Plus size={16} />
-                Create qualifier lobby
+                {tr('Create qualifier lobby')}
               </Button>
             )}
           </header>
           {options?.scoringNeedsReview && (
             <p className="mb-4 text-sm text-muted">
               <Link className="text-primary" href="/admin/settings">
-                Review tournament gameplay scoring
+                {tr('Review tournament gameplay scoring')}
               </Link>{' '}
-              before creating qualifier sessions.
+              {tr('before creating qualifier sessions.')}
             </p>
           )}
           <QualifierLobbyList actor={actor} data={data} reload={reload} />
@@ -205,19 +207,22 @@ export function QualifiersWorkspace({
         <>
           <header className="mb-5 space-y-3 border-b pb-4">
             <div className="flex flex-wrap justify-between gap-3">
-              <h1 className="text-2xl font-semibold">Qualifier lobby {m.code}</h1>
+              <h1 className="text-2xl font-semibold">
+                {tr('Qualifier lobby')} {m.code}
+              </h1>
               <p className="text-sm text-muted">
                 {m.access.editable
-                  ? 'Editing qualifier lobby'
-                  : 'Viewing qualifier lobby · Read only'}
+                  ? tr('Editing qualifier lobby')
+                  : tr('Viewing qualifier lobby · Read only')}
               </p>
             </div>
             <p>
-              {m.stage.name} · {matchTime(m.scheduledAt)} · {MATCH_STATUS_LABELS[m.status]}
+              {m.stage.name} · {matchTime(m.scheduledAt)} · {tr(MATCH_STATUS_LABELS[m.status])}
             </p>
             <p className="text-sm text-muted">
-              Assigned to {m.assignments.map((r) => r.user.username).join(', ') || 'Unassigned'} ·
-              Saved version {m.version} · {matchTime(m.updatedAt)}
+              {tr('Assigned to')}{' '}
+              {m.assignments.map((r) => r.user.username).join(', ') || tr('Unassigned')}{' '}
+              {tr('· Saved version')} {m.version} · {matchTime(m.updatedAt)}
             </p>
             <div className="flex flex-wrap gap-2">
               {m.access.schedule && m.status === 'SCHEDULED' && (
@@ -226,14 +231,14 @@ export function QualifiersWorkspace({
                   onClick={() =>
                     setSchedule({
                       baseVersion: m.version,
-                      scheduledAt: localDate(m.scheduledAt),
+                      scheduledAt: localDateTimeInput(m.scheduledAt),
                       refereeIds: m.assignments.map((r) => r.userId),
                       notes: m.notes,
                     })
                   }
                 >
                   <CalendarClock size={16} />
-                  Edit qualifier schedule
+                  {tr('Edit qualifier schedule')}
                 </Button>
               )}
               {m.access.operate && ['SCHEDULED', 'IN_PROGRESS'].includes(m.status) && (
@@ -241,7 +246,7 @@ export function QualifiersWorkspace({
                   variant="outline"
                   onClick={() => setLobby({ baseVersion: m.version, url: m.lobbyUrl })}
                 >
-                  Edit multiplayer link
+                  {tr('Edit multiplayer link')}
                 </Button>
               )}
               {m.status === 'SCHEDULED' && m.access.operate && (
@@ -250,7 +255,7 @@ export function QualifiersWorkspace({
                     setDecision({ command: 'START', baseVersion: m.version, reason: '' })
                   }
                 >
-                  Start qualifier lobby
+                  {tr('Start qualifier lobby')}
                 </Button>
               )}
               {m.status === 'IN_PROGRESS' && m.access.score && (
@@ -276,7 +281,7 @@ export function QualifiersWorkspace({
                   }
                 >
                   <Save size={16} />
-                  Record qualifier score
+                  {tr('Record qualifier score')}
                 </Button>
               )}
               {m.status === 'IN_PROGRESS' && m.access.submit && (
@@ -285,7 +290,7 @@ export function QualifiersWorkspace({
                     setDecision({ command: 'SUBMIT', baseVersion: m.version, reason: '' })
                   }
                 >
-                  Submit qualifier results
+                  {tr('Submit qualifier results')}
                 </Button>
               )}
               {m.status === 'AWAITING_CONFIRMATION' && manager && (
@@ -294,7 +299,7 @@ export function QualifiersWorkspace({
                     setDecision({ command: 'CONFIRM', baseVersion: m.version, reason: '' })
                   }
                 >
-                  Confirm qualifier results
+                  {tr('Confirm qualifier results')}
                 </Button>
               )}
               {['COMPLETED', 'AWAITING_CONFIRMATION', 'DISPUTED', 'CANCELLED'].includes(m.status) &&
@@ -305,7 +310,7 @@ export function QualifiersWorkspace({
                       setDecision({ command: 'REOPEN', baseVersion: m.version, reason: '' })
                     }
                   >
-                    Reopen qualifier lobby
+                    {tr('Reopen qualifier lobby')}
                   </Button>
                 )}
               {!['COMPLETED', 'CANCELLED'].includes(m.status) && manager && (
@@ -315,7 +320,7 @@ export function QualifiersWorkspace({
                     setDecision({ command: 'CANCEL', baseVersion: m.version, reason: '' })
                   }
                 >
-                  Cancel qualifier lobby
+                  {tr('Cancel qualifier lobby')}
                 </Button>
               )}
             </div>
@@ -324,24 +329,24 @@ export function QualifiersWorkspace({
             <div className="min-w-0 xl:sticky xl:top-5">
               <p className="mb-3 text-sm text-muted">
                 {m.rules.gameplayScoring === 'LAZER'
-                  ? 'osu!lazer'
+                  ? tr('osu!lazer')
                   : m.rules.scoreMode === 'SCORE'
-                    ? 'ScoreV1'
-                    : 'ScoreV2'}{' '}
-                · {m.policy.runs} {m.policy.runs === 1 ? 'run' : 'runs'} ·{' '}
-                {m.policy.method.replaceAll('_', ' ')}
+                    ? tr('ScoreV1')
+                    : tr('ScoreV2')}{' '}
+                · {m.policy.runs} {m.policy.runs === 1 ? tr('run') : tr('runs')} ·{' '}
+                {tr(QUALIFIER_METHOD_LABELS[m.policy.method])}
               </p>
               <p className="mb-3 text-sm font-semibold" role="status">
                 {next
-                  ? `Next: Run ${next.run} · ${next.slot.name} · ${next.team.name}`
-                  : 'All configured map scores recorded'}
+                  ? tr('Next: Run {0} · {1} · {2}', next.run, next.slot.name, next.team.name)
+                  : tr('All configured map scores recorded')}
               </p>
               <RefereePool slots={m.poolRevision.slots} rules={m.rules} copy={copy} />
               <FreeModCalculator rules={m.rules} />
             </div>
             <div className="min-w-0 space-y-5">
               <section className="space-y-3">
-                <h2 className="font-semibold">Lobby preparation</h2>
+                <h2 className="font-semibold">{tr('Lobby preparation')}</h2>
                 {m.lobbyUrl && (
                   <a
                     className="inline-flex items-center gap-2 text-sm text-primary"
@@ -349,7 +354,7 @@ export function QualifiersWorkspace({
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    Open multiplayer lobby
+                    {tr('Open multiplayer lobby')}
                     <ExternalLink size={15} />
                   </a>
                 )}
@@ -377,7 +382,7 @@ export function QualifiersWorkspace({
                       }
                     >
                       <Copy size={15} />
-                      Copy Setup Commands
+                      {tr('Copy Setup Commands')}
                     </Button>
                   )}
                   <Button
@@ -395,13 +400,14 @@ export function QualifiersWorkspace({
                     }
                   >
                     <Copy size={15} />
-                    Copy Qualifier Ping
+                    {tr('Copy Qualifier Ping')}
                   </Button>
                 </div>
                 {!qualifierSetup && (
                   <p className="text-sm text-muted">
-                    Legacy Bancho commands are unavailable for osu!lazer rooms. Record standardized
-                    scores manually.
+                    {tr(
+                      'Legacy Bancho commands are unavailable for osu!lazer rooms. Record standardized scores manually.',
+                    )}
                   </p>
                 )}
                 {Object.entries(qualifierSetup || {}).map(([name, value]) => (
@@ -410,8 +416,8 @@ export function QualifiersWorkspace({
                     <Button
                       size="icon"
                       variant="ghost"
-                      title={`Copy ${name}`}
-                      aria-label={`Copy qualifier ${name}`}
+                      title={tr('Copy {0}', name)}
+                      aria-label={tr('Copy qualifier {0}', name)}
                       onClick={() => copy(value)}
                     >
                       <Copy size={15} />
@@ -421,7 +427,7 @@ export function QualifiersWorkspace({
                 {qualifierSetup && (
                   <details>
                     <summary className="cursor-pointer text-sm font-semibold">
-                      Participant invites
+                      {tr('Participant invites')}
                     </summary>
                     {roster.map((p) => (
                       <div
@@ -430,13 +436,13 @@ export function QualifiersWorkspace({
                       >
                         <span>
                           {p.team} · {p.username}
-                          {p.captain ? ' · Captain' : ''}
+                          {p.captain ? tr(' · Captain') : ''}
                         </span>
                         <Button
                           size="icon"
                           variant="ghost"
-                          title={`Invite ${p.username}`}
-                          aria-label={`Copy invite ${p.username}`}
+                          title={tr('Invite {0}', p.username)}
+                          aria-label={tr('Copy invite {0}', p.username)}
                           onClick={() => copy(`!mp invite #${p.osuId}`)}
                         >
                           <Copy size={15} />
@@ -447,18 +453,20 @@ export function QualifiersWorkspace({
                 )}
               </section>
               <section>
-                <h2 className="mb-3 font-semibold">Qualifier scores</h2>
+                <h2 className="mb-3 font-semibold">{tr('Qualifier scores')}</h2>
                 <div className="max-h-80 overflow-auto">
                   <table className="admin-table">
                     <thead>
                       <tr>
-                        <th>Run</th>
-                        <th>Slot</th>
-                        <th>Player</th>
-                        <th>Raw</th>
-                        <th>Mods</th>
-                        <th>Converted</th>
-                        {m.access.score && m.status === 'IN_PROGRESS' && <th>Correction</th>}
+                        <th>{tr('Run')}</th>
+                        <th>{tr('Slot')}</th>
+                        <th>{tr('Player')}</th>
+                        <th>{tr('Raw')}</th>
+                        <th>{tr('Mods')}</th>
+                        <th>{tr('Converted')}</th>
+                        {m.access.score && m.status === 'IN_PROGRESS' && (
+                          <th>{tr('Correction')}</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -467,18 +475,20 @@ export function QualifiersWorkspace({
                           <td>{s.run}</td>
                           <td>{s.slotName}</td>
                           <td>{roster.find((p) => p.osuId === s.osuId)?.username || s.osuId}</td>
-                          <td>{s.raw.toLocaleString()}</td>
-                          <td>{s.mods.join(' ') || 'NM'}</td>
+                          <td>{s.raw.toLocaleString(localeTag(language))}</td>
+                          <td>{s.mods.join(' ') || tr('NM')}</td>
                           <td>
-                            {s.adjusted.toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                            {s.adjusted.toLocaleString(localeTag(language), {
+                              maximumFractionDigits: 8,
+                            })}
                           </td>
                           {m.access.score && m.status === 'IN_PROGRESS' && (
                             <td>
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                title="Remove incorrect score"
-                                aria-label={`Remove ${s.slotName} score for ${s.osuId}`}
+                                title={tr('Remove incorrect score')}
+                                aria-label={tr('Remove {0} score for {1}', s.slotName, s.osuId)}
                                 onClick={() =>
                                   setRemove({ scoreId: s.id, baseVersion: m.version, reason: '' })
                                 }
@@ -493,7 +503,7 @@ export function QualifiersWorkspace({
                   </table>
                 </div>
                 <p className="mt-3 text-xs text-muted">
-                  Recorded totals across all runs. Final seedings use the stage policy.
+                  {tr('Recorded totals across all runs. Final seedings use the stage policy.')}
                 </p>
                 <dl className="mt-3 space-y-2 text-sm">
                   {m.participants.map((team) => (
@@ -503,35 +513,40 @@ export function QualifiersWorkspace({
                         {m.scores
                           .filter((s) => team.members.some((p) => p.osuId === s.osuId))
                           .reduce((total, s) => total + s.adjusted, 0)
-                          .toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                          .toLocaleString(localeTag(language), { maximumFractionDigits: 8 })}
                       </dd>
                     </div>
                   ))}
                 </dl>
               </section>
               <section className="space-y-3">
-                <h2 className="font-semibold">Discord result</h2>
+                <h2 className="font-semibold">{tr('Discord result')}</h2>
                 <Button disabled={!qualifiedResult} onClick={() => copy(qualifiedResult)}>
                   <Copy size={16} />
-                  Copy Discord Result
+                  {tr('Copy Discord Result')}
                 </Button>
                 <pre className="whitespace-pre-wrap break-words text-sm">
-                  {qualifiedResult.replaceAll('\r', '\n') || 'Awaiting confirmed results'}
+                  {qualifiedResult.replaceAll('\r', '\n') || tr('Awaiting confirmed results')}
                 </pre>
               </section>
               {m.notes && <p className="whitespace-pre-wrap border-y py-3 text-sm">{m.notes}</p>}
               <details>
-                <summary className="cursor-pointer font-semibold">Qualifier history</summary>
+                <summary className="cursor-pointer font-semibold">
+                  {tr('Qualifier history')}
+                </summary>
                 <ol className="mt-3 space-y-3">
                   {m.events.map((event) => (
                     <li key={event.id} className="border-b pb-3 text-sm">
                       <p>
-                        v{event.version} · {event.kind} · {event.actor?.username || 'System'} ·{' '}
+                        {tr('v')}
+                        {event.version} · {event.kind} · {event.actor?.username || tr('System')} ·{' '}
                         {matchTime(event.createdAt)}
                       </p>
                       <p>{event.reason}</p>
                       <details>
-                        <summary className="cursor-pointer text-muted">Saved record</summary>
+                        <summary className="cursor-pointer text-muted">
+                          {tr('Saved record')}
+                        </summary>
                         <pre className="overflow-auto text-xs">
                           {JSON.stringify(event.data, null, 2)}
                         </pre>
@@ -549,7 +564,7 @@ export function QualifiersWorkspace({
         onOpenChange={(open) => {
           if (!open) setRemove(null);
         }}
-        title="Remove incorrect qualifier score"
+        title={tr('Remove incorrect qualifier score')}
       >
         {remove && m && (
           <form
@@ -563,7 +578,7 @@ export function QualifiersWorkspace({
               );
             }}
           >
-            <Field label="Score removal reason">
+            <Field label={tr('Score removal reason')}>
               <textarea
                 required
                 minLength={3}
@@ -572,12 +587,12 @@ export function QualifiersWorkspace({
               />
             </Field>
             <SaveButton busy={busy} disabled={remove.baseVersion !== m.version}>
-              Confirm score removal
+              {tr('Confirm score removal')}
             </SaveButton>
           </form>
         )}
       </Modal>
-      <Modal open={create} onOpenChange={setCreate} title="Create qualifier lobby" wide>
+      <Modal open={create} onOpenChange={setCreate} title={tr('Create qualifier lobby')} wide>
         <form
           className="space-y-5"
           onSubmit={(e) => {
@@ -596,20 +611,20 @@ export function QualifiersWorkspace({
           }}
         >
           <div className="grid-fields">
-            <Field label="Qualifier lobby code">
+            <Field label={tr('Qualifier lobby code')}>
               <input
                 required
                 value={newLobby.code}
                 onChange={(e) => setNewLobby({ ...newLobby, code: e.target.value })}
               />
             </Field>
-            <Field label="Qualifier stage">
+            <Field label={tr('Qualifier stage')}>
               <select
                 required
                 value={newLobby.stageId}
                 onChange={(e) => setNewLobby({ ...newLobby, stageId: e.target.value })}
               >
-                <option value="">Select stage</option>
+                <option value="">{tr('Select stage')}</option>
                 {options?.stages
                   .filter((s) => s.published && s.kind === 'QUALIFIERS')
                   .map((s) => (
@@ -619,7 +634,7 @@ export function QualifiersWorkspace({
                   ))}
               </select>
             </Field>
-            <Field label="Qualifier start time">
+            <Field label={tr('Qualifier start time')}>
               <input
                 type="datetime-local"
                 value={newLobby.scheduledAt}
@@ -628,7 +643,7 @@ export function QualifiersWorkspace({
             </Field>
           </div>
           <fieldset className="max-h-60 space-y-2 overflow-auto">
-            <legend className="mb-2 font-semibold">Approved entrants</legend>
+            <legend className="mb-2 font-semibold">{tr('Approved entrants')}</legend>
             {options?.teams.map((team) => (
               <label key={team.id} className="flex items-center gap-2">
                 <input
@@ -643,13 +658,13 @@ export function QualifiersWorkspace({
             ))}
           </fieldset>
           {refs(newLobby.refereeIds, (refereeIds) => setNewLobby({ ...newLobby, refereeIds }))}
-          <Field label="Qualifier notes">
+          <Field label={tr('Qualifier notes')}>
             <textarea
               value={newLobby.notes}
               onChange={(e) => setNewLobby({ ...newLobby, notes: e.target.value })}
             />
           </Field>
-          <SaveButton busy={busy}>Create qualifier lobby</SaveButton>
+          <SaveButton busy={busy}>{tr('Create qualifier lobby')}</SaveButton>
         </form>
       </Modal>
       <Modal
@@ -657,7 +672,7 @@ export function QualifiersWorkspace({
         onOpenChange={(open) => {
           if (!open) setScore(null);
         }}
-        title="Record qualifier score"
+        title={tr('Record qualifier score')}
       >
         {score && m && (
           <form
@@ -677,26 +692,28 @@ export function QualifiersWorkspace({
             }}
           >
             {score.baseVersion !== m.version && (
-              <p role="alert">This lobby changed. Reopen the score form.</p>
+              <p role="alert">{tr('This lobby changed. Reopen the score form.')}</p>
             )}
             {m.policy.runs === 2 && (
-              <Field label="Run">
+              <Field label={tr('Run')}>
                 <select
                   value={score.run}
                   onChange={(e) => setScore({ ...score, run: Number(e.target.value) })}
                 >
-                  <option value={1}>Run 1</option>
-                  <option value={2}>Run 2</option>
+                  <option value={1}>{tr('Run 1')}</option>
+                  <option value={2}>{tr('Run 2')}</option>
                 </select>
               </Field>
             )}
             {m.rules.gameplayScoring === 'LAZER' && (
               <label className="flex items-center gap-3 text-sm">
                 <input type="checkbox" required />
-                Scores are actual standardized lazer values, not classic-scaled display values.
+                {tr(
+                  'Scores are actual standardized lazer values, not classic-scaled display values.',
+                )}
               </label>
             )}
-            <Field label="Qualifier player">
+            <Field label={tr('Qualifier player')}>
               <select
                 value={score.osuId}
                 onChange={(e) => {
@@ -717,7 +734,7 @@ export function QualifiersWorkspace({
                 ))}
               </select>
             </Field>
-            <Field label="Qualifier score slot">
+            <Field label={tr('Qualifier score slot')}>
               <select
                 value={score.slotName}
                 onChange={(e) => {
@@ -736,7 +753,7 @@ export function QualifiersWorkspace({
                 ))}
               </select>
             </Field>
-            <Field label="Qualifier raw score">
+            <Field label={tr('Qualifier raw score')}>
               <input
                 type="number"
                 step={m.rules.scoreMode === 'ACCURACY' ? 'any' : 1}
@@ -760,10 +777,11 @@ export function QualifiersWorkspace({
             </div>
             {selected && (
               <p className="text-sm text-muted">
-                Existing score: {selected.raw}. Saving records a correction.
+                {tr('Existing score:')} {selected.raw}
+                {tr('. Saving records a correction.')}
               </p>
             )}
-            <Field label="Qualifier score reason">
+            <Field label={tr('Qualifier score reason')}>
               <textarea
                 required
                 minLength={3}
@@ -772,7 +790,7 @@ export function QualifiersWorkspace({
               />
             </Field>
             <SaveButton busy={busy} disabled={score.baseVersion !== m.version}>
-              Save qualifier score
+              {tr('Save qualifier score')}
             </SaveButton>
           </form>
         )}
@@ -782,7 +800,7 @@ export function QualifiersWorkspace({
         onOpenChange={(open) => {
           if (!open) setSchedule(null);
         }}
-        title="Edit qualifier schedule"
+        title={tr('Edit qualifier schedule')}
       >
         {schedule && m && (
           <form
@@ -803,7 +821,7 @@ export function QualifiersWorkspace({
               );
             }}
           >
-            <Field label="Qualifier start time">
+            <Field label={tr('Qualifier start time')}>
               <input
                 type="datetime-local"
                 value={schedule.scheduledAt}
@@ -811,14 +829,14 @@ export function QualifiersWorkspace({
               />
             </Field>
             {refs(schedule.refereeIds, (refereeIds) => setSchedule({ ...schedule, refereeIds }))}
-            <Field label="Qualifier notes">
+            <Field label={tr('Qualifier notes')}>
               <textarea
                 value={schedule.notes}
                 onChange={(e) => setSchedule({ ...schedule, notes: e.target.value })}
               />
             </Field>
             <SaveButton busy={busy} disabled={schedule.baseVersion !== m.version}>
-              Save qualifier schedule
+              {tr('Save qualifier schedule')}
             </SaveButton>
           </form>
         )}
@@ -828,7 +846,7 @@ export function QualifiersWorkspace({
         onOpenChange={(open) => {
           if (!open) setLobby(null);
         }}
-        title="Qualifier multiplayer link"
+        title={tr('Qualifier multiplayer link')}
       >
         {lobby && m && (
           <form
@@ -847,7 +865,7 @@ export function QualifiersWorkspace({
               );
             }}
           >
-            <Field label="Qualifier multiplayer URL">
+            <Field label={tr('Qualifier multiplayer URL')}>
               <input
                 type="url"
                 value={lobby.url}
@@ -855,7 +873,7 @@ export function QualifiersWorkspace({
               />
             </Field>
             <SaveButton busy={busy} disabled={lobby.baseVersion !== m.version}>
-              Save multiplayer link
+              {tr('Save multiplayer link')}
             </SaveButton>
           </form>
         )}
@@ -865,7 +883,7 @@ export function QualifiersWorkspace({
         onOpenChange={(open) => {
           if (!open) setDecision(null);
         }}
-        title="Review qualifier status"
+        title={tr('Review qualifier status')}
       >
         {decision && m && (
           <form
@@ -882,7 +900,7 @@ export function QualifiersWorkspace({
             <p>
               {decision.command} · {m.code}
             </p>
-            <Field label="Qualifier status reason">
+            <Field label={tr('Qualifier status reason')}>
               <textarea
                 required
                 minLength={3}
@@ -891,7 +909,7 @@ export function QualifiersWorkspace({
               />
             </Field>
             <SaveButton busy={busy} disabled={decision.baseVersion !== m.version}>
-              Confirm qualifier action
+              {tr('Confirm qualifier action')}
             </SaveButton>
           </form>
         )}

@@ -1,4 +1,8 @@
 'use client';
+import { humanizeCode, localeTag } from '@/lib/i18n';
+import { MATCH_ACTION_MESSAGES } from '@/lib/match-display';
+import { useLocale, useT } from '@/components/locale';
+
 import { useEffect, useState } from 'react';
 import {
   Check,
@@ -47,6 +51,8 @@ export function GuidedMatch({
   onSync,
   onSummary,
 }: Props) {
+  const language = useLocale();
+  const tr = useT();
   const [filter, setFilter] = useState(''),
     [selection, setSelection] = useState<{ slot: string; version: number } | null>(null);
   const [roll, setRoll] = useState({
@@ -82,35 +88,38 @@ export function GuidedMatch({
     : null;
   const summaryCorrection = m.resultMode === 'SUMMARY' && m.status === 'IN_PROGRESS';
   const heading = summaryCorrection
-    ? 'Historical result'
+    ? tr('Historical result')
     : w.phase === 'PREPARATION'
-      ? 'Match ready'
+      ? tr('Match ready')
       : w.phase === 'ROLL'
-        ? 'Roll phase'
+        ? tr('Roll phase')
         : w.phase === 'RESULT'
-          ? `Now playing - ${pending?.slotName || ''}`
+          ? tr('Now playing - {0}', pending?.slotName || '')
           : w.phase === 'TIEBREAKER'
-            ? 'Tiebreaker'
+            ? tr('Tiebreaker')
             : w.phase === 'REVIEW'
-              ? 'Match decided - review result'
+              ? tr('Match decided - review result')
               : w.phase === 'COMPLETED'
-                ? 'Match complete'
-                : w.phase.replaceAll('_', ' ').toLowerCase();
+                ? tr('Match complete')
+                : tr(humanizeCode(w.phase)).toLowerCase();
   let scoreA = 0,
     scoreB = 0;
   return (
-    <div className="guided-match-grid mt-4 grid items-start gap-4" aria-label="Live match workflow">
+    <div
+      className="guided-match-grid mt-4 grid items-start gap-4"
+      aria-label={tr('Live match workflow')}
+    >
       <section
         className="guided-current min-w-0 border-t-2 border-primary bg-primary/[.025] p-3"
-        aria-label="Current action"
+        aria-label={tr('Current action')}
       >
-        <p className="mb-1 text-xs uppercase text-muted">Current action</p>
+        <p className="mb-1 text-xs uppercase text-muted">{tr('Current action')}</p>
         {w.side && ['BAN', 'PROTECT', 'PICK', 'TIEBREAKER'].includes(w.phase) && (
           <p
             title={m.participants[w.side].name}
             className={`mb-1 truncate text-base font-semibold ${w.side === 'A' ? 'text-red-200' : 'text-sky-200'}`}
           >
-            Team {w.side === 'A' ? 'Red' : 'Blue'} · {m.participants[w.side].name}
+            {tr('Team')} {w.side === 'A' ? tr('Red') : tr('Blue')} · {m.participants[w.side].name}
           </p>
         )}
         <h2 className="text-lg font-semibold capitalize" data-testid="current-phase">
@@ -119,20 +128,20 @@ export function GuidedMatch({
         {summaryCorrection && access.manager && (
           <Button className="mt-3" onClick={onSummary}>
             <Save size={16} />
-            Correct overall result
+            {tr('Correct overall result')}
           </Button>
         )}
-        {!access.editable && <p className="my-3 text-sm text-muted">Read-only observer</p>}
+        {!access.editable && <p className="my-3 text-sm text-muted">{tr('Read-only observer')}</p>}
         {w.phase === 'PREPARATION' && (
           <div className="my-3 space-y-3 text-sm">
             <p>
-              Best of {m.rules.bestOf} · First to {firstTo(m.rules)}
+              {tr('Best of')} {m.rules.bestOf} {tr('· First to')} {firstTo(m.rules)}
             </p>
             <p>
-              Bans: {m.rules.banOrder} · {m.rules.bansPerTeam} each
+              {tr('Bans:')} {m.rules.banOrder} · {m.rules.bansPerTeam} {tr('each')}
             </p>
             <p>
-              Protects: {m.rules.protectsPerTeam} each · Picks: {m.rules.pickOrder}
+              {tr('Protects:')} {m.rules.protectsPerTeam} {tr('each · Picks:')} {m.rules.pickOrder}
             </p>
             {access.operate && (
               <Button
@@ -145,7 +154,7 @@ export function GuidedMatch({
                 }
               >
                 <Play size={16} />
-                Start match
+                {tr('Start match')}
               </Button>
             )}
           </div>
@@ -172,7 +181,10 @@ export function GuidedMatch({
           >
             <div className="grid grid-cols-2 gap-2">
               {(['a', 'b'] as const).map((side) => (
-                <Field key={side} label={`Team ${side === 'a' ? 'Red' : 'Blue'} roll`}>
+                <Field
+                  key={side}
+                  label={tr('Team {0} roll', side === 'a' ? tr('Red') : tr('Blue'))}
+                >
                   <input
                     type="number"
                     required
@@ -192,10 +204,12 @@ export function GuidedMatch({
             </div>
             {tied ? (
               <p role="status" className="text-sm text-amber-200">
-                Tied rolls. Enter the reroll results.
+                {tr('Tied rolls. Enter the reroll results.')}
               </p>
             ) : a && b ? (
-              <p className="text-sm">Roll winner: {m.participants[a > b ? 'A' : 'B'].name}</p>
+              <p className="text-sm">
+                {tr('Roll winner:')} {m.participants[a > b ? 'A' : 'B'].name}
+              </p>
             ) : null}
             {(['ban', 'pick', ...(m.rules.protectsPerTeam ? ['protect'] : [])] as const).map(
               (kind) => {
@@ -207,14 +221,19 @@ export function GuidedMatch({
                         ? m.rules.firstPickRule
                         : m.rules.firstProtectRule;
                 return (
-                  <Field key={key} label={`First ${key}`}>
+                  <Field
+                    key={key}
+                    label={tr(
+                      { ban: 'First ban', pick: 'First pick', protect: 'First protect' }[key],
+                    )}
+                  >
                     <select
                       value={startingSide(rule, a, b, roll[key])}
                       disabled={rule !== 'CHOICE'}
                       onChange={(e) => setRoll({ ...roll, [key]: e.target.value })}
                     >
-                      <option value="A">Red</option>
-                      <option value="B">Blue</option>
+                      <option value="A">{tr('Red')}</option>
+                      <option value="B">{tr('Blue')}</option>
                     </select>
                   </Field>
                 );
@@ -227,12 +246,12 @@ export function GuidedMatch({
                 variant="outline"
                 onClick={() => setRoll({ ...roll, version: m.version })}
               >
-                Review latest version {m.version}
+                {tr('Review latest version')} {m.version}
               </Button>
             )}
             <Button disabled={busy || !a || !b || tied || roll.version !== m.version}>
               <Flag size={16} />
-              Confirm roll
+              {tr('Confirm roll')}
             </Button>
           </form>
         )}
@@ -258,7 +277,7 @@ export function GuidedMatch({
                   );
                 }}
               >
-                <Field label="Search eligible maps">
+                <Field label={tr('Search eligible maps')}>
                   <input
                     disabled={busy}
                     type="search"
@@ -266,14 +285,14 @@ export function GuidedMatch({
                     onChange={(e) => setFilter(e.target.value)}
                   />
                 </Field>
-                <Field label="Available map slot">
+                <Field label={tr('Available map slot')}>
                   <select
                     required
                     disabled={busy}
                     value={selection?.slot || ''}
                     onChange={(e) => setSelection({ slot: e.target.value, version: m.version })}
                   >
-                    <option value="">Select available map</option>
+                    <option value="">{tr('Select available map')}</option>
                     {eligible
                       .filter((s) =>
                         `${s.name} ${s.metadata.artist} ${s.metadata.title} ${s.metadata.difficulty}`
@@ -289,7 +308,7 @@ export function GuidedMatch({
                 </Field>
                 {selection && selection.version !== m.version && (
                   <p role="alert" className="text-sm text-amber-200">
-                    Match changed. Select a map again before confirming.
+                    {tr('Match changed. Select a map again before confirming.')}
                   </p>
                 )}
                 <Button
@@ -302,17 +321,19 @@ export function GuidedMatch({
                   }
                 >
                   <Check size={16} />
-                  Confirm {w.phase === 'TIEBREAKER' ? 'pick' : w.phase.toLowerCase()}
+                  {tr('Confirm')}{' '}
+                  {w.phase === 'TIEBREAKER' ? tr('pick') : tr(humanizeCode(w.phase)).toLowerCase()}
                 </Button>
               </form>
             )}
             {!eligible.length && (
               <p className="text-sm text-amber-200">
-                No legal maps remain. Review the rules or undo the incorrect action.
+                {tr('No legal maps remain. Review the rules or undo the incorrect action.')}
               </p>
             )}
             <p className="text-xs text-muted">
-              {w.remainingProtects} protects remaining · {w.remainingBans} bans remaining
+              {w.remainingProtects} {tr('protects remaining ·')} {w.remainingBans}{' '}
+              {tr('bans remaining')}
             </p>
           </div>
         )}
@@ -321,13 +342,15 @@ export function GuidedMatch({
             <p className="break-words text-sm">
               {current.metadata.artist} - {current.metadata.title} [{current.metadata.difficulty}]
             </p>
-            <p className="text-sm text-muted">Picked by {m.participants[pending.side].name}</p>
+            <p className="text-sm text-muted">
+              {tr('Picked by')} {m.participants[pending.side].name}
+            </p>
             <p className="font-mono text-base">{current.beatmapId}</p>
             <div className="flex gap-1">
               {[
-                [`Copy ${current.name} ID`, String(current.beatmapId), Copy],
-                [`Copy ${current.name} map command`, command!.map, Terminal],
-                [`Copy ${current.name} mod command`, command!.mods, SlidersHorizontal],
+                [tr('Copy {0} ID', current.name), String(current.beatmapId), Copy],
+                [tr('Copy {0} map command', current.name), command!.map, Terminal],
+                [tr('Copy {0} mod command', current.name), command!.mods, SlidersHorizontal],
               ].map(([label, value, Icon]) => {
                 const I = Icon as typeof Copy;
                 return (
@@ -368,12 +391,12 @@ export function GuidedMatch({
                     }
                   >
                     <Check size={16} />
-                    {side === 'A' ? 'Red' : 'Blue'} wins {pending.slotName}
+                    {side === 'A' ? tr('Red') : tr('Blue')} {tr('wins')} {pending.slotName}
                   </Button>
                 ))}
                 <Button variant="ghost" disabled={busy} onClick={() => onScore(pending.id)}>
                   <Save size={16} />
-                  Enter scores {pending.slotName}
+                  {tr('Enter scores')} {pending.slotName}
                 </Button>
               </div>
             )}
@@ -381,13 +404,16 @@ export function GuidedMatch({
               <div className="space-y-2 border-t pt-2">
                 <p className="text-xs text-muted">
                   {m.multiplayerSyncedAt
-                    ? `Last sync ${new Date(m.multiplayerSyncedAt).toLocaleTimeString()}`
-                    : 'Games not synchronized'}
+                    ? tr(
+                        'Last sync {0}',
+                        new Date(m.multiplayerSyncedAt).toLocaleTimeString(localeTag(language)),
+                      )
+                    : tr('Games not synchronized')}
                 </p>
                 {canScore && (
                   <Button size="sm" variant="outline" disabled={busy} onClick={onSync}>
                     <RefreshCw size={14} />
-                    Sync games
+                    {tr('Sync games')}
                   </Button>
                 )}
                 {m.multiplayerGames
@@ -404,17 +430,19 @@ export function GuidedMatch({
                   .slice(0, 1)
                   .map((g) => (
                     <div key={g.id} className="space-y-2 text-sm">
-                      <p>Detected game {g.gameId}</p>
                       <p>
-                        Red {g.proposal!.scoreA.toLocaleString()} :{' '}
-                        {g.proposal!.scoreB.toLocaleString()} Blue
+                        {tr('Detected game')} {g.gameId}
+                      </p>
+                      <p>
+                        {tr('Red')} {g.proposal!.scoreA.toLocaleString(localeTag(language))} :{' '}
+                        {g.proposal!.scoreB.toLocaleString(localeTag(language))} {tr('Blue')}
                       </p>
                       {canScore && (
                         <Button
                           size="sm"
                           disabled={busy}
                           onClick={() => {
-                            if (window.confirm(`Confirm the result of game ${g.gameId}?`))
+                            if (window.confirm(tr('Confirm the result of game {0}?', g.gameId)))
                               void post(
                                 {
                                   type: 'match.import',
@@ -428,7 +456,7 @@ export function GuidedMatch({
                           }}
                         >
                           <Check size={14} />
-                          Confirm detected result
+                          {tr('Confirm detected result')}
                         </Button>
                       )}
                     </div>
@@ -440,24 +468,26 @@ export function GuidedMatch({
         {['REVIEW', 'AWAITING_CONFIRMATION', 'COMPLETED'].includes(w.phase) && (
           <div className="my-3 space-y-3">
             <p className="font-semibold">
-              {m.winnerSide ? m.participants[m.winnerSide].name : 'Result'} · {m.scoreA} :{' '}
+              {m.winnerSide ? m.participants[m.winnerSide].name : tr('Result')} · {m.scoreA} :{' '}
               {m.scoreB}
             </p>
             {w.phase === 'REVIEW' && access.submit && !summaryCorrection && (
               <Button onClick={onSubmit}>
                 <Check size={16} />
-                Review & submit result
+                {tr('Review & submit result')}
               </Button>
             )}
             {w.phase === 'AWAITING_CONFIRMATION' && access.manager && (
               <Button onClick={onConfirm}>
                 <Check size={16} />
-                Confirm result
+                {tr('Confirm result')}
               </Button>
             )}
           </div>
         )}
-        <p className="mt-4 border-t pt-3 text-xs text-muted">Saved version {m.version}</p>
+        <p className="mt-4 border-t pt-3 text-xs text-muted">
+          {tr('Saved version')} {m.version}
+        </p>
       </section>
       <RefereePool
         dense
@@ -470,20 +500,23 @@ export function GuidedMatch({
             protectedMap = actions.find((a) => a.slotName === slot.name && a.kind === 'PROTECT');
           const result = results.find((r) => r.actionId === picked?.id);
           return result
-            ? `Played - ${result.winnerSide === 'A' ? 'Red' : 'Blue'} won`
+            ? tr('Played - {0} won', tr(result.winnerSide === 'A' ? 'Red' : 'Blue'))
             : picked
-              ? 'Current map'
+              ? tr('Current map')
               : banned
-                ? 'Banned'
+                ? tr('Banned')
                 : protectedMap
-                  ? 'Protected'
+                  ? tr('Protected')
                   : slot.category === m.rules.tiebreakerCategory
-                    ? 'Tiebreaker - reserved'
-                    : 'Available';
+                    ? tr('Tiebreaker - reserved')
+                    : tr('Available');
         }}
       />
-      <section className="guided-history min-w-0 border-t pt-3" aria-label="Match action timeline">
-        <h2 className="mb-3 text-base font-semibold">Match history</h2>
+      <section
+        className="guided-history min-w-0 border-t pt-3"
+        aria-label={tr('Match action timeline')}
+      >
+        <h2 className="mb-3 text-base font-semibold">{tr('Match history')}</h2>
         <ol className="referee-scroll max-h-[56vh] space-y-0 overflow-auto text-sm">
           {actions.map((a, index) => {
             const result = results.find((r) => r.actionId === a.id);
@@ -493,7 +526,7 @@ export function GuidedMatch({
                 <div className="flex items-start gap-2">
                   <span className="text-xs text-muted">{String(index + 1).padStart(2, '0')}</span>
                   <span className={`flex-1 ${a.side === 'A' ? 'text-red-200' : 'text-sky-200'}`}>
-                    {a.side === 'A' ? 'Red' : 'Blue'} {a.kind.toLowerCase()}s{' '}
+                    {tr(MATCH_ACTION_MESSAGES[a.kind], a.side === 'A' ? tr('Red') : tr('Blue'))}{' '}
                     <strong>{a.slotName}</strong>
                   </span>
                   {result && canScore && (
@@ -501,8 +534,8 @@ export function GuidedMatch({
                       size="icon"
                       variant="ghost"
                       className="size-8 shrink-0"
-                      title={`Correct ${a.slotName} result`}
-                      aria-label={`Correct ${a.slotName} result`}
+                      title={tr('Correct {0} result', a.slotName)}
+                      aria-label={tr('Correct {0} result', a.slotName)}
                       onClick={() => onScore(a.id)}
                     >
                       <Save size={13} />
@@ -513,8 +546,8 @@ export function GuidedMatch({
                       size="icon"
                       variant="ghost"
                       className="size-8 shrink-0"
-                      title={`Correct action ${a.sequence}`}
-                      aria-label={`Correct action ${a.sequence}`}
+                      title={tr('Correct action {0}', a.sequence)}
+                      aria-label={tr('Correct action {0}', a.sequence)}
                       onClick={() => onCorrect(a.id)}
                     >
                       <Pencil size={13} />
@@ -523,13 +556,14 @@ export function GuidedMatch({
                 </div>
                 {result && (
                   <p className="mt-1 pl-6 text-xs">
-                    {result.winnerSide === 'A' ? 'Red' : 'Blue'} wins · {scoreA} : {scoreB}
+                    {result.winnerSide === 'A' ? tr('Red') : tr('Blue')} {tr('wins ·')} {scoreA} :{' '}
+                    {scoreB}
                   </p>
                 )}
                 <div className="flex min-w-0 gap-2 pl-6 text-xs text-muted">
                   {a.createdAt && (
                     <time className="shrink-0" dateTime={a.createdAt}>
-                      {new Date(a.createdAt).toLocaleTimeString([], {
+                      {new Date(a.createdAt).toLocaleTimeString(localeTag(language), {
                         hour: '2-digit',
                         minute: '2-digit',
                       })}
@@ -543,14 +577,14 @@ export function GuidedMatch({
                 </div>
                 {a.provenance?.type === 'XLSX' && (
                   <p className="pl-6 text-xs text-muted">
-                    Sheet {a.provenance.worksheet}:{a.provenance.sourceRow}
+                    {tr('Sheet')} {a.provenance.worksheet}:{a.provenance.sourceRow}
                   </p>
                 )}
               </li>
             );
           })}
         </ol>
-        {!actions.length && <p className="text-sm text-muted">No actions recorded.</p>}
+        {!actions.length && <p className="text-sm text-muted">{tr('No actions recorded.')}</p>}
       </section>
     </div>
   );

@@ -18,22 +18,31 @@ append another guide. SPEC's capability labels do not override discrepancies her
 
 ## Ordered Delivery History
 
-| Order | Delivery                                                                                                                                                                      | State                                     | Source Checkpoint                          |
-| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | ------------------------------------------ |
-| 1     | Extract generic multi-tournament app from private tournament implementations; retain OAuth, scoped roles, CMS revisions, media, teams, referee engine and historical importer | Done                                      | `7d4a4d9`                                  |
-| 2     | Public MIT distribution, legal notices, no private fixtures or artwork; Docker-first provisioning and optional private storage/IRC                                            | Done                                      | `924abbd`                                  |
-| 3     | Simplify to one default Compose stack and `portal` lifecycle helper, isolate advanced overrides and remove generated clutter                                                  | Done                                      | `a9d82fb`                                  |
-| 4     | Repair fresh tournament lifecycle: chooser boundary, `/t/<slug>/admin/...`, missing-context errors, empty page defaults, unpublished editing and authorization tests          | Done                                      | `6fab893`                                  |
-| 5     | Approve tournament profile design, persistent shared banner/identity/tabs, platform-only header, both themes, editable contrast-safe accents and application rollout          | Done                                      | `fd6bc44`                                  |
-| 6     | Portable versioned ZIPs, strict previews, fresh unpublished imports, media hashes, identity remapping, recovery journals and isolated legacy migration                        | Done                                      | `3182a5c`                                  |
-| 7     | Simplify organizer destinations, Website/Staff subsections, canonical Matches list, guarded changes and real previews                                                         | Done                                      | `42d111c`                                  |
-| 8     | Correct Bancho PASS/NICK/USER registration, current per-user identity and secret-free stage/code diagnostics                                                                  | Done                                      | `0c1b51a`                                  |
-| 9     | Recognize command acknowledgements, then replace ordinary-command verification with honest nonblocking Sent receipts; preserve uncertain room-creation safeguards             | Done; acknowledgement gating superseded   | `d65c4e7`, `dc73647`                       |
-| 10    | Canonical gameplay scoring, native SE/DE/groups, path eligibility, confirmed advancement, stage repair, qualifier runs/provenance and immutable reviewed standings            | Done with explicit provider/layout limits | `d7d738c`                                  |
-| 11    | Stable tournament match numbers, bracket reservations and improved organizer workflows                                                                                        | Done                                      | `39e5b68`                                  |
-| 12    | Persistent pool planning/suggestions/reviews, bulk stages/schedules/staff/qualifiers, safe pool release, historical bracket linking and archive extensions                    | Done                                      | `c6b9935`                                  |
-| 13    | Consolidate project knowledge into AGENTS, INTENT, SPEC, PLAN, ARCHITECTURE and DESIGN; retain README entry point, remove superseded guides                                   | Done                                      | `fc41596`                                  |
-| 14    | Audit every major subsystem, rerun the safe baseline and align documentation; prepare the cleanup without changing application behavior                                       | Verified completed within audit scope     | Audit of `fc41596`; documentation worktree |
+| Order | Delivery                                                                                                                                                                      | State                                                  | Source Checkpoint             |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ----------------------------- |
+| 1     | Extract generic multi-tournament app from private tournament implementations; retain OAuth, scoped roles, CMS revisions, media, teams, referee engine and historical importer | Done                                                   | `7d4a4d9`                     |
+| 2     | Public MIT distribution, legal notices, no private fixtures or artwork; Docker-first provisioning and optional private storage/IRC                                            | Done                                                   | `924abbd`                     |
+| 3     | Simplify to one default Compose stack and `portal` lifecycle helper, isolate advanced overrides and remove generated clutter                                                  | Done                                                   | `a9d82fb`                     |
+| 4     | Repair fresh tournament lifecycle: chooser boundary, `/t/<slug>/admin/...`, missing-context errors, empty page defaults, unpublished editing and authorization tests          | Done                                                   | `6fab893`                     |
+| 5     | Approve tournament profile design, persistent shared banner/identity/tabs, platform-only header, both themes, editable contrast-safe accents and application rollout          | Done                                                   | `fd6bc44`                     |
+| 6     | Portable versioned ZIPs, strict previews, fresh unpublished imports, media hashes, identity remapping, recovery journals and isolated legacy migration                        | Done                                                   | `3182a5c`                     |
+| 7     | Simplify organizer destinations, Website/Staff subsections, canonical Matches list, guarded changes and real previews                                                         | Done                                                   | `42d111c`                     |
+| 8     | Correct Bancho PASS/NICK/USER registration, current per-user identity and secret-free stage/code diagnostics                                                                  | Done                                                   | `0c1b51a`                     |
+| 9     | Recognize command acknowledgements, then replace ordinary-command verification with honest nonblocking Sent receipts; preserve uncertain room-creation safeguards             | Done; acknowledgement gating superseded                | `d65c4e7`, `dc73647`          |
+| 10    | Canonical gameplay scoring, native SE/DE/groups, path eligibility, confirmed advancement, stage repair, qualifier runs/provenance and immutable reviewed standings            | Done with explicit provider/layout limits              | `d7d738c`                     |
+| 11    | Stable tournament match numbers, bracket reservations and improved organizer workflows                                                                                        | Done                                                   | `39e5b68`                     |
+| 12    | Persistent pool planning/suggestions/reviews, bulk stages/schedules/staff/qualifiers, safe pool release, historical bracket linking and archive extensions                    | Done                                                   | `c6b9935`                     |
+| 13    | Consolidate project knowledge into AGENTS, INTENT, SPEC, PLAN, ARCHITECTURE and DESIGN; retain README entry point, remove superseded guides                                   | Done                                                   | `fc41596`                     |
+| 14    | Audit every major subsystem, rerun the safe baseline and align documentation; prepare the cleanup without changing application behavior                                       | Verified completed within audit scope                  | `d88724d`, audit of `fc41596` |
+| 15    | Enforce nested ownership, saved revision owners and same-match action relationships with additive migrations                                                                  | Verified completed                                     | `2ec77f8`                     |
+| 16    | Align guest lifecycle/projections, explicit editing context and fresh CMS state                                                                                               | Verified completed                                     | `b34cf3a`                     |
+| 17    | Reject stale settings, staff and category writes with reviewed patches                                                                                                        | Verified completed                                     | `0e07e51`                     |
+| 18    | Share match/qualifier resource scheduling and stage pool validation                                                                                                           | Verified completed                                     | `5790dd5`                     |
+| 19    | Journal ordinary media writes/deletes and protect historical references                                                                                                       | Verified completed within synthetic/filesystem scope   | `fe46534`                     |
+| 20    | Paginate long lists and stream complete roster exports                                                                                                                        | Verified completed; representative load tuning Blocked | `4a9d953`                     |
+| 21    | Separate domain reads/restoration and enforce archive/schema coverage; remove verified obsolete code                                                                          | Verified completed                                     | `a6c93f6`                     |
+| 22    | Patch dependency advisories, reproduce adapter warning and gate releases on checks                                                                                            | Verified completed; upstream warning Blocked           | `14acd73`                     |
+| 23    | Add complete English/Italian built-in interfaces and shared dirty-navigation/dialog ownership                                                                                 | Verified within recorded frontend scope                | This change; checks below     |
 
 Rejected calm/earlier redesign pilots are not design authority. Their useful
 usability lessons and verification procedures are incorporated in DESIGN and
@@ -54,6 +63,11 @@ arbitrary order. Existing-schema adoption is a separate guarded procedure in
 | `20261021130000_qualifier_score_provenance`        | Score representation/verification/source evidence                                  |
 | `20261021140000_stable_tournament_match_numbers`   | Immutable local numbering, reservations, allocation trigger                        |
 | `20261022010000_pooling_workflows`                 | Plans, candidates, skillsets/tags, reviews and artist warnings                     |
+| `20261024010000_owned_revision_and_result_links`   | Scan ownership and enforce revision/action references                              |
+| `20261024011000_revision_owner_orm_compatibility`  | Preserve Prisma optional-pointer compatibility with owner triggers                 |
+| `20261024012000_immutable_revision_owners`         | Prevent saved revision reparenting                                                 |
+| `20261024013000_staff_edit_versions`               | Add staff/category optimistic edit counters                                        |
+| `20261024014000_media_cleanup_outbox`              | Empty durable media cleanup journal                                                |
 
 No phase authorizes a database reset, rewrite of historical results or automatic
 live cutover. Private installation settings and published content stay authoritative.
@@ -173,23 +187,23 @@ engines, revisions, snapshots, tenant predicates, permission refreshes and archi
 recovery are valuable foundations. Evidence does not justify a rewrite, dropping
 history tables, replacing the bracket engine or bulk dependency removal.
 The technical boundary map and proposed architecture are in
-[ARCHITECTURE](ARCHITECTURE.md#implementation-boundaries-and-proposed-cleanup).
+[ARCHITECTURE](ARCHITECTURE.md#implementation-boundaries-and-cleanup).
 
 ### Whole-Product Implementation Map
 
-| SPEC contract                                                              | Current verified implementation and evidence                                                                                | Status / remaining scope                                                                                                                                   |
-| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Platform and first installation](SPEC.md#platform-and-first-installation) | portal/configure/bootstrap, tournaments-service, setup/tournament integration and lifecycle browser suites                  | Partially implemented: fresh CMS state and archived visibility differ from contract (F01/F12); real fresh-container checks remain historical               |
-| [Identity and authorization](SPEC.md#identity-and-authorization)           | OAuth state/session code, permissions/actor refresh, scopedDb, permission/tenant integration and observer browser tests     | Verified completed for tested identity/role/assignment boundaries; F06 hardening remains; live OAuth Unverified                                            |
-| [Public website](SPEC.md#public-tournament-website)                        | shared layout/profile, query readers, public route/metadata/pool/profile browser checks                                     | Partially implemented: public gate/projection/routing inconsistencies F01/F13/F14; additional engines and assistive technology Unverified                  |
-| [Branding and media](SPEC.md#branding-and-media)                           | saved themes, image validation, storage adapters, media privacy/reference tests and appearance browser flows                | Partially implemented: ordinary cleanup durability F04; remote provider failure behavior Unverified                                                        |
-| [Stages, pools and pooling](SPEC.md#stages-mappools-and-pooling)           | ordering, plans, suggestions/reviews, stage workflows and atomic releases; unit/integration/browser evidence                | Verified completed for exercised workflows; shared validation/stale-token gaps F02/F03; named presets, notes, uploads and mappacks remain extensions       |
-| [Teams and staff](SPEC.md#teams-players-and-public-staff)                  | versioned teams, CSV preview/formula-safe export, separated access/public staff and bulk tests                              | Partially implemented: staff stale protection and unpaginated caps F02/F07; no public contact exposure found in reviewed team projection                   |
-| [Scheduling and brackets](SPEC.md#scheduling-and-native-brackets)          | numbering/SQL triggers, SE/DE/groups, confirmed advancement, historic linking, bulk schedules and correction tests          | Partially implemented: single/bulk schedule drift F03; interval conflicts, availability and bulk duplication remain outside current implementation         |
-| [Referee operations](SPEC.md#referee-match-operations)                     | immutable snapshots, engine/state actions, events/revisions, workbook importer, Discord goldens and BO9 browser flow        | Verified completed within tested rule/layout scope; service extraction and compatibility retention F05/F10; inaccessible spreadsheet automation Unverified |
-| [Qualifiers and scoring](SPEC.md#qualifiers-and-scoring)                   | run-aware source validation, pure mathematics, versioned standings, reopen/downstream guards and archive witness tests      | Verified completed for supported native/manual/legacy evidence; lazer Rooms capture and qualifier workbook adapter Planned with source prerequisites       |
-| [Interoperability](SPEC.md#interoperability-and-portability)               | reviewed workbook application, bounded ZIPs, remapping, import journals, round-trip and recovery tests                      | Verified completed for tested formats/bounds; F08 contract maintenance; production-size memory and remote outage recovery Unverified                       |
-| [Reliability and hosting](SPEC.md#reliability-hosting-and-acceptance)      | request bounds/origin/rate limits, private storage, optional signed IRC, pinned Docker bases, CI and safe lifecycle scripts | Partially implemented against acceptance breadth: F01/F02/F06/F11; live providers, restores and target installation remain separate verification gates     |
+| SPEC contract                                                              | Current verified implementation and evidence                                                                            | Status / remaining scope                                                                                                                             |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Platform and first installation](SPEC.md#platform-and-first-installation) | portal/configure/bootstrap, tournaments-service, setup/tournament integration and lifecycle browser suites              | Verified completed for source/isolated lifecycle; fresh-container evidence remains historical                                                        |
+| [Identity and authorization](SPEC.md#identity-and-authorization)           | OAuth state/session code, refreshed permissions, classified scopedDb, ownership constraints and observer tests          | Verified completed for exercised trust boundaries; live OAuth Unverified                                                                             |
+| [Public website](SPEC.md#public-tournament-website)                        | Shared profile, uniform lifecycle gates, public projections/context and bilingual rendering                             | Verified completed for exercised Chromium states; other engines and assistive technology Unverified                                                  |
+| [Branding and media](SPEC.md#branding-and-media)                           | Saved themes, shared durable media journal/recovery, historical references and privacy/failure tests                    | Verified completed for synthetic/filesystem cases; remote provider settlement Unverified                                                             |
+| [Stages, pools and pooling](SPEC.md#stages-mappools-and-pooling)           | Shared validation, reviewed stage tokens, plans/reviews/releases and owned dirty dialogs                                | Verified completed for exercised workflows; named presets, notes, uploads and mappacks remain extensions                                             |
+| [Teams and staff](SPEC.md#teams-players-and-public-staff)                  | Versioned edits/bulk actions, paginated lists, global search and complete streamed CSV export                           | Verified completed for exercised flows; representative load tuning Blocked under F07                                                                 |
+| [Scheduling and brackets](SPEC.md#scheduling-and-native-brackets)          | Shared final-plan resource checks, stable numbering, native brackets and audited corrections                            | Verified completed for exact-time conflict parity; intervals, availability and bulk duplication remain extensions                                    |
+| [Referee operations](SPEC.md#referee-match-operations)                     | Preserved snapshots/history, separated reads/mutations, bilingual referee/import UI and Discord goldens                 | Verified completed within exercised rules/layouts; live provider evidence remains separate                                                           |
+| [Qualifiers and scoring](SPEC.md#qualifiers-and-scoring)                   | run-aware source validation, pure mathematics, versioned standings, reopen/downstream guards and archive witness tests  | Verified completed for supported native/manual/legacy evidence; lazer Rooms capture and qualifier workbook adapter Planned with source prerequisites |
+| [Interoperability](SPEC.md#interoperability-and-portability)               | Reviewed workbooks, wire/schema coverage, one versioned identity traversal, restoration witnesses and recovery journals | Verified completed for supported formats/bounds; representative archive RSS Blocked under F07                                                        |
+| [Reliability and hosting](SPEC.md#reliability-hosting-and-acceptance)      | Request protection, private storage, signed IRC, pinned CI and production-browser release gate                          | Verified completed within local checks; upstream pg warning Blocked; live providers/target deployment Unverified                                     |
 
 ### Finding Priorities And Evidence
 
@@ -565,8 +579,8 @@ No finding is closed solely by shrinking files or keeping existing tests green.
 
 ### Cleanup Delivery
 
-The numbered findings above describe the audit baseline. Cleanup has now started;
-this delivery record owns the current implementation/check state.
+The numbered findings above preserve the audit baseline. The delivery record below
+owns the resulting implementation and verification state.
 
 - Ownership foundation: added failing regressions for wrong-owner page/pool
   revisions, cross-match result/action IDs and nested writes, then guarded additive
@@ -580,7 +594,7 @@ this delivery record owns the current implementation/check state.
   remains under F11; these synthetic checks are not live-provider verification.
 - All migrations in this phase target only the isolated synthetic test database.
   No installation migration, deployment, publication or service restart is authorized
-  by these source changes. Remaining findings are still being implemented.
+  by these source changes. The remaining delivery phases are recorded below.
 - Public/context phase: one guest lifecycle predicate, hidden-block/media and
   private-bracket-entrant projections, explicit editing API context and scoped
   registration redirects address F01/F12/F13/F14. Fresh pages have no revisions.
@@ -664,14 +678,62 @@ this delivery record owns the current implementation/check state.
   All 38 standalone production Chromium cases pass, including mock Bancho, after
   the dependency changes (.data/cleanup-20261024/browser-dependencies-full).
   The expected missing-tournament negative path logged a 404 while its test passed.
+- Frontend/localization phase (F09): maintainer explicitly requested complete
+  English and Italian built-in interfaces with a visible switch. Request cookies,
+  server/client rendering, metadata, dates/numbers, validation, shared labels and
+  generated feedback follow that preference. The Italian catalog has 3,065 entries;
+  source-copy/alias coverage, duplicate keys and interpolation are tested. Names,
+  CMS/navigation text, rules policies, notes and histories remain authored data.
+  AppError retains English domain messages with non-enumerable templates/parameters;
+  HTTP errors localize without changing status/body shape or global Zod settings.
+  Match labels, artist normalization and local datetime conversion have shared owners.
+  PoolingWorkspace is now 770 lines instead of 2,049: suggestion/bulk, review/selection
+  and configuration forms own their state and guarded discard. One shared navigation
+  guard covers links/unload, cancelable Back/Forward and stage router calls; Modal
+  restores connected opener focus. Unsupported/forced browser traversal limitations
+  remain explicit in ARCHITECTURE. No migration for this phase.
+  Final standalone production checks pass all 42 Chromium cases, including the four
+  bilingual cases and mock Bancho. They cover real localized 400/409 responses,
+  unchanged persisted data, dirty settings/CMS/dialogs, canceled close/Back/Forward,
+  focus return, bulk/filtering, clipboard denial, match histories and stage exit.
+  216 new captures cover six populated/empty views, both languages/appearances and
+  nine viewport sizes; narrow public/settings/pooling/referee/chooser and desktop
+  screenshots were inspected. Inspection exposed and fixed a 320px header overflow,
+  missed referee labels and decimal formatting. English referee wording/casing is
+  preserved; Italian mappool assertions now expect comma decimals. Evidence:
+  .data/cleanup-20261024/browser-complete and complete-browser.log. Unit tests pass
+  355 in 29 files; integration passes 208 in 26 files, including disposable populated
+  migration schemas. Production build, types/lint and Prisma validation pass. npm
+  audit reports zero vulnerabilities; notices still cover 830 distributions.
+  All four bilingual browser cases also pass in development mode (1.1 minutes),
+  with evidence in .data/cleanup-20261024/browser-development. Final format checks,
+  153 relative links and the tracked-source audit (385 files, zero issues) pass.
+  Registry recheck still lists adapter-pg/client 7.10.1;
+  the CLI's newer major prerelease does not supply a verified compatible adapter fix.
+
+### Finding Disposition
+
+| Findings        | Result                                                                                                            | Remaining prerequisite or limit                                                                                   |
+| --------------- | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| F01/F12/F13/F14 | Resolved: uniform guest gates, fresh unsaved CMS, explicit editing context and public allowlists                  | Live target verification remains operator work                                                                    |
+| F02             | Resolved: reviewed settings patches and staff/category/stage witnesses                                            | Applied migrations required before installing this source                                                         |
+| F03             | Resolved: shared final-plan scheduling and stage pool checks                                                      | Interval conflicts/availability are separate extensions                                                           |
+| F04             | Resolved within source and synthetic/filesystem tests: durable outbox, bounded recovery and historical references | Remote timeout/settlement Unverified; existing orphan reconciliation needs a reviewed restored copy               |
+| F05             | Resolved: cohesive read/mutation/restoration owners, shared lock retained after measured serialization            | No narrower-lock change without representative contention evidence                                                |
+| F06             | Resolved: database ownership/action constraints and fail-closed scoped writes                                     | Existing mismatches cause migration refusal and require reviewed repair                                           |
+| F07             | Pagination/export completeness resolved; representative performance tuning **Blocked**                            | Approved representative restored dataset for EXPLAIN/archive RSS; no speculative indexes                          |
+| F08             | Resolved: schema/wire coverage, authoritative insertion/deferred references and identity traversal                | Version 1 historical compatibility remains intentional                                                            |
+| F09             | Resolved within exercised English/Italian Chromium workflows                                                      | Other engines/assistive technology and non-cancelable browser exits remain bounded verification scope             |
+| F10             | Resolved: obsolete pilot/action/reexports and duplicated helpers removed after replacement checks                 | Active CSS, import adapters and complete-cohort readers remain required                                           |
+| F11             | Dependency/CI cleanup resolved; Prisma/adapter pg warning **Blocked** upstream                                    | Compatible upstream fix; remote workflow execution, Docker delivery and live providers Unverified in this cleanup |
 
 Work in this order unless the maintainer explicitly reprioritizes. Items marked
 conditional are extensions, not already approved commitments or release blockers.
 
-1. **Audit-driven cleanup and regression work (Planned).** Execute the
-   [ordered cleanup phase](#cleanup-execution-order-and-gates), starting with the
-   uncovered boundary/integrity cases. This audit completed investigation and
-   documentation only; delivery above records subsequent fixes and checks.
+1. **Audit-driven cleanup and regression work (Completed within stated scope).**
+   The [finding disposition](#finding-disposition) records resolved work and the
+   two named blockers. Resume representative performance work only with an approved
+   restored dataset, and adapter warning work against a compatible upstream fix.
 2. **Release and deployment verification.** Review the target branch/release,
    back up and restore-test an isolated copy, build consistent web/tools/gateway
    images, run security/license scans and the current regression commands. Obtain
@@ -685,7 +747,8 @@ conditional are extensions, not already approved commitments or release blockers
 4. **Verification debt.** Exercise genuine concurrent-user/database races beyond
    stale-version/transaction tests, additional browser engines, accessibility with
    assistive technology and realistic storage/archive/load sizes. Address existing
-   pg concurrent-query and Vite loader deprecations deliberately after reproduction.
+   pg concurrent-query warning against the recorded upstream reproduction. The Vite
+   native-loader warning was resolved during cleanup.
    Historical one-off visual harnesses may describe obsolete screens; current E2E
    and rollout harnesses are the regression starting point.
 5. **Qualifier source adapters (Planned; workbook adapter Blocked on inspected performance evidence).** Inspect a redistributable/synthetic verified
@@ -695,9 +758,9 @@ conditional are extensions, not already approved commitments or release blockers
    repurpose legacy Bancho capture. Qualifier IRC execution remains a separate
    possible integration; copied setup commands work today.
 6. **Organizer ergonomics.** Consider a named reusable preset library, interval
-   schedule conflicts/staff availability and fuller browser Back/Forward unsaved
-   guards. Current guards cover ordinary workspace links and reload/close; current
-   conflicts compare identical starts. Do not silently widen bulk status/participant
+   schedule conflicts/staff availability. Current navigation guards include tested
+   cancelable Back/Forward; additional engine coverage remains verification work.
+   Scheduling conflicts compare identical starts. Do not silently widen bulk status/participant
    edits around historical and referee protections.
 7. **Conditional scale/extensions.** Evaluate streamed/offline large archives,
    multi-gateway sharding, bulk match duplication, per-slot notes, custom-map upload

@@ -125,7 +125,7 @@ export async function applyStageWorkflowAction(
     const record = all.find((stage) => stage.id === item.id);
     if (!record) throw new AppError('A selected stage no longer exists in this tournament.', 404);
     if (stageConfigurationToken(record) !== item.baseConfigurationToken)
-      throw new AppError(`${record.name} changed. Reload and review before applying.`, 409);
+      throw new AppError('{0} changed. Reload and review before applying.', 409, [record.name]);
     return record;
   });
   if (action.type === 'stage.reorder') {
@@ -163,9 +163,11 @@ export async function applyStageWorkflowAction(
   }
   const proposed = selected.map((stage) => {
     if (stage.kind === 'QUALIFIERS')
-      throw new AppError(`${stage.name} uses qualifier policy, not Best-of or pick/ban rules.`);
+      throw new AppError('{0} uses qualifier policy, not Best-of or pick/ban rules.', 400, [
+        stage.name,
+      ]);
     if (stage.archivedAt)
-      throw new AppError(`${stage.name} is archived. Unarchive it before changing rules.`, 409);
+      throw new AppError('{0} is archived. Unarchive it before changing rules.', 409, [stage.name]);
     try {
       const rules =
         action.type === 'stage.rules.patch'
@@ -177,7 +179,7 @@ export async function applyStageWorkflowAction(
       return { stage, rules };
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'Invalid rule configuration.';
-      throw new AppError(`${stage.name}: ${detail}`);
+      throw new AppError('{0}: {1}', 400, [stage.name, detail]);
     }
   });
   const warnings: { id: string; name: string; messages: string[] }[] = [];

@@ -1,3 +1,4 @@
+import { getServerT } from '@/lib/server-locale';
 import { siteCopy } from '@/lib/copy';
 import { ArrowUpRight } from 'lucide-react';
 import { PublicNav } from '@/components/public-nav';
@@ -29,6 +30,7 @@ export async function generateMetadata() {
   };
 }
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
+  const tr = await getServerT();
   const scope = await requestScope();
   const directory =
     scope.path === '/' &&
@@ -63,7 +65,7 @@ export default async function PublicLayout({ children }: { children: React.React
       <footer className="public-footer border-t">
         <div className={pilot.footer}>
           {t.settings.footer && <p>{t.settings.footer}</p>}
-          <nav aria-label="Social links">
+          <nav aria-label={tr('Social links')}>
             {t.settings.socialLinks.map((link, i) => (
               <a key={i} href={link.href} target="_blank" rel="noopener noreferrer">
                 {link.label}

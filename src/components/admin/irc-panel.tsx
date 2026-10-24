@@ -1,4 +1,7 @@
 'use client';
+import { humanizeCode, localeTag } from '@/lib/i18n';
+import { Feedback, useLocale, useT } from '@/components/locale';
+
 import { useEffect, useRef, useState } from 'react';
 import {
   Cable,
@@ -41,6 +44,8 @@ export function IrcPanel({
   enabled: boolean;
   onLinked: () => Promise<unknown>;
 }) {
+  const language = useLocale();
+  const tr = useT();
   const [open, setOpen] = useState(false),
     [ready, setReady] = useState(false);
   const [state, setState] = useState('disconnected'),
@@ -208,46 +213,54 @@ export function IrcPanel({
     >
       <summary className="cursor-pointer text-sm font-semibold">
         <Cable size={16} className="mr-2 inline" />
-        Bancho IRC{' '}
-        <span className="ml-2 text-xs font-normal text-muted">{enabled ? state : 'Disabled'}</span>
+        {tr('Bancho IRC')}{' '}
+        <span className="ml-2 text-xs font-normal text-muted">
+          {enabled ? tr(humanizeCode(state)).toLowerCase() : tr('Disabled')}
+        </span>
       </summary>
       {open && (
         <div className="min-w-0 space-y-4 pt-4">
           {!enabled ? (
-            <p className="text-sm text-muted">IRC is disabled on this installation.</p>
+            <p className="text-sm text-muted">{tr('IRC is disabled on this installation.')}</p>
           ) : (
             <>
               {!connected && (
                 <div
                   className="border-l-2 border-amber-300/60 pl-4 text-sm text-muted"
                   role="note"
-                  aria-label="IRC security notice"
+                  aria-label={tr('IRC security notice')}
                 >
                   <p className="mb-2 flex items-center gap-2 font-semibold text-amber-200">
                     <ShieldAlert size={18} />
-                    Security notice
+                    {tr('Security notice')}
                   </p>
                   <p>
-                    This client connects your osu! account to Bancho through this tournament server.
-                    Enter only your <strong>separate osu! IRC password</strong>, never your regular
-                    osu! password.
+                    {tr(
+                      'This client connects your osu! account to Bancho through this tournament server. Enter only your',
+                    )}{' '}
+                    <strong>{tr('separate osu! IRC password')}</strong>
+                    {tr(', never your regular osu! password.')}
                   </p>
                   <p className="mt-2">
-                    The server handles it temporarily in memory. It is not saved to the database,
-                    object storage, browser storage or logs. Browser traffic uses HTTPS/WSS, but
-                    osu! documents an <strong>unencrypted</strong> server-to-Bancho connection:
-                    credentials and messages may be visible to network observers.
+                    {tr(
+                      'The server handles it temporarily in memory. It is not saved to the database, object storage, browser storage or logs. Browser traffic uses HTTPS/WSS, but osu! documents an',
+                    )}{' '}
+                    <strong>{tr('unencrypted')}</strong>{' '}
+                    {tr(
+                      'server-to-Bancho connection: credentials and messages may be visible to network observers.',
+                    )}
                   </p>
                   <p className="mt-2">
-                    Only connect if you trust this website’s operator. Each self-hoster runs their
-                    own gateway. Normal website and manual refereeing do not require IRC.{' '}
+                    {tr(
+                      'Only connect if you trust this website’s operator. Each self-hoster runs their own gateway. Normal website and manual refereeing do not require IRC.',
+                    )}{' '}
                     <a
                       className="text-primary underline"
                       href="https://osu.ppy.sh/wiki/en/Community/Internet_Relay_Chat"
                       target="_blank"
                       rel="noreferrer"
                     >
-                      Official osu! IRC documentation
+                      {tr('Official osu! IRC documentation')}
                     </a>
                   </p>
                 </div>
@@ -261,17 +274,17 @@ export function IrcPanel({
                     onClick={() => void run(attach)}
                   >
                     <Cable size={16} />
-                    Open IRC
+                    {tr('Open IRC')}
                   </Button>
                 )}
                 <span className="text-xs text-muted" role="status">
                   {username ? `${username} · ` : ''}
-                  {ready ? state : 'Gateway disconnected'}
+                  {ready ? tr(humanizeCode(state)).toLowerCase() : tr('Gateway disconnected')}
                 </span>
                 {connected && (
                   <Button size="sm" variant="ghost" onClick={() => send({ type: 'disconnect' })}>
                     <LogOut size={16} />
-                    Disconnect all tabs
+                    {tr('Disconnect all tabs')}
                   </Button>
                 )}
                 {connected && !!target && (
@@ -284,14 +297,14 @@ export function IrcPanel({
                     }}
                   >
                     <LogIn size={16} />
-                    Join lobby
+                    {tr('Join lobby')}
                   </Button>
                 )}
                 {match.lobbyUrl && (
                   <Button asChild size="sm" variant="ghost">
                     <a href={match.lobbyUrl} target="_blank" rel="noreferrer">
                       <ExternalLink size={16} />
-                      Multiplayer
+                      {tr('Multiplayer')}
                     </a>
                   </Button>
                 )}
@@ -327,11 +340,12 @@ export function IrcPanel({
                       checked={acknowledged}
                       onChange={(e) => setAcknowledged(e.target.checked)}
                     />
-                    I understand the unencrypted connection and trust this server with my separate
-                    IRC password.
+                    {tr(
+                      'I understand the unencrypted connection and trust this server with my separate IRC password.',
+                    )}
                   </label>
                   <div className="flex flex-wrap items-end gap-2">
-                    <Field label="Separate osu! IRC password">
+                    <Field label={tr('Separate osu! IRC password')}>
                       <input
                         ref={password}
                         type="password"
@@ -346,21 +360,21 @@ export function IrcPanel({
                     </Field>
                     <Button type="submit" size="sm" disabled={!acknowledged}>
                       <LogIn size={16} />
-                      Connect to Bancho
+                      {tr('Connect to Bancho')}
                     </Button>
                   </div>
                 </form>
               )}
               {error && (
                 <p role="alert" className="text-sm text-red-200">
-                  {error}
+                  <Feedback message={error} />
                 </p>
               )}
               {unresolved && (
                 <div className="flex flex-wrap items-center gap-2 text-sm text-amber-200">
                   <span>
-                    Unresolved lobby request: {unresolved.name}. Inspect BanchoBot; do not blindly
-                    retry.
+                    {tr('Unresolved lobby request:')} {unresolved.name}
+                    {tr('. Inspect BanchoBot; do not blindly retry.')}
                   </span>
                   <Button
                     size="sm"
@@ -368,7 +382,7 @@ export function IrcPanel({
                     disabled={!unresolved.id || !editable}
                     onClick={() => setDialog({ kind: 'resolve', command: unresolved.id })}
                   >
-                    Resolve request
+                    {tr('Resolve request')}
                   </Button>
                   {!unresolved.id && (
                     <Button
@@ -379,7 +393,7 @@ export function IrcPanel({
                         void run(attach);
                       }}
                     >
-                      Refresh request
+                      {tr('Refresh request')}
                     </Button>
                   )}
                 </div>
@@ -401,7 +415,7 @@ export function IrcPanel({
                     onClick={() => setDialog({ kind: 'link', command: proposal.url })}
                   >
                     <Link2 size={16} />
-                    Link to match {match.code}
+                    {tr('Link to match')} {match.code}
                   </Button>
                   <Button
                     size="sm"
@@ -409,7 +423,7 @@ export function IrcPanel({
                     disabled={!editable}
                     onClick={() => setDialog({ kind: 'resolve', command: proposal.requestId })}
                   >
-                    Dismiss old lobby
+                    {tr('Dismiss old lobby')}
                   </Button>
                 </div>
               )}
@@ -420,7 +434,7 @@ export function IrcPanel({
                       <div
                         className="flex flex-wrap gap-1 border-b pb-2"
                         role="tablist"
-                        aria-label="IRC conversations"
+                        aria-label={tr('IRC conversations')}
                       >
                         {[
                           ...new Set([
@@ -445,7 +459,7 @@ export function IrcPanel({
                       <div
                         ref={log}
                         role="log"
-                        aria-label={`${active} messages`}
+                        aria-label={tr('{0} messages', active)}
                         aria-live="polite"
                         className="h-60 overflow-y-auto overscroll-contain py-2 text-xs"
                         onScroll={() => {
@@ -459,7 +473,7 @@ export function IrcPanel({
                           .map((m) => (
                             <p key={m.id} className="break-words py-1 [overflow-wrap:anywhere]">
                               <time className="mr-2 text-muted">
-                                {new Date(m.at).toLocaleTimeString([], {
+                                {new Date(m.at).toLocaleTimeString(localeTag(language), {
                                   hour: '2-digit',
                                   minute: '2-digit',
                                 })}
@@ -497,7 +511,7 @@ export function IrcPanel({
                         }}
                       >
                         <input
-                          aria-label={`Message ${active}`}
+                          aria-label={tr('Message {0}', active)}
                           maxLength={300}
                           value={text}
                           onChange={(e) => setText(e.target.value)}
@@ -508,8 +522,8 @@ export function IrcPanel({
                           type="submit"
                           variant="outline"
                           size="icon"
-                          aria-label="Send message"
-                          title="Send message"
+                          aria-label={tr('Send message')}
+                          title={tr('Send message')}
                           className="min-h-11 min-w-11"
                         >
                           <Send size={17} />
@@ -519,8 +533,8 @@ export function IrcPanel({
                             type="button"
                             variant="ghost"
                             size="icon"
-                            aria-label="Close conversation without closing lobby"
-                            title="Close conversation without closing lobby"
+                            aria-label={tr('Close conversation without closing lobby')}
+                            title={tr('Close conversation without closing lobby')}
                             onClick={() => {
                               send(
                                 active.startsWith('#mp_')
@@ -549,7 +563,7 @@ export function IrcPanel({
                           }}
                         >
                           <Cable size={16} />
-                          Create lobby
+                          {tr('Create lobby')}
                         </Button>
                         <Button
                           size="sm"
@@ -558,7 +572,7 @@ export function IrcPanel({
                           onClick={() => command(commands.map)}
                         >
                           <Play size={16} />
-                          Set map
+                          {tr('Set map')}
                         </Button>
                         <Button
                           size="sm"
@@ -567,7 +581,7 @@ export function IrcPanel({
                           onClick={() => command(commands.mods)}
                         >
                           <Settings size={16} />
-                          Set mods
+                          {tr('Set mods')}
                         </Button>
                       </div>
                       {commands.map && (
@@ -578,8 +592,8 @@ export function IrcPanel({
                           <Button
                             size="icon"
                             variant="ghost"
-                            title="Copy map and mod commands"
-                            aria-label="Copy map and mod commands"
+                            title={tr('Copy map and mod commands')}
+                            aria-label={tr('Copy map and mod commands')}
                             onClick={() => copy(`${commands.map}\n${commands.mods}`)}
                           >
                             <Copy size={15} />
@@ -615,30 +629,34 @@ export function IrcPanel({
                             ) : (
                               <Send size={14} />
                             )}
-                            {label}
+                            {tr(label)}
                           </Button>
                         ))}
                       </div>
                       <div className="flex min-w-0 gap-2">
                         <select
-                          aria-label="Player to invite"
+                          aria-label={tr('Player to invite')}
                           className="min-w-0 flex-1"
                           value={invite}
                           onChange={(e) => setInvite(e.target.value)}
                         >
-                          <option value="">Invite player</option>
+                          <option value="">{tr('Invite player')}</option>
                           {players.map((p) => (
                             <option key={p.osuId} value={p.osuId}>
                               {p.username}
-                              {p.captain ? ' (captain)' : p.substitute ? ' (substitute)' : ''}
+                              {p.captain
+                                ? tr(' (captain)')
+                                : p.substitute
+                                  ? tr(' (substitute)')
+                                  : ''}
                             </option>
                           ))}
                         </select>
                         <Button
                           size="icon"
                           variant="outline"
-                          title="Invite selected player"
-                          aria-label="Invite selected player"
+                          title={tr('Invite selected player')}
+                          aria-label={tr('Invite selected player')}
                           disabled={!canSend || !invite}
                           onClick={() => command(`!mp invite #${invite}`)}
                         >
@@ -647,8 +665,8 @@ export function IrcPanel({
                         <Button
                           size="icon"
                           variant="ghost"
-                          title="Private message selected player"
-                          aria-label="Private message selected player"
+                          title={tr('Private message selected player')}
+                          aria-label={tr('Private message selected player')}
                           disabled={!invite}
                           onClick={() => {
                             const peer = players
@@ -665,12 +683,12 @@ export function IrcPanel({
                       </div>
                       <div className="flex min-w-0 gap-2">
                         <select
-                          aria-label="Referee to add (creator only)"
+                          aria-label={tr('Referee to add (creator only)')}
                           className="min-w-0 flex-1"
                           value={referee}
                           onChange={(e) => setReferee(e.target.value)}
                         >
-                          <option value="">Add referee (creator only)</option>
+                          <option value="">{tr('Add referee (creator only)')}</option>
                           {match.assignments.map((r) => (
                             <option key={r.userId} value={r.user.osuId}>
                               {r.user.username}
@@ -680,8 +698,8 @@ export function IrcPanel({
                         <Button
                           size="icon"
                           variant="outline"
-                          title="Add selected referee, creator only"
-                          aria-label="Add selected referee, creator only"
+                          title={tr('Add selected referee, creator only')}
+                          aria-label={tr('Add selected referee, creator only')}
                           disabled={!canSend || !referee || !proposal}
                           onClick={() => command(`!mp addref #${referee}`)}
                         >
@@ -692,7 +710,7 @@ export function IrcPanel({
                   </div>
                   <div
                     className="max-h-32 overflow-y-auto border-t pt-2 text-xs"
-                    aria-label="Command delivery history"
+                    aria-label={tr('Command delivery history')}
                   >
                     {deliveries
                       .slice(-5)
@@ -703,14 +721,20 @@ export function IrcPanel({
                           <span
                             className={`ml-2 ${d.state === 'confirmed' ? 'text-emerald-200' : d.state === 'failed' ? 'text-red-200' : 'text-muted'}`}
                           >
-                            {d.state === 'sent' ? 'Sent' : d.state}
-                            {d.note ? `: ${d.note}` : ''}
+                            {d.state === 'sent'
+                              ? tr('Sent')
+                              : tr(humanizeCode(d.state)).toLowerCase()}
+                            {d.note && (
+                              <>
+                                : <Feedback message={d.note} />
+                              </>
+                            )}
                           </span>
                           <button
                             type="button"
                             className="ml-2 inline-flex size-8 items-center justify-center"
-                            title="Copy command"
-                            aria-label={`Copy ${d.command}`}
+                            title={tr('Copy command')}
+                            aria-label={tr('Copy {0}', d.command)}
                             onClick={() => copy(d.command)}
                           >
                             <Copy size={13} />
@@ -729,12 +753,12 @@ export function IrcPanel({
             }}
             title={
               dialog?.kind === 'create'
-                ? 'Create multiplayer lobby'
+                ? tr('Create multiplayer lobby')
                 : dialog?.kind === 'link'
-                  ? 'Link multiplayer lobby'
+                  ? tr('Link multiplayer lobby')
                   : dialog?.kind === 'resolve'
-                    ? 'Resolve uncertain creation'
-                    : 'Confirm lobby command'
+                    ? tr('Resolve uncertain creation')
+                    : tr('Confirm lobby command')
             }
           >
             {dialog && (
@@ -772,12 +796,12 @@ export function IrcPanel({
                         multiplayerId: Number(chosen.command.match(/\/(\d+)$/)?.[1]),
                       });
                       await onLinked();
-                    }, 'Multiplayer lobby linked.');
+                    }, tr('Multiplayer lobby linked.'));
                 }}
               >
                 {dialog.kind === 'create' ? (
                   <>
-                    <Field label="Lobby name">
+                    <Field label={tr('Lobby name')}>
                       <input
                         value={name}
                         maxLength={250}
@@ -786,26 +810,28 @@ export function IrcPanel({
                       />
                     </Field>
                     <p className="text-sm text-muted">
-                      BanchoBot will receive !mp make privately. A tournament room remains open when
-                      everyone leaves; close it explicitly when finished.
+                      {tr(
+                        'BanchoBot will receive !mp make privately. A tournament room remains open when everyone leaves; close it explicitly when finished.',
+                      )}
                     </p>
                   </>
                 ) : dialog.kind === 'resolve' ? (
                   <p className="text-sm text-muted">
-                    Confirm that you inspected BanchoBot and any created rooms. Resolving this
-                    request permits a new creation attempt; it does not close an existing room.
+                    {tr(
+                      'Confirm that you inspected BanchoBot and any created rooms. Resolving this request permits a new creation attempt; it does not close an existing room.',
+                    )}
                   </p>
                 ) : (
                   <p className="break-all text-sm">
                     {dialog.command}
                     {dialog.kind === 'link' && match.lobbyUrl
-                      ? ' will replace the existing match URL.'
+                      ? tr(' will replace the existing match URL.')
                       : ''}
                   </p>
                 )}
                 <Button type="submit" disabled={busy || (dialog.kind === 'create' && !name.trim())}>
                   <Send size={16} />
-                  Confirm
+                  {tr('Confirm')}
                 </Button>
               </form>
             )}

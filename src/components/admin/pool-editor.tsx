@@ -1,4 +1,7 @@
 'use client';
+import { formatNumber, humanizeCode } from '@/lib/i18n';
+import { Feedback, useLocale, useT } from '@/components/locale';
+
 import Link from '@/components/tournament-scope';
 import { useEffect, useState } from 'react';
 import {
@@ -84,6 +87,8 @@ export function PoolEditor({
   actor: Actor;
   initialStageId?: string;
 }) {
+  const tr = useT();
+  const language = useLocale();
   const { data, error, reload } = useResource<Data>('mappools');
   const { busy, run, notify } = useTask();
   const [active, setActive] = useState(initialStageId),
@@ -239,12 +244,12 @@ export function PoolEditor({
           }),
       });
       await reload();
-    }, 'Mappool draft saved.');
+    }, tr('Mappool draft saved.'));
   if (!data) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
   return (
     <>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">Mappool manager</h1>
+        <h1 className="text-2xl font-semibold">{tr('Mappool manager')}</h1>
         <div className="flex gap-2">
           {editable && (
             <Button
@@ -254,14 +259,14 @@ export function PoolEditor({
               onClick={() => setCategoriesOpen(true)}
             >
               <SlidersHorizontal size={13} />
-              Mod categories
+              {tr('Mod categories')}
             </Button>
           )}
           {can(actor, 'mappools.create') && (
             <Button asChild size="sm">
               <Link href="/admin/mappools?view=stages&new=1&return=pool">
                 <Plus size={14} />
-                New stage
+                {tr('New stage')}
               </Link>
             </Button>
           )}
@@ -273,7 +278,8 @@ export function PoolEditor({
             key={s.id}
             disabled={busy}
             onClick={() => {
-              if (dirty && !window.confirm('Discard unsaved changes and switch stages?')) return;
+              if (dirty && !window.confirm(tr('Discard unsaved changes and switch stages?')))
+                return;
               setActive(s.id);
             }}
             className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${active === s.id ? 'border-primary/30 bg-primary/10 text-primary' : 'bg-card text-muted hover:text-foreground'}`}
@@ -291,9 +297,9 @@ export function PoolEditor({
             <div className="flex flex-wrap items-center gap-3">
               <h2 className="text-xl font-semibold tracking-normal">{stage.name}</h2>
               <StateBadge state={pool.state} />
-              {dirty && <span className="text-xs text-amber-200">Unsaved changes</span>}
+              {dirty && <span className="text-xs text-amber-200">{tr('Unsaved changes')}</span>}
               {pool.draftRevisionId !== pool.publishedRevisionId && pool.draftRevisionId && (
-                <Badge>Draft changes</Badge>
+                <Badge>{tr('Draft changes')}</Badge>
               )}
             </div>
             <div className="flex gap-2">
@@ -307,14 +313,14 @@ export function PoolEditor({
               {editable && (
                 <Button asChild size="sm" variant="ghost" disabled={dirty}>
                   <Link href={`/admin/mappools?view=stages&stage=${stage.id}&return=pool`}>
-                    Stage settings
+                    {tr('Stage settings')}
                   </Link>
                 </Button>
               )}
               {pool.state === 'PUBLISHED' && (
                 <Button asChild size="sm" variant="ghost">
                   <Link href={`/mappools/${stage.slug}`} target="_blank" rel="noopener noreferrer">
-                    Public page
+                    {tr('Public page')}
                     <ArrowUpRight size={12} />
                   </Link>
                 </Button>
@@ -332,7 +338,7 @@ export function PoolEditor({
                     onClick={() => setImporting(true)}
                   >
                     <Download size={13} />
-                    Bulk import
+                    {tr('Bulk import')}
                   </Button>
                   <Button
                     size="sm"
@@ -354,14 +360,14 @@ export function PoolEditor({
                       setCopyOpen(true);
                     }}
                   >
-                    Copy from stage
+                    {tr('Copy from stage')}
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
                     disabled={busy}
                     onClick={() => {
-                      if (dirty && !window.confirm('Replace the current unsaved pool edits?'))
+                      if (dirty && !window.confirm(tr('Replace the current unsaved pool edits?')))
                         return;
                       setDistribution(
                         Object.fromEntries(
@@ -371,7 +377,7 @@ export function PoolEditor({
                       setDistributionOpen(true);
                     }}
                   >
-                    Build slot plan
+                    {tr('Build slot plan')}
                   </Button>
                   <Button
                     size="sm"
@@ -392,16 +398,16 @@ export function PoolEditor({
                     }}
                   >
                     <Plus size={13} />
-                    Add beatmap
+                    {tr('Add beatmap')}
                   </Button>
                   <Button
                     size="sm"
                     variant="ghost"
                     disabled={busy || !slots.length}
-                    onClick={() => void run(() => lookup(slots), 'Metadata refreshed.')}
+                    onClick={() => void run(() => lookup(slots), tr('Metadata refreshed.'))}
                   >
                     <RefreshCw size={13} />
-                    Fetch metadata
+                    {tr('Fetch metadata')}
                   </Button>
                 </>
               )}
@@ -412,7 +418,7 @@ export function PoolEditor({
                 onClick={() => setPreview(true)}
               >
                 <Eye size={13} />
-                Preview draft
+                {tr('Preview draft')}
               </Button>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -427,7 +433,7 @@ export function PoolEditor({
                   }}
                 >
                   <ListFilter size={15} />
-                  Sort by Slot
+                  {tr('Sort by Slot')}
                 </Button>
               )}
               {editable && (
@@ -438,14 +444,16 @@ export function PoolEditor({
                   onClick={() => void save()}
                 >
                   <Save size={13} />
-                  Save draft
+                  {tr('Save draft')}
                 </SaveButton>
               )}
               {publisher && (
                 <ConfirmButton
                   variant="default"
-                  title={`Publish ${stage.name}?`}
-                  description="The saved draft will become publicly visible. Review every slot before releasing."
+                  title={tr('Publish {0}?', stage.name)}
+                  description={tr(
+                    'The saved draft will become publicly visible. Review every slot before releasing.',
+                  )}
                   disabled={
                     busy ||
                     dirty ||
@@ -460,39 +468,41 @@ export function PoolEditor({
                         revisionId: pool.draftRevisionId,
                       });
                       await reload();
-                    }, 'Mappool published.')
+                    }, tr('Mappool published.'))
                   }
                 >
                   <Send size={13} />
-                  Publish
+                  {tr('Publish')}
                 </ConfirmButton>
               )}
               {publisher && pool.state === 'PUBLISHED' && (
                 <ConfirmButton
-                  title="Unpublish this mappool?"
-                  description="This pool will immediately become unavailable on public pages and direct URLs."
+                  title={tr('Unpublish this mappool?')}
+                  description={tr(
+                    'This pool will immediately become unavailable on public pages and direct URLs.',
+                  )}
                   disabled={busy}
                   onConfirm={() =>
                     void run(async () => {
                       await action({ type: 'pool.unpublish', id: pool.id });
                       await reload();
-                    }, 'Mappool unpublished.')
+                    }, tr('Mappool unpublished.'))
                   }
                 >
-                  Unpublish
+                  {tr('Unpublish')}
                 </ConfirmButton>
               )}
             </div>
           </div>
           <div className="mb-3 flex flex-wrap items-end gap-3 border-b pb-3">
             <p className="mr-auto self-center text-sm text-muted">
-              {slots.filter((slot) => slot.beatmapId > 0).length}/{slots.length} filled
+              {slots.filter((slot) => slot.beatmapId > 0).length}/{slots.length} {tr('filled')}
               {' · '}
-              {stage.poolPlan?.reviewState.toLowerCase().replaceAll('_', ' ') || 'draft'}
+              {tr(humanizeCode(stage.poolPlan?.reviewState || 'DRAFT'))}
             </p>
-            <Field label="SR target min">
+            <Field label={tr('SR target min')}>
               <input
-                aria-label="SR target minimum"
+                aria-label={tr('SR target minimum')}
                 className="w-28"
                 type="number"
                 min={0}
@@ -506,9 +516,9 @@ export function PoolEditor({
                 }}
               />
             </Field>
-            <Field label="SR target max">
+            <Field label={tr('SR target max')}>
               <input
-                aria-label="SR target maximum"
+                aria-label={tr('SR target maximum')}
                 className="w-28"
                 type="number"
                 min={0}
@@ -536,11 +546,11 @@ export function PoolEditor({
                       state: 'REVIEW',
                     });
                     await reload();
-                  }, 'Pool ready for review.')
+                  }, tr('Pool ready for review.'))
                 }
               >
                 <Send size={14} />
-                Request review
+                {tr('Request review')}
               </Button>
             )}
             {stage.poolPlan && publisher && (
@@ -557,18 +567,18 @@ export function PoolEditor({
                       state: 'APPROVED',
                     });
                     await reload();
-                  }, 'Pool approved.')
+                  }, tr('Pool approved.'))
                 }
               >
                 <Check size={14} />
-                Approve
+                {tr('Approve')}
               </Button>
             )}
           </div>
           <div className="space-y-3">
             {slotErrors(slots, data.categories).map((problem, index) => (
               <p key={problem + index} role="alert" className="text-sm text-red-300">
-                {problem}
+                <Feedback message={problem} />
               </p>
             ))}
             {slots.length ? (
@@ -581,7 +591,7 @@ export function PoolEditor({
                 onUpdate={update}
                 onMove={(id, direction) => {
                   if (slotErrors(slots, data.categories).length) {
-                    notify('Resolve invalid or duplicate slots before moving maps.', true);
+                    notify(tr('Resolve invalid or duplicate slots before moving maps.'), true);
                     return;
                   }
                   setSlots(movePoolSlot(slots, id, direction, data.categories));
@@ -594,7 +604,7 @@ export function PoolEditor({
                 onCopy={(text) => {
                   void run(async () => {
                     await navigator.clipboard.writeText(text);
-                  }, 'Beatmap ID copied.');
+                  }, tr('Beatmap ID copied.'));
                 }}
                 onBulkRemove={(ids) => {
                   const removed = new Set(ids);
@@ -633,12 +643,17 @@ export function PoolEditor({
                 }}
               />
             ) : (
-              <EmptyState title="No beatmaps" description="This stage has no draft slots." />
+              <EmptyState
+                title={tr('No beatmaps')}
+                description={tr('This stage has no draft slots.')}
+              />
             )}
             <details className="border-b py-3">
-              <summary className="cursor-pointer text-sm font-medium">Mappool notes</summary>
+              <summary className="cursor-pointer text-sm font-medium">
+                {tr('Mappool notes')}
+              </summary>
               <div className="pt-3">
-                <Field label="Mappool notes">
+                <Field label={tr('Mappool notes')}>
                   <textarea
                     disabled={!editable || busy}
                     value={notes}
@@ -653,55 +668,62 @@ export function PoolEditor({
           </div>
           <div className="mt-8 flex items-center justify-between border-t pt-5">
             <span className="text-xs text-muted">
-              {slots.length} slots · {populatedMaps.length} filled
+              {slots.length} {tr('slots ·')} {populatedMaps.length} {tr('filled')}
               {average('stars') !== null && (
                 <>
-                  {' · '}Avg {average('stars')!.toFixed(2)}★{' · '}Avg {average('bpm')!.toFixed(0)}{' '}
-                  BPM
-                  {' · '}Avg {Math.floor(average('length')! / 60)}:
-                  {String(Math.round(average('length')!) % 60).padStart(2, '0')} drain
-                  {' · '}SR {Math.min(...populatedMaps.map((map) => map.stars)).toFixed(2)}–
-                  {Math.max(...populatedMaps.map((map) => map.stars)).toFixed(2)}
+                  {' · '}
+                  {tr('Avg')} {formatNumber(average('stars')!, language, 2)}★{' · '}
+                  {tr('Avg')} {formatNumber(average('bpm')!, language, 0)} {tr('BPM')}
+                  {' · '}
+                  {tr('Avg')} {Math.floor(average('length')! / 60)}:
+                  {String(Math.round(average('length')!) % 60).padStart(2, '0')} {tr('drain')}
+                  {' · '}
+                  {tr('SR')}{' '}
+                  {formatNumber(Math.min(...populatedMaps.map((map) => map.stars)), language, 2)}–
+                  {formatNumber(Math.max(...populatedMaps.map((map) => map.stars)), language, 2)}
                   {((minStars !== '' && average('stars')! < Number(minStars)) ||
                     (maxStars !== '' && average('stars')! > Number(maxStars))) && (
                     <span className="ml-2 text-amber-400">
-                      Average outside the suggested target
+                      {tr('Average outside the suggested target')}
                     </span>
                   )}
                 </>
               )}
-              {' · '}Saving creates an independent draft revision
+              {' · '}
+              {tr('Saving creates an independent draft revision')}
             </span>
             {can(actor, 'mappools.delete') && (
               <ConfirmButton
-                title={`Delete ${stage.name}?`}
-                description="This deletes the stage, every mappool revision, and its public URL. This cannot be undone."
+                title={tr('Delete {0}?', stage.name)}
+                description={tr(
+                  'This deletes the stage, every mappool revision, and its public URL. This cannot be undone.',
+                )}
                 disabled={busy}
                 onConfirm={() =>
                   void run(async () => {
                     await action({ type: 'stage.delete', id: stage.id });
                     setActive('');
                     await reload();
-                  }, 'Stage deleted.')
+                  }, tr('Stage deleted.'))
                 }
               >
                 <Trash2 size={13} />
-                Delete stage
+                {tr('Delete stage')}
               </ConfirmButton>
             )}
           </div>
         </>
       ) : (
         <EmptyState
-          title="No tournament stages"
-          description="Create a tournament stage to start preparing its mappool."
+          title={tr('No tournament stages')}
+          description={tr('Create a tournament stage to start preparing its mappool.')}
         />
       )}
       <Modal
         open={importing}
         onOpenChange={setImporting}
-        title="Bulk-import beatmaps"
-        description="Enter one beatmap ID per line, or map slots with NM1: 123456."
+        title={tr('Bulk-import beatmaps')}
+        description={tr('Enter one beatmap ID per line, or map slots with NM1: 123456.')}
       >
         <form
           className="space-y-5"
@@ -743,36 +765,38 @@ export function PoolEditor({
               setDirty(true);
               setBulk('');
               setImporting(false);
-            }, 'Beatmaps imported. Review metadata before saving.');
+            }, tr('Beatmaps imported. Review metadata before saving.'));
           }}
         >
-          <Field label="Default category for plain IDs">
+          <Field label={tr('Default category for plain IDs')}>
             <select value={defaultMod} onChange={(e) => setDefaultMod(e.target.value)}>
               {data.categories.map((c) => (
                 <option key={c.id}>{c.acronym}</option>
               ))}
             </select>
           </Field>
-          <Field label="Beatmap IDs or slot mappings">
+          <Field label={tr('Beatmap IDs or slot mappings')}>
             <textarea
               className="min-h-56 font-mono"
               value={bulk}
               onChange={(e) => setBulk(e.target.value)}
               required
-              placeholder={'NM1: 123456\nNM2: 234567\nHD1: 345678'}
+              placeholder={tr('NM1: 123456\nNM2: 234567\nHD1: 345678')}
             />
           </Field>
-          <SaveButton busy={busy}>Import & fetch metadata</SaveButton>
+          <SaveButton busy={busy}>{tr('Import & fetch metadata')}</SaveButton>
         </form>
       </Modal>
       <Modal
         open={copyOpen}
         onOpenChange={setCopyOpen}
-        title="Copy mappool from another stage"
-        description="This creates an independent draft. The source pool and its publication state are unchanged."
+        title={tr('Copy mappool from another stage')}
+        description={tr(
+          'This creates an independent draft. The source pool and its publication state are unchanged.',
+        )}
       >
         <div className="space-y-4">
-          <Field label="Source stage">
+          <Field label={tr('Source stage')}>
             <select value={copySource} onChange={(event) => setCopySource(event.target.value)}>
               {data.stages
                 .filter((candidate) => candidate.id !== stage?.id && hasPoolSource(candidate))
@@ -784,7 +808,7 @@ export function PoolEditor({
             </select>
           </Field>
           <fieldset className="space-y-2">
-            <legend className="text-sm font-semibold">What to copy</legend>
+            <legend className="text-sm font-semibold">{tr('What to copy')}</legend>
             <label className="flex items-start gap-2 text-sm">
               <input
                 type="radio"
@@ -793,9 +817,9 @@ export function PoolEditor({
                 onChange={() => setCopyMode('structure')}
               />
               <span>
-                <strong>Structure only</strong>
+                <strong>{tr('Structure only')}</strong>
                 <span className="block text-muted">
-                  Copy slot names and mod categories, leaving every beatmap empty.
+                  {tr('Copy slot names and mod categories, leaving every beatmap empty.')}
                 </span>
               </span>
             </label>
@@ -807,22 +831,22 @@ export function PoolEditor({
                 onChange={() => setCopyMode('contents')}
               />
               <span>
-                <strong>Pool contents</strong>
+                <strong>{tr('Pool contents')}</strong>
                 <span className="block text-muted">
-                  Copy slots, beatmaps, and pool notes into a new independent draft.
+                  {tr('Copy slots, beatmaps, and pool notes into a new independent draft.')}
                 </span>
               </span>
             </label>
           </fieldset>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setCopyOpen(false)}>
-              Cancel
+              {tr('Cancel')}
             </Button>
             <Button
               disabled={!copySource || busy}
-              onClick={() => void run(async () => copyPool(), 'Pool copied to this draft.')}
+              onClick={() => void run(async () => copyPool(), tr('Pool copied to this draft.'))}
             >
-              Copy to draft
+              {tr('Copy to draft')}
             </Button>
           </div>
         </div>
@@ -832,7 +856,7 @@ export function PoolEditor({
         onOpenChange={(open) => {
           if (!open) setTransferSlots(null);
         }}
-        title="Transfer selected maps"
+        title={tr('Transfer selected maps')}
       >
         <form
           className="space-y-4"
@@ -855,17 +879,17 @@ export function PoolEditor({
               });
               setTransferSlots(null);
               await reload();
-            }, 'Selected maps transferred into independent drafts.');
+            }, tr('Selected maps transferred into independent drafts.'));
           }}
         >
           <p className="text-sm text-muted">{transferSlots?.join(', ')}</p>
-          <Field label="Destination stage">
+          <Field label={tr('Destination stage')}>
             <select
               required
               value={transferTarget}
               onChange={(event) => setTransferTarget(event.target.value)}
             >
-              <option value="">Choose stage</option>
+              <option value="">{tr('Choose stage')}</option>
               {data.stages
                 .filter((candidate) => candidate.id !== stage?.id && candidate.mappool)
                 .map((candidate) => (
@@ -875,13 +899,13 @@ export function PoolEditor({
                 ))}
             </select>
           </Field>
-          <Field label="Operation">
+          <Field label={tr('Operation')}>
             <select
               value={transferMode}
               onChange={(event) => setTransferMode(event.target.value as 'COPY' | 'MOVE')}
             >
-              <option value="COPY">Copy to destination draft</option>
-              <option value="MOVE">Move between drafts</option>
+              <option value="COPY">{tr('Copy to destination draft')}</option>
+              <option value="MOVE">{tr('Move between drafts')}</option>
             </select>
           </Field>
           <label className="flex items-center gap-2 text-sm">
@@ -890,17 +914,17 @@ export function PoolEditor({
               checked={transferReplace}
               onChange={(event) => setTransferReplace(event.target.checked)}
             />
-            Replace matching destination slots
+            {tr('Replace matching destination slots')}
           </label>
           <p className="text-xs text-muted">
-            Published versions remain visible until the revised drafts are published.
+            {tr('Published versions remain visible until the revised drafts are published.')}
           </p>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => setTransferSlots(null)}>
-              Cancel
+              {tr('Cancel')}
             </Button>
             <SaveButton busy={busy} disabled={!transferTarget}>
-              Transfer {transferSlots?.length} maps
+              {tr('Transfer')} {transferSlots?.length} {tr('maps')}
             </SaveButton>
           </div>
         </form>
@@ -908,8 +932,10 @@ export function PoolEditor({
       <Modal
         open={distributionOpen}
         onOpenChange={setDistributionOpen}
-        title="Build mappool slot plan"
-        description="Choose how many slots to prepare for each mod. Generated slots start without a beatmap."
+        title={tr('Build mappool slot plan')}
+        description={tr(
+          'Choose how many slots to prepare for each mod. Generated slots start without a beatmap.',
+        )}
       >
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -931,14 +957,16 @@ export function PoolEditor({
             ))}
           </div>
           <p className="text-xs text-muted">
-            Empty slots can be saved as a draft. Fill the plan before publishing.
+            {tr('Empty slots can be saved as a draft. Fill the plan before publishing.')}
           </p>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setDistributionOpen(false)}>
-              Cancel
+              {tr('Cancel')}
             </Button>
-            <Button onClick={() => void run(async () => applyDistribution(), 'Slot plan created.')}>
-              Create slots
+            <Button
+              onClick={() => void run(async () => applyDistribution(), tr('Slot plan created.'))}
+            >
+              {tr('Create slots')}
             </Button>
           </div>
         </div>
@@ -946,8 +974,10 @@ export function PoolEditor({
       <Modal
         open={categoriesOpen}
         onOpenChange={setCategoriesOpen}
-        title="Mod categories"
-        description="Categories are customizable. Published revisions retain their original category names and colors."
+        title={tr('Mod categories')}
+        description={tr(
+          'Categories are customizable. Published revisions retain their original category names and colors.',
+        )}
       >
         <div className="mb-7 space-y-2">
           {data.categories.map((c) => (
@@ -957,16 +987,18 @@ export function PoolEditor({
               </span>
               <span className="flex-1 text-xs">{c.name}</span>
               <Button size="sm" variant="ghost" onClick={() => setCategoryDraft(c)}>
-                Edit
+                {tr('Edit')}
               </Button>
               <ConfirmButton
-                title={`Delete ${c.name}?`}
-                description="Saved revisions are preserved. New drafts must use existing categories."
+                title={tr('Delete {0}?', c.name)}
+                description={tr(
+                  'Saved revisions are preserved. New drafts must use existing categories.',
+                )}
                 onConfirm={() =>
                   void run(async () => {
                     await action({ type: 'category.delete', id: c.id, baseVersion: c.version });
                     await reload();
-                  }, 'Category deleted.')
+                  }, tr('Category deleted.'))
                 }
               >
                 <Trash2 size={12} />
@@ -990,21 +1022,21 @@ export function PoolEditor({
               });
               setCategoryDraft({});
               await reload();
-            }, 'Category saved.');
+            }, tr('Category saved.'));
           }}
         >
           <h3 className="text-sm font-semibold">
-            {categoryDraft.id ? 'Edit category' : 'Add category'}
+            {categoryDraft.id ? tr('Edit category') : tr('Add category')}
           </h3>
           <div className="grid-fields">
-            <Field label="Name">
+            <Field label={tr('Name')}>
               <input
                 required
                 value={categoryDraft.name || ''}
                 onChange={(e) => setCategoryDraft({ ...categoryDraft, name: e.target.value })}
               />
             </Field>
-            <Field label="Acronym">
+            <Field label={tr('Acronym')}>
               <input
                 required
                 value={categoryDraft.acronym || ''}
@@ -1013,14 +1045,14 @@ export function PoolEditor({
                 }
               />
             </Field>
-            <Field label="Color">
+            <Field label={tr('Color')}>
               <input
                 type="color"
                 value={categoryDraft.color || '#b6a0e5'}
                 onChange={(e) => setCategoryDraft({ ...categoryDraft, color: e.target.value })}
               />
             </Field>
-            <Field label="Order">
+            <Field label={tr('Order')}>
               <input
                 type="number"
                 min={0}
@@ -1032,10 +1064,10 @@ export function PoolEditor({
             </Field>
           </div>
           <div className="flex gap-3">
-            <SaveButton busy={busy}>Save category</SaveButton>
+            <SaveButton busy={busy}>{tr('Save category')}</SaveButton>
             {categoryDraft.id && (
               <Button type="button" variant="ghost" onClick={() => setCategoryDraft({})}>
-                Cancel edit
+                {tr('Cancel edit')}
               </Button>
             )}
           </div>
@@ -1044,8 +1076,8 @@ export function PoolEditor({
       <Modal
         open={preview}
         onOpenChange={setPreview}
-        title={`${stage?.name || ''} — draft preview`}
-        description="This saved draft is visible only to authorized staff."
+        title={tr('{0} — draft preview', stage?.name || '')}
+        description={tr('This saved draft is visible only to authorized staff.')}
         wide
       >
         {pool?.draftRevision && <PoolDisplay pool={pool.draftRevision} />}

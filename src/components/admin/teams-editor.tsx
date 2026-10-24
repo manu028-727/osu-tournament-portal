@@ -1,4 +1,7 @@
 'use client';
+import { Feedback, useT } from '@/components/locale';
+import { humanizeCode } from '@/lib/i18n';
+
 import { tournamentApiUrl } from '@/components/tournament-scope';
 import { useState } from 'react';
 import {
@@ -54,6 +57,7 @@ const empty = (): TeamView => ({
   published: false,
 });
 export function TeamsEditor({ actor }: { actor: Actor }) {
+  const tr = useT();
   const { run, busy, notify } = useTask();
   const [draft, setDraft] = useState<TeamView | null>(null),
     [dirty, setDirty] = useState(false),
@@ -81,7 +85,7 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
     setDirty(true);
   };
   const close = () => {
-    if (!dirty || window.confirm('Discard unsaved team changes?')) {
+    if (!dirty || window.confirm(tr('Discard unsaved team changes?'))) {
       setDraft(null);
       setDirty(false);
     }
@@ -90,15 +94,15 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
   return (
     <>
       <SectionTitle
-        title="Teams & players"
-        description={`${result!.total} ${filter ? 'matching' : 'registered'} entries`}
+        title={tr('Teams & players')}
+        description={tr(filter ? '{0} matching entries' : '{0} registered entries', result!.total)}
       >
         <div className="flex flex-wrap gap-2">
           {(can(actor, 'teams.view') || can(actor, 'teams.import')) && (
             <Button asChild variant="outline" size="sm">
               <a href={tournamentApiUrl('/api/admin/teams/export')}>
                 <Download size={17} />
-                Export CSV
+                {tr('Export CSV')}
               </a>
             </Button>
           )}
@@ -113,7 +117,7 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
               }}
             >
               <Upload size={17} />
-              Import CSV
+              {tr('Import CSV')}
             </Button>
           )}
           {can(actor, 'teams.create') && (
@@ -127,12 +131,12 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
               }}
             >
               <Plus size={17} />
-              New team
+              {tr('New team')}
             </Button>
           )}
         </div>
       </SectionTitle>
-      <Field label="Search teams or players">
+      <Field label={tr('Search teams or players')}>
         <input
           value={filter}
           maxLength={100}
@@ -147,11 +151,11 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
         <table className="admin-table">
           <thead>
             <tr>
-              <th>Team</th>
-              <th>Roster</th>
-              <th>Registration</th>
-              <th>Public</th>
-              <th>Actions</th>
+              <th>{tr('Team')}</th>
+              <th>{tr('Roster')}</th>
+              <th>{tr('Registration')}</th>
+              <th>{tr('Public')}</th>
+              <th>{tr('Actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -171,8 +175,8 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                     <div>
                       <p className="font-semibold">{t.name}</p>
                       <p className="text-xs text-muted">
-                        {t.format === 'INDIVIDUAL' ? 'Solo' : 'Team'}
-                        {t.seed ? ` · Seed ${t.seed}` : ''}
+                        {t.format === 'INDIVIDUAL' ? tr('Solo') : tr('Team')}
+                        {t.seed ? tr(' · Seed {0}', t.seed) : ''}
                       </p>
                     </div>
                   </div>
@@ -182,23 +186,23 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                     {t.members.map((m) => (
                       <p key={m.osuId} className="text-xs">
                         {m.participant.username}
-                        {m.captain ? ' · Captain' : m.substitute ? ' · Substitute' : ''}
+                        {m.captain ? tr(' · Captain') : m.substitute ? tr(' · Substitute') : ''}
                       </p>
                     ))}
                   </div>
                 </td>
                 <td>
-                  <Badge>{t.status}</Badge>
+                  <Badge>{tr(humanizeCode(t.status))}</Badge>
                 </td>
-                <td>{t.published ? 'Published' : 'Hidden'}</td>
+                <td>{t.published ? tr('Published') : tr('Hidden')}</td>
                 <td>
                   <div className="flex gap-1">
                     {can(actor, 'teams.edit') && (
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label={`Edit ${t.name}`}
-                        title="Edit team"
+                        aria-label={tr('Edit {0}', t.name)}
+                        title={tr('Edit team')}
                         onClick={() => {
                           setDraft(structuredClone(t));
                           setDirty(false);
@@ -213,8 +217,8 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label={`Publication ${t.name}`}
-                        title="Approval and visibility"
+                        aria-label={tr('Publication {0}', t.name)}
+                        title={tr('Approval and visibility')}
                         onClick={() => setVisibility({ ...t })}
                       >
                         <Eye size={18} />
@@ -222,8 +226,10 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                     )}
                     {can(actor, 'teams.delete') && (
                       <ConfirmButton
-                        title={`Delete ${t.name}?`}
-                        description="Teams used in matches cannot be deleted. Hide them to retain their history."
+                        title={tr('Delete {0}?', t.name)}
+                        description={tr(
+                          'Teams used in matches cannot be deleted. Hide them to retain their history.',
+                        )}
                         disabled={busy}
                         onConfirm={() =>
                           void run(async () => {
@@ -233,7 +239,7 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                               baseVersion: t.version,
                             });
                             await reload();
-                          }, 'Team deleted.')
+                          }, tr('Team deleted.'))
                         }
                       >
                         <Trash2 size={18} />
@@ -246,11 +252,17 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
           </tbody>
         </table>
       </div>
-      <ListPagination {...result!} onPage={setPage} busy={loading || busy} />
+      <ListPagination
+        page={result!.page}
+        pageSize={result!.pageSize}
+        total={result!.total}
+        onPage={setPage}
+        busy={loading || busy}
+      />
       {!data.length && (
         <div className="py-14 text-center text-muted">
           <Users size={32} className="mx-auto mb-4" />
-          No registered teams.
+          {tr('No registered teams.')}
         </div>
       )}
       <Modal
@@ -258,7 +270,7 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
         onOpenChange={(open) => {
           if (!open) close();
         }}
-        title={draft?.id ? 'Edit team' : 'New team'}
+        title={draft?.id ? tr('Edit team') : tr('New team')}
         wide
       >
         {draft && (
@@ -282,11 +294,11 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                 setDirty(false);
                 setDraft(null);
                 await reload();
-              }, 'Team saved.');
+              }, tr('Team saved.'));
             }}
           >
             <div className="grid-fields">
-              <Field label="Team name">
+              <Field label={tr('Team name')}>
                 <input
                   required
                   maxLength={120}
@@ -299,7 +311,7 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                   }
                 />
               </Field>
-              <Field label="Team slug">
+              <Field label={tr('Team slug')}>
                 <input
                   required
                   pattern="[a-z0-9]+(-[a-z0-9]+)*"
@@ -307,16 +319,16 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                   onChange={(e) => update({ slug: e.target.value })}
                 />
               </Field>
-              <Field label="Format">
+              <Field label={tr('Format')}>
                 <select
                   value={draft.format}
                   onChange={(e) => update({ format: e.target.value as TeamView['format'] })}
                 >
-                  <option value="TEAM">Team</option>
-                  <option value="INDIVIDUAL">Individual / 1v1</option>
+                  <option value="TEAM">{tr('Team')}</option>
+                  <option value="INDIVIDUAL">{tr('Individual / 1v1')}</option>
                 </select>
               </Field>
-              <Field label="Seed">
+              <Field label={tr('Seed')}>
                 <input
                   type="number"
                   min={1}
@@ -324,7 +336,7 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                   onChange={(e) => update({ seed: e.target.value ? Number(e.target.value) : null })}
                 />
               </Field>
-              <Field label="Display order">
+              <Field label={tr('Display order')}>
                 <input
                   type="number"
                   min={0}
@@ -333,7 +345,7 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                 />
               </Field>
             </div>
-            <Field label="Team description">
+            <Field label={tr('Team description')}>
               <textarea
                 maxLength={4000}
                 value={draft.description}
@@ -341,13 +353,13 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
               />
             </Field>
             <MediaField
-              label="Team logo"
+              label={tr('Team logo')}
               value={draft.logoImageId ? `/api/media/${draft.logoImageId}` : ''}
               canUpload={can(actor, 'media.upload')}
               onChange={(url) => {
                 const id = /^\/api\/media\/([a-zA-Z0-9_-]+)$/.exec(url)?.[1];
                 if (url && !id) {
-                  notify('Select a logo from the media library.', true);
+                  notify(tr('Select a logo from the media library.'), true);
                   return;
                 }
                 update({ logoImageId: id || null });
@@ -361,14 +373,14 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                 onClick={() => update({ logoImageId: null })}
               >
                 <Trash2 size={17} />
-                Remove logo
+                {tr('Remove logo')}
               </Button>
             )}
             <section className="border-t pt-6">
-              <h2 className="mb-4 text-xl font-semibold">Player roster</h2>
+              <h2 className="mb-4 text-xl font-semibold">{tr('Player roster')}</h2>
               <div className="flex flex-wrap items-end gap-2">
                 <div className="min-w-0 flex-1">
-                  <Field label="osu! ID or username">
+                  <Field label={tr('osu! ID or username')}>
                     <input
                       value={query}
                       onChange={(e) => {
@@ -387,11 +399,11 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                       setProfile(
                         await api<Profile>(`/api/admin/players?q=${encodeURIComponent(query)}`),
                       );
-                    }, 'osu! profile verified.')
+                    }, tr('osu! profile verified.'))
                   }
                 >
                   <Search size={17} />
-                  Look up
+                  {tr('Look up')}
                 </Button>
               </div>
               {profile && (
@@ -425,7 +437,7 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                     }}
                   >
                     <Plus size={17} />
-                    Add player
+                    {tr('Add player')}
                   </Button>
                 </div>
               )}
@@ -441,7 +453,7 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                     >
                       {m.participant.username}
                     </a>
-                    <Field label={`Discord user ID for ${m.participant.username}`}>
+                    <Field label={tr('Discord user ID for {0}', m.participant.username)}>
                       <input
                         inputMode="numeric"
                         value={m.discordId || ''}
@@ -469,7 +481,7 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                           })
                         }
                       />
-                      Captain
+                      {tr('Captain')}
                     </label>
                     <label className="flex items-center gap-2">
                       <input
@@ -484,14 +496,14 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                           })
                         }
                       />
-                      Substitute
+                      {tr('Substitute')}
                     </label>
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
-                      aria-label={`Remove ${m.participant.username}`}
-                      title="Remove player"
+                      aria-label={tr('Remove {0}', m.participant.username)}
+                      title={tr('Remove player')}
                       onClick={() =>
                         update({ members: draft.members.filter((p) => p.osuId !== m.osuId) })
                       }
@@ -504,11 +516,11 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
             </section>
             <div className="flex justify-end gap-3">
               <Button type="button" variant="outline" disabled={busy} onClick={close}>
-                Cancel
+                {tr('Cancel')}
               </Button>
               <SaveButton busy={busy}>
                 <Save size={17} />
-                Save team
+                {tr('Save team')}
               </SaveButton>
             </div>
           </form>
@@ -519,7 +531,7 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
         onOpenChange={(open) => {
           if (!open) setVisibility(null);
         }}
-        title="Approval & visibility"
+        title={tr('Approval & visibility')}
       >
         {visibility && (
           <form
@@ -536,11 +548,11 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                 });
                 setVisibility(null);
                 await reload();
-              }, 'Team visibility updated.');
+              }, tr('Team visibility updated.'));
             }}
           >
             <p className="font-semibold">{visibility.name}</p>
-            <Field label="Registration status">
+            <Field label={tr('Registration status')}>
               <select
                 value={visibility.status}
                 onChange={(e) =>
@@ -551,9 +563,9 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                   })
                 }
               >
-                <option value="PENDING">Pending</option>
-                <option value="APPROVED">Approved</option>
-                <option value="REJECTED">Rejected</option>
+                <option value="PENDING">{tr('Pending')}</option>
+                <option value="APPROVED">{tr('Approved')}</option>
+                <option value="REJECTED">{tr('Rejected')}</option>
               </select>
             </Field>
             <label className="flex items-center gap-3">
@@ -563,15 +575,15 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                 disabled={visibility.status !== 'APPROVED'}
                 onChange={(e) => setVisibility({ ...visibility, published: e.target.checked })}
               />
-              Published on the tournament website
+              {tr('Published on the tournament website')}
             </label>
-            <SaveButton busy={busy}>Save visibility</SaveButton>
+            <SaveButton busy={busy}>{tr('Save visibility')}</SaveButton>
           </form>
         )}
       </Modal>
-      <Modal open={importOpen} onOpenChange={setImportOpen} title="Import teams CSV" wide>
+      <Modal open={importOpen} onOpenChange={setImportOpen} title={tr('Import teams CSV')} wide>
         <div className="space-y-5">
-          <Field label="CSV file">
+          <Field label={tr('CSV file')}>
             <input
               type="file"
               accept=".csv,text/csv"
@@ -582,11 +594,11 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                     if (file.size > 250000) throw new Error('Choose a CSV up to 250 KB.');
                     setCsv(await file.text());
                     setPreview(null);
-                  }, 'CSV loaded.');
+                  }, tr('CSV loaded.'));
               }}
             />
           </Field>
-          <Field label="CSV content">
+          <Field label={tr('CSV content')}>
             <textarea
               value={csv}
               className="min-h-48 font-mono"
@@ -603,32 +615,35 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
             onClick={() =>
               void run(async () => {
                 setPreview(await action<TeamImportPlan>({ type: 'team.import.preview', csv }));
-              }, 'Import preview ready.')
+              }, tr('Import preview ready.'))
             }
           >
             <FileSpreadsheet size={17} />
-            Preview import
+            {tr('Preview import')}
           </Button>
           {preview && (
             <div className="space-y-4">
               {preview.errors.length ? (
                 <ul role="alert" className="list-inside list-disc text-red-200">
                   {preview.errors.map((message, i) => (
-                    <li key={i}>{message}</li>
+                    <li key={i}>
+                      <Feedback message={message} />
+                    </li>
                   ))}
                 </ul>
               ) : (
                 <p className="text-accent">
-                  {preview.teams.length} valid teams · {preview.profiles.length} verified players
+                  {preview.teams.length} {tr('valid teams ·')} {preview.profiles.length}{' '}
+                  {tr('verified players')}
                 </p>
               )}
               <div className="overflow-x-auto">
                 <table className="admin-table">
                   <thead>
                     <tr>
-                      <th>Team</th>
-                      <th>Players</th>
-                      <th>Change</th>
+                      <th>{tr('Team')}</th>
+                      <th>{tr('Players')}</th>
+                      <th>{tr('Change')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -643,7 +658,7 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                             )
                             .join(', ')}
                         </td>
-                        <td>{t.id ? 'Update roster' : 'Create hidden entry'}</td>
+                        <td>{t.id ? tr('Update roster') : tr('Create hidden entry')}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -651,8 +666,10 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
               </div>
               <ConfirmButton
                 variant="default"
-                title="Apply this import?"
-                description="Existing approval and publication settings are preserved. New teams remain hidden."
+                title={tr('Apply this import?')}
+                description={tr(
+                  'Existing approval and publication settings are preserved. New teams remain hidden.',
+                )}
                 disabled={busy || !!preview.errors.length}
                 onConfirm={() =>
                   void run(async () => {
@@ -664,11 +681,11 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                     setImportOpen(false);
                     setPreview(null);
                     await reload();
-                  }, 'Teams imported.')
+                  }, tr('Teams imported.'))
                 }
               >
                 <Upload size={17} />
-                Apply import
+                {tr('Apply import')}
               </ConfirmButton>
             </div>
           )}
