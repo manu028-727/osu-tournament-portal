@@ -44,6 +44,11 @@ it('upgrades a populated disposable schema without rewriting saved content', asy
     await apply(7);
     await apply(8);
     await apply(9);
+    await apply(10);
+    await apply(11);
+    expect((await client.query('SELECT count(*)::int AS count FROM "MediaCleanup"')).rows).toEqual([
+      { count: 0 },
+    ]);
     expect(await snapshot()).toEqual(before);
     await client.query(`UPDATE "Page" SET "draftRevisionId"=NULL WHERE id='one'`);
     await expect(

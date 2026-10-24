@@ -1,6 +1,7 @@
 import { db } from './db';
 import { scopedDb } from './scoped-db';
 import { isPublicTournament } from './public-visibility';
+import { referencedMediaIds } from './media-references';
 
 export async function isPublicAsset(id: string, tournamentId: string) {
   const t = await db.tournament.findUnique({
@@ -24,18 +25,14 @@ export async function isPublicAsset(id: string, tournamentId: string) {
     where: { state: 'PUBLISHED' },
     select: { publishedRevision: { include: { blocks: { where: { visible: true } } } } },
   });
-  return pages.some((p) => JSON.stringify(p.publishedRevision).includes(url));
+  return pages.some((p) => referencedMediaIds(p.publishedRevision).has(id));
 }
 
 export async function assertOwnedMedia(
   client: ReturnType<typeof scopedDb<typeof db>>,
   value: unknown,
 ) {
-  const ids = [
-    ...new Set(
-      [...JSON.stringify(value).matchAll(/\/api\/media\/([a-zA-Z0-9_-]+)/g)].map((m) => m[1]),
-    ),
-  ];
+  const ids = [...referencedMediaIds(value)];
   if (
     ids.length &&
     (await client.mediaAsset.count({ where: { id: { in: ids } } })) !== ids.length

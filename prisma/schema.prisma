@@ -469,6 +469,18 @@ model StaffAssignment {
   @@id([memberId, categoryId])
 }
 
+// Operational outbox, shared by tenant and platform catalogs. No media is inferred orphaned.
+model MediaCleanup {
+  key        String   @id
+  state      String   @default("UPLOADING")
+  readyAfter DateTime
+  attempts   Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([readyAfter])
+}
+
 model MediaAsset {
   tournamentId String            @default("main")
   tournament   Tournament        @relation(fields: [tournamentId], references: [id], onDelete: Restrict)

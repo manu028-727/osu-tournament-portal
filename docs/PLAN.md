@@ -610,6 +610,16 @@ this delivery record owns the current implementation/check state.
   pass bulk/paste/mobile scheduling and stage workflows. No migration; global lock
   and qualifier uniqueness/capacity semantics are retained. Evidence:
   .data/cleanup-20261024/browser-scheduling.
+- Media phase (F04): ordinary tenant/platform writes now share a durable outbox,
+  bounded explicit recovery and exact reference traversal. Synthetic failure tests
+  cover uncertain puts/commits, failed compensation/deletion, transaction rollback,
+  process interruption, late upload commits, both catalogs and hidden/historical
+  references. 203 integration tests, 340 unit tests, lint/types and build pass.
+  The empty additive outbox migration was applied only to the isolated test DB;
+  populated-schema checks preserve existing content. The production filesystem
+  upload/historical-deletion/qualifier browser case passes; evidence:
+  .data/cleanup-20261024/browser-media. Remote S3 timeout/settlement remains Unverified, and
+  existing orphan reconciliation requires an operator-reviewed restored copy.
 
 Work in this order unless the maintainer explicitly reprioritizes. Items marked
 conditional are extensions, not already approved commitments or release blockers.

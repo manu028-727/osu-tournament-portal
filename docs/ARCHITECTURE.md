@@ -804,6 +804,24 @@ completed sessions. stage-pool-validation.ts is authoritative for match creation
 and stage release/reassignment. Referee eligibility now belongs to match-access.ts.
 Interval overlaps and personal availability remain separate planned features.
 
+media-cleanup.ts owns ordinary tenant/platform upload journaling and cleanup. An
+empty additive MediaCleanup outbox records each key before put; catalog insertion
+and journal completion commit together under the existing lock. Failed/uncertain
+puts retain a one-hour grace, and failed deletes retain a five-minute retry lease.
+Catalog deletion and cleanup scheduling are atomic. Recovery claims bounded jobs,
+checks both catalogs under the lock, then deletes outside the transaction; a late
+upload cannot commit after its job has been claimed. Committed media is preserved
+after an uncertain acknowledgement. No existing objects are classified as orphans.
+
+Run `node --env-file=.env --import tsx scripts/recover-media.ts` to preview up to
+50 eligible journal entries, then add `--apply` after operator review; `--limit=N`
+accepts 1..200. Use a restored isolated copy before installation recovery. No
+automatic worker/cron is installed. Storage/network settlement after provider
+timeouts remains provider-specific; interruption tests use synthetic storage.
+media-references.ts parses exact URLs and snapshot image IDs, protects hidden and
+historical references in bounded batches, and is shared by ownership/public checks.
+Public inference still applies publication/visibility filters before traversal.
+
 ### Current Verified Ownership
 
 Source inspection at `fc41596` found one application with domain services, not

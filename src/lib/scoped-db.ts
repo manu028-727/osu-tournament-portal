@@ -12,6 +12,7 @@ const globalModels = new Set([
   'permission',
   'platformSettings',
   'platformAsset',
+  'mediaCleanup',
   'tournamentTransfer',
   'participant',
   'beatmap',
