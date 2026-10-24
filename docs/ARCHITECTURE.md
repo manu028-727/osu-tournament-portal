@@ -666,6 +666,13 @@ a temporary client route is not a permanent pool repair.
 
 ### Updating And Release Cutover
 
+Checks is reusable through workflow_call. Approved Container Release depends on
+those checks at the same revision before the release-approval environment and
+publication job can run. External actions are pinned to reviewed commit hashes.
+Checks includes development and standalone production Chromium; production enables
+isolated mock Bancho with a temporary secret. npm audit fails at moderate severity.
+Remote workflow execution and branch/environment protection require separate review.
+
 Back up DB/media/private configuration, restore-test and review release/migrations.
 Keep STACK_NAME, actual URLs/credentials. On reviewed branch, in approved window:
 
@@ -964,6 +971,19 @@ or rotate credentials without operator involvement. HTTPS, trusted host, private
 DB/storage, scoped access, secure cookies and exact callbacks are boundaries.
 No secrets in NEXT_PUBLIC, image build arguments, logs, URLs, issues or archives.
 Review advisories and least-privilege access.
+
+Scoped brackets-manager/ExcelJS uuid 11.1.1 and fast-uri 3.1.9 overrides address
+the reviewed advisory chains. Brackets-manager uses uuid.v4 without buffer arguments;
+the override retains its CommonJS API. Recheck installed nested versions with
+`npm ls uuid fast-uri` after lockfile maintenance.
+
+The pg concurrent-query warning also reproduces in one read-only Prisma relation
+query (Prisma/adapter-pg 7.10.1), without application Promise.all. Application
+queries sharing one transaction are sequenced where explicit. The upstream engine
+still dispatches relation queries concurrently; do not suppress the warning, patch
+installed packages or change database locks as a workaround. Track a compatible
+upstream fix before pg 9. Vite's native-config warning is resolved with an explicit
+.ts config import and TypeScript's noEmit-compatible import option.
 
 Application is [MIT](../LICENSE); private npm flag prevents accidental npm publishing,
 not public licensing. Contributors need redistribution rights and preserve notices.

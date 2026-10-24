@@ -171,11 +171,9 @@ export async function applyStageReconciliation(
   });
   const actor = actorForTournament(user, tournamentId);
   assertPermission(actor, 'matches.manage');
-  const [stages, settings, tournament] = await Promise.all([
-    tx.tournamentStage.findMany({ include: stageInclude }),
-    tx.tournamentSettings.findUniqueOrThrow({ where: { tournamentId } }),
-    tx.tournament.findUniqueOrThrow({ where: { id: tournamentId } }),
-  ]);
+  const stages = await tx.tournamentStage.findMany({ include: stageInclude });
+  const settings = await tx.tournamentSettings.findUniqueOrThrow({ where: { tournamentId } });
+  const tournament = await tx.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
   const results: {
     matchId: string;
     alreadyApplied: boolean;

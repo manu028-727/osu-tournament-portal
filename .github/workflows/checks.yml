@@ -1,12 +1,15 @@
 name: Checks
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  workflow_call:
 permissions:
   contents: read
 jobs:
   secrets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with: { fetch-depth: 0 }
       - name: Scan complete repository history
         run: |
@@ -34,8 +37,8 @@ jobs:
       APP_URL: http://localhost:3001
       STORAGE_DRIVER: filesystem
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm run db:generate
@@ -49,7 +52,14 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - run: npm run build
-      - run: npm audit --audit-level=high
+      - name: Verify standalone production and mock Bancho workflows
+        env:
+          E2E_PRODUCTION: '1'
+          IRC_ENABLED: 'true'
+        run: |
+          export IRC_GATEWAY_SECRET="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')"
+          npm run test:e2e
+      - run: npm audit --audit-level=moderate
       - run: node scripts/source-audit.mjs --tracked
   containers:
     runs-on: ubuntu-latest
@@ -57,8 +67,8 @@ jobs:
       POSTGRES_DB: platform_workspace_prod_test
       OWNER_OSU_ID: '990200001'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 22 }
       - run: node scripts/configure.mjs
       - run: docker compose config --quiet

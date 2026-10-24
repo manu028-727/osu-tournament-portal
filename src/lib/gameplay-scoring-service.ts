@@ -4,29 +4,27 @@ import { historicalScoring, type GameplayScoring } from './gameplay-scoring';
 import { matchRulesSchema } from './match-rules';
 
 export async function scoringImpact(tx: Prisma.TransactionClient, tournamentId: string) {
-  const [matches, qualifiers] = await Promise.all([
-    tx.match.findMany({
-      where: { tournamentId },
-      select: {
-        id: true,
-        code: true,
-        status: true,
-        rules: true,
-        actions: { select: { id: true }, take: 1 },
-        results: { select: { id: true }, take: 1 },
-      },
-    }),
-    tx.qualifierLobby.findMany({
-      where: { tournamentId },
-      select: {
-        id: true,
-        code: true,
-        status: true,
-        rules: true,
-        scores: { select: { actualScoring: true }, distinct: ['actualScoring'] },
-      },
-    }),
-  ]);
+  const matches = await tx.match.findMany({
+    where: { tournamentId },
+    select: {
+      id: true,
+      code: true,
+      status: true,
+      rules: true,
+      actions: { select: { id: true }, take: 1 },
+      results: { select: { id: true }, take: 1 },
+    },
+  });
+  const qualifiers = await tx.qualifierLobby.findMany({
+    where: { tournamentId },
+    select: {
+      id: true,
+      code: true,
+      status: true,
+      rules: true,
+      scores: { select: { actualScoring: true }, distinct: ['actualScoring'] },
+    },
+  });
   const affected = [
     ...matches
       .filter(

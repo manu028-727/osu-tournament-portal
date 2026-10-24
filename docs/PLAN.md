@@ -647,6 +647,23 @@ this delivery record owns the current implementation/check state.
   Production Chromium passes 18 competition/qualifier/referee cases; the optional
   mock-IRC case was skipped in this phase and remains a final gate. Evidence:
   .data/cleanup-20261024/browser-domain-extraction. No migration for extraction.
+- Dependency/delivery phase (F11): clean npm ci installs patched scoped uuid
+  11.1.1 and fast-uri 3.1.9; npm audit reports zero advisories. npm initially kept
+  a stale nested uuid 9 lock entry despite the override; removing that obsolete
+  entry and rerunning npm ci verified both consumers resolve the patched root.
+  No bracket-engine downgrade or unrelated dependency removal. Checks now gates
+  production/mock-IRC browsers and moderate advisories, pins action commits and
+  is a same-revision prerequisite for approved releases. Remote execution and
+  protection settings remain Unverified; no publication/deployment was performed.
+  Fresh-install checks pass: format/lint/types, 343 unit, 208 integration and build;
+  830 package notices regenerated and tracked source audit has no issues.
+  Native-loader warning resolved. pg warning reproduced with a single read-only
+  Prisma relation query; explicit shared-transaction query batches were sequenced.
+  Remaining engine/adapter warning is Blocked on a compatible upstream fix, with
+  traces in .data/cleanup-20261024/pg-minimal-repro.log and pg-warning-trace.log.
+  All 38 standalone production Chromium cases pass, including mock Bancho, after
+  the dependency changes (.data/cleanup-20261024/browser-dependencies-full).
+  The expected missing-tournament negative path logged a 404 while its test passed.
 
 Work in this order unless the maintainer explicitly reprioritizes. Items marked
 conditional are extensions, not already approved commitments or release blockers.

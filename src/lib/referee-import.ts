@@ -399,17 +399,15 @@ export async function applyWorkbook(original: Actor, input: z.infer<typeof impor
         assertPermission(actor, 'matches.manage');
         if (await tx.match.findFirst({ where: { code: record.code } }))
           throw new AppError('That match already exists. Select it instead.', 409);
-        const [stage, teams, tournament] = await Promise.all([
-          tx.tournamentStage.findUniqueOrThrow({
-            where: { id: input.create.stageId },
-            include: { mappool: { include: { publishedRevision: { include: { slots: true } } } } },
-          }),
-          tx.team.findMany({
-            where: { id: { in: [input.create.teamAId, input.create.teamBId] }, status: 'APPROVED' },
-            include: teamInclude,
-          }),
-          tx.tournament.findUniqueOrThrow({ where: { id: tournamentId } }),
-        ]);
+        const stage = await tx.tournamentStage.findUniqueOrThrow({
+          where: { id: input.create.stageId },
+          include: { mappool: { include: { publishedRevision: { include: { slots: true } } } } },
+        });
+        const teams = await tx.team.findMany({
+          where: { id: { in: [input.create.teamAId, input.create.teamBId] }, status: 'APPROVED' },
+          include: teamInclude,
+        });
+        const tournament = await tx.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
         if (
           teams.length !== 2 ||
           (stageMapping.candidates.length > 0 &&

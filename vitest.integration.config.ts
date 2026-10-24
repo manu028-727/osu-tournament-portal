@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import { fileURLToPath } from 'node:url';
-import { assertTestDatabase } from './src/lib/instance';
+import { assertTestDatabase } from './src/lib/instance.ts';
 if (!process.env.TEST_DATABASE_URL)
   throw new Error('Set TEST_DATABASE_URL to an isolated, migrated, seeded PostgreSQL database.');
 assertTestDatabase(process.env.TEST_DATABASE_URL);
