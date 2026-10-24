@@ -91,24 +91,25 @@ export function exportTeamCsv(
     position: number;
     members: { osuId: number; captain: boolean; substitute: boolean }[];
   }[],
+  header = true,
 ) {
   return Papa.unparse(
     {
       fields: TEAM_CSV_COLUMNS,
       data: teams.flatMap((team) =>
-        team.members.map((member) => [
+        (team.members.length ? team.members : [null]).map((member) => [
           team.name,
           team.slug,
           team.format,
           team.description,
           team.seed ?? '',
           team.position,
-          member.osuId,
-          member.captain,
-          member.substitute,
+          member?.osuId ?? '',
+          member?.captain ?? '',
+          member?.substitute ?? '',
         ]),
       ),
     },
-    { escapeFormulae: true },
+    { escapeFormulae: true, header },
   );
 }

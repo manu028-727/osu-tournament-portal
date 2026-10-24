@@ -2,6 +2,8 @@
 import { useRef, useState } from 'react';
 import { Upload, ImagePlus, Copy, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button';
+import { ListPagination } from '../list-pagination';
+import type { ListPage } from '@/lib/list-pagination';
 import {
   api,
   ConfirmButton,
@@ -21,7 +23,14 @@ type Asset = {
   createdAt: string;
 };
 export function MediaLibrary({ onSelect }: { onSelect?: (url: string) => void }) {
-  const { data, error, reload } = useResource<Asset[]>('media');
+  const [page, setPage] = useState(1);
+  const {
+    data: result,
+    error,
+    reload,
+    loading,
+  } = useResource<ListPage<Asset>>(`media&paged=1&page=${page}`, true);
+  const data = result?.items;
   const { busy, run, notify } = useTask();
   const input = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
@@ -140,6 +149,7 @@ export function MediaLibrary({ onSelect }: { onSelect?: (url: string) => void })
           <p className="text-sm text-muted">No images uploaded.</p>
         </div>
       )}
+      {result && <ListPagination {...result} onPage={setPage} busy={loading || busy} />}
     </>
   );
 }

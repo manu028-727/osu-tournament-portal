@@ -109,6 +109,15 @@ known contract discrepancy, not the target visibility policy; see
 
 ## API And Mutation Contracts
 
+Team/match public readers and team/media admin reads support explicit pagination
+(`paged=1&page=N` for JSON). Public pages use 50 records, organizer teams 100 and
+media 100. Stable ID tie breakers prevent omissions among equal sort values;
+counts and match filter options describe the full authorized collection. Legacy
+JSON readers without `paged` retain complete arrays for compatibility.
+`teams-export.ts` streams a read-only RepeatableRead snapshot in 100-team keyset
+batches with backpressure, a 60-second transaction bound and formula-safe CSV.
+Cancellation/read errors abort the stream; exports have no list cap.
+
 Principal handlers under `src/app/api`:
 
 | Route                                             | Contract                                                |

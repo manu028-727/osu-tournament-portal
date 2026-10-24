@@ -9,6 +9,7 @@ import { parseTeamCsv } from './teams-csv';
 import type { TeamAction, TeamFields } from './teams-validation';
 import type { Prisma } from '@/generated/prisma/client';
 import { publicTournamentWhere } from './public-visibility';
+import { pageWindow } from './list-pagination';
 
 export const teamInclude = {
   members: { orderBy: { position: 'asc' as const }, include: { participant: true } },
@@ -266,15 +267,29 @@ export const publicTeamSelect = {
     },
   },
 };
-export async function publicTeams(slug?: string, tournamentId?: string) {
+const publicTeamWhere = {
+  published: true,
+  status: 'APPROVED',
+  tournament: publicTournamentWhere,
+} as const;
+export async function publicTeams(
+  slug?: string,
+  tournamentId?: string,
+  pagination?: { skip: number; take: number },
+) {
   tournamentId ||= (await requestScope()).tournamentId;
   const db = scopedDb(rootDb, tournamentId);
-  if (!(await db.tournament.findFirst({ where: { id: tournamentId, ...publicTournamentWhere } })))
-    return [];
   return db.team.findMany({
-    where: { tournamentId, published: true, status: 'APPROVED', ...(slug ? { slug } : {}) },
-    orderBy: [{ position: 'asc' }, { seed: 'asc' }, { name: 'asc' }],
+    where: { ...publicTeamWhere, ...(slug ? { slug } : {}) },
+    orderBy: [{ position: 'asc' }, { seed: 'asc' }, { name: 'asc' }, { id: 'asc' }],
     select: publicTeamSelect,
-    take: 500,
+    ...(pagination ? { skip: pagination.skip, take: pagination.take } : {}),
   });
+}
+
+export async function publicTeamsPage(requested: number, tournamentId?: string) {
+  tournamentId ||= (await requestScope()).tournamentId;
+  const total = await scopedDb(rootDb, tournamentId).team.count({ where: publicTeamWhere });
+  const window = pageWindow(requested, total, 50);
+  return { ...window, items: await publicTeams(undefined, tournamentId, window) };
 }

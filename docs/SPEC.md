@@ -118,6 +118,11 @@ mappack generator exists. These are extensions, not prerequisites for basic pool
 
 ## Teams, Players And Public Staff
 
+Public team/match lists and organizer team/media lists expose explicit page controls,
+stable ordering and total counts. Filters apply to the whole selected collection.
+CSV roster exports include every authorized team, including empty rosters; a failed
+export must fail rather than silently return a truncated successful file.
+
 **Current.** Support team and solo registrations, roster/captain/substitute identity,
 approval/rejection/publication, seed/rank/contact data and reviewed CSV import/export.
 Use osu! IDs as identity, reuse registered rosters for matches/invites and protect

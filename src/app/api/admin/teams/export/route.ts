@@ -1,21 +1,10 @@
-import { db } from '@/lib/db';
 import { requireTournamentActor } from '@/lib/auth';
-import { AppError, can } from '@/lib/permissions';
-import { exportTeamCsv } from '@/lib/teams-csv';
-import { teamInclude } from '@/lib/teams-service';
+import { teamCsvStream } from '@/lib/teams-export';
 import { errorResponse } from '@/lib/security';
 export async function GET() {
   try {
     const actor = await requireTournamentActor();
-    if (!can(actor, 'teams.view') && !can(actor, 'teams.import'))
-      throw new AppError('Forbidden.', 403);
-    const teams = await db.team.findMany({
-      where: { tournamentId: actor.tournamentId || 'main' },
-      include: teamInclude,
-      orderBy: { position: 'asc' },
-      take: 500,
-    });
-    return new Response('\uFEFF' + exportTeamCsv(teams), {
+    return new Response(teamCsvStream(actor), {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': 'attachment; filename="teams.csv"',

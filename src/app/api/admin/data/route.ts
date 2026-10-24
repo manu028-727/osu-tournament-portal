@@ -14,6 +14,8 @@ import { qualifierStandingsData } from '@/lib/qualifier-standings-service';
 import { stageReconciliationPreview } from '@/lib/stage-reconciliation-service';
 import { poolingData } from '@/lib/pooling-service';
 import { stageWorkflowData } from '@/lib/stage-workflows';
+import { listPageSchema, pageWindow } from '@/lib/list-pagination';
+import { z } from 'zod';
 const auditSummary = {
   id: true,
   action: true,
@@ -86,12 +88,47 @@ export async function GET(request: Request) {
         break;
       case 'teams':
         if (!canAccessSection(actor, 'teams')) throw new AppError('Forbidden.', 403);
-        data = await db.team.findMany({
-          where: { tournamentId },
-          include: teamInclude,
-          orderBy: [{ position: 'asc' }, { name: 'asc' }],
-          take: 500,
-        });
+        {
+          const q = z
+            .string()
+            .max(100)
+            .parse(url.searchParams.get('q') || '');
+          const where = q
+            ? {
+                OR: [
+                  { name: { contains: q, mode: 'insensitive' as const } },
+                  {
+                    members: {
+                      some: {
+                        OR: [
+                          { registeredUsername: { contains: q, mode: 'insensitive' as const } },
+                          {
+                            participant: {
+                              username: { contains: q, mode: 'insensitive' as const },
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  },
+                ],
+              }
+            : {};
+          const window =
+            url.searchParams.get('paged') === '1'
+              ? pageWindow(
+                  listPageSchema.parse(url.searchParams.get('page') || undefined),
+                  await db.team.count({ where }),
+                )
+              : undefined;
+          const items = await db.team.findMany({
+            where,
+            include: teamInclude,
+            orderBy: [{ position: 'asc' }, { name: 'asc' }, { id: 'asc' }],
+            ...(window ? { skip: window.skip, take: window.take } : {}),
+          });
+          data = window ? { ...window, items } : items;
+        }
         break;
       case 'homepage':
       case 'rules': {
@@ -177,7 +214,20 @@ export async function GET(request: Request) {
         break;
       case 'media':
         assertPermission(actor, 'media.upload');
-        data = await db.mediaAsset.findMany({ orderBy: { createdAt: 'desc' }, take: 200 });
+        {
+          const window =
+            url.searchParams.get('paged') === '1'
+              ? pageWindow(
+                  listPageSchema.parse(url.searchParams.get('page') || undefined),
+                  await db.mediaAsset.count(),
+                )
+              : undefined;
+          const items = await db.mediaAsset.findMany({
+            orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+            ...(window ? { skip: window.skip, take: window.take } : {}),
+          });
+          data = window ? { ...window, items } : items;
+        }
         break;
       case 'users':
         assertPermission(actor, 'users.manage');

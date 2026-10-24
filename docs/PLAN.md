@@ -620,6 +620,16 @@ this delivery record owns the current implementation/check state.
   upload/historical-deletion/qualifier browser case passes; evidence:
   .data/cleanup-20261024/browser-media. Remote S3 timeout/settlement remains Unverified, and
   existing orphan reconciliation requires an operator-reviewed restored copy.
+- List/export phase (F07): removed silent caps, added stable explicit pagination
+  and global team search, and streamed complete snapshot CSVs including empty teams.
+  207 integration tests in 25 files and 340 unit tests pass; lint/types/build pass.
+  The new production browser case passes continuation/search/export and 72
+  route/theme/width captures; narrow light media and dark team screenshots inspected.
+  It exposed an extra header blank line, now fixed with a regression assertion.
+  Evidence: .data/cleanup-20261024/browser-pagination-rerun and pagination.
+  No migration. Representative installation query/index/archive-memory tuning
+  remains blocked on an approved restored dataset; synthetic correctness fixtures
+  do not establish production performance or justify speculative indexes.
 
 Work in this order unless the maintainer explicitly reprioritizes. Items marked
 conditional are extensions, not already approved commitments or release blockers.

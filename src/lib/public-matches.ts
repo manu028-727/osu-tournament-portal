@@ -5,19 +5,11 @@ import { matchCredits } from './match-display';
 import type { MatchParticipants } from './matches-service';
 import type { Prisma } from '@/generated/prisma/client';
 import { numericMatchIdentifier } from './match-numbering';
-import { isPublicTournament } from './public-visibility';
+import { isPublicTournament, publicTournamentWhere } from './public-visibility';
+import { pageWindow } from './list-pagination';
 
-export async function publicMatches(
-  filters: { code?: string; teamId?: string; stage?: string; status?: string } = {},
-  tournamentId?: string,
-) {
-  tournamentId ||= (await requestScope()).tournamentId;
-  const db = scopedDb(rootDb, tournamentId);
-  const tournament = await db.tournament.findUnique({
-    where: { id: tournamentId },
-    select: { published: true, archivedAt: true, timezone: true },
-  });
-  if (!tournament || !isPublicTournament(tournament)) return [];
+type PublicMatchFilters = { code?: string; teamId?: string; stage?: string; status?: string };
+function publicMatchWhere(filters: PublicMatchFilters) {
   const where: Prisma.MatchWhereInput = {
     published: true,
     AND: [
@@ -34,18 +26,35 @@ export async function publicMatches(
         ? [{ OR: [{ teamAId: filters.teamId }, { teamBId: filters.teamId }] }]
         : []),
     ],
-    ...(filters.stage ? { stage: { slug: filters.stage } } : {}),
+    stage: { tournament: publicTournamentWhere, ...(filters.stage ? { slug: filters.stage } : {}) },
   };
   if (filters.status === 'completed') where.status = 'COMPLETED';
   if (filters.status === 'upcoming') where.status = { notIn: ['COMPLETED', 'CANCELLED'] };
+  return where;
+}
+
+export async function publicMatches(
+  filters: { code?: string; teamId?: string; stage?: string; status?: string } = {},
+  tournamentId?: string,
+  pagination?: { skip: number; take: number },
+) {
+  tournamentId ||= (await requestScope()).tournamentId;
+  const db = scopedDb(rootDb, tournamentId);
+  const tournament = await db.tournament.findUnique({
+    where: { id: tournamentId },
+    select: { published: true, archivedAt: true, timezone: true },
+  });
+  if (!tournament || !isPublicTournament(tournament)) return [];
+  const where = publicMatchWhere(filters);
   const rows = await db.match.findMany({
     where,
     orderBy: [
       { stage: { position: 'asc' } },
       { scheduledAt: { sort: 'asc', nulls: 'last' } },
       { code: 'asc' },
+      { id: 'asc' },
     ],
-    take: 500,
+    ...(pagination ? { skip: pagination.skip, take: pagination.take } : {}),
     select: {
       id: true,
       code: true,
@@ -74,6 +83,31 @@ export async function publicMatches(
       referee: assignments.map((a) => a.user.username).join(', ') || matchCredits(source).referee,
     },
   }));
+}
+export async function publicMatchesPage(
+  filters: PublicMatchFilters,
+  requested: number,
+  tournamentId?: string,
+) {
+  tournamentId ||= (await requestScope()).tournamentId;
+  const db = scopedDb(rootDb, tournamentId);
+  const [total, groups, stages] = await Promise.all([
+    db.match.count({ where: publicMatchWhere(filters) }),
+    db.match.groupBy({ by: ['status'], where: publicMatchWhere({}), _count: { _all: true } }),
+    db.tournamentStage.findMany({
+      where: { matches: { some: publicMatchWhere({}) } },
+      orderBy: [{ position: 'asc' }, { id: 'asc' }],
+      select: { name: true, slug: true },
+    }),
+  ]);
+  const window = pageWindow(requested, total, 50);
+  return {
+    ...window,
+    stages,
+    allTotal: groups.reduce((sum, row) => sum + row._count._all, 0),
+    completedTotal: groups.find((row) => row.status === 'COMPLETED')?._count._all || 0,
+    items: await publicMatches(filters, tournamentId, window),
+  };
 }
 export type PublicMatch = Awaited<ReturnType<typeof publicMatches>>[number];
 

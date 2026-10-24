@@ -22,6 +22,8 @@ import type { TeamImportPlan } from '@/lib/teams-service';
 import { TEAM_CSV_COLUMNS } from '@/lib/teams-csv';
 import { slugify } from '@/lib/utils';
 import { MediaField } from './media';
+import { ListPagination } from '../list-pagination';
+import type { ListPage } from '@/lib/list-pagination';
 import {
   action,
   api,
@@ -52,13 +54,23 @@ const empty = (): TeamView => ({
   published: false,
 });
 export function TeamsEditor({ actor }: { actor: Actor }) {
-  const { data, error, reload } = useResource<TeamView[]>('teams');
   const { run, busy, notify } = useTask();
   const [draft, setDraft] = useState<TeamView | null>(null),
     [dirty, setDirty] = useState(false),
     [query, setQuery] = useState(''),
     [profile, setProfile] = useState<Profile | null>(null),
     [filter, setFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const {
+    data: result,
+    error,
+    reload,
+    loading,
+  } = useResource<ListPage<TeamView>>(
+    `teams&paged=1&page=${page}&q=${encodeURIComponent(filter)}`,
+    true,
+  );
+  const data = result?.items;
   const [visibility, setVisibility] = useState<TeamView | null>(null),
     [importOpen, setImportOpen] = useState(false),
     [csv, setCsv] = useState(''),
@@ -77,7 +89,10 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
   if (!data) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
   return (
     <>
-      <SectionTitle title="Teams & players" description={`${data.length} registered entries`}>
+      <SectionTitle
+        title="Teams & players"
+        description={`${result!.total} ${filter ? 'matching' : 'registered'} entries`}
+      >
         <div className="flex flex-wrap gap-2">
           {(can(actor, 'teams.view') || can(actor, 'teams.import')) && (
             <Button asChild variant="outline" size="sm">
@@ -118,7 +133,15 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
         </div>
       </SectionTitle>
       <Field label="Search teams or players">
-        <input value={filter} onChange={(e) => setFilter(e.target.value)} type="search" />
+        <input
+          value={filter}
+          maxLength={100}
+          onChange={(e) => {
+            setFilter(e.target.value);
+            setPage(1);
+          }}
+          type="search"
+        />
       </Field>
       <div className="mt-6 overflow-x-auto">
         <table className="admin-table">
@@ -132,103 +155,98 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
             </tr>
           </thead>
           <tbody>
-            {data
-              .filter((t) =>
-                `${t.name} ${t.members.map((m) => m.participant.username).join(' ')}`
-                  .toLowerCase()
-                  .includes(filter.toLowerCase()),
-              )
-              .map((t) => (
-                <tr key={t.id}>
-                  <td>
-                    <div className="flex min-w-40 items-center gap-3">
-                      {t.logoImageId ? (
-                        <img
-                          src={`/api/media/${t.logoImageId}`}
-                          alt=""
-                          className="size-10 rounded-md object-cover"
-                        />
-                      ) : (
-                        <Users size={22} className="shrink-0 text-primary" />
-                      )}
-                      <div>
-                        <p className="font-semibold">{t.name}</p>
-                        <p className="text-xs text-muted">
-                          {t.format === 'INDIVIDUAL' ? 'Solo' : 'Team'}
-                          {t.seed ? ` · Seed ${t.seed}` : ''}
-                        </p>
-                      </div>
+            {data.map((t) => (
+              <tr key={t.id}>
+                <td>
+                  <div className="flex min-w-40 items-center gap-3">
+                    {t.logoImageId ? (
+                      <img
+                        src={`/api/media/${t.logoImageId}`}
+                        alt=""
+                        className="size-10 rounded-md object-cover"
+                      />
+                    ) : (
+                      <Users size={22} className="shrink-0 text-primary" />
+                    )}
+                    <div>
+                      <p className="font-semibold">{t.name}</p>
+                      <p className="text-xs text-muted">
+                        {t.format === 'INDIVIDUAL' ? 'Solo' : 'Team'}
+                        {t.seed ? ` · Seed ${t.seed}` : ''}
+                      </p>
                     </div>
-                  </td>
-                  <td>
-                    <div className="min-w-36 space-y-1">
-                      {t.members.map((m) => (
-                        <p key={m.osuId} className="text-xs">
-                          {m.participant.username}
-                          {m.captain ? ' · Captain' : m.substitute ? ' · Substitute' : ''}
-                        </p>
-                      ))}
-                    </div>
-                  </td>
-                  <td>
-                    <Badge>{t.status}</Badge>
-                  </td>
-                  <td>{t.published ? 'Published' : 'Hidden'}</td>
-                  <td>
-                    <div className="flex gap-1">
-                      {can(actor, 'teams.edit') && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`Edit ${t.name}`}
-                          title="Edit team"
-                          onClick={() => {
-                            setDraft(structuredClone(t));
-                            setDirty(false);
-                            setProfile(null);
-                            setQuery('');
-                          }}
-                        >
-                          <Pencil size={18} />
-                        </Button>
-                      )}
-                      {can(actor, 'teams.publish') && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`Publication ${t.name}`}
-                          title="Approval and visibility"
-                          onClick={() => setVisibility({ ...t })}
-                        >
-                          <Eye size={18} />
-                        </Button>
-                      )}
-                      {can(actor, 'teams.delete') && (
-                        <ConfirmButton
-                          title={`Delete ${t.name}?`}
-                          description="Teams used in matches cannot be deleted. Hide them to retain their history."
-                          disabled={busy}
-                          onConfirm={() =>
-                            void run(async () => {
-                              await action({
-                                type: 'team.delete',
-                                id: t.id,
-                                baseVersion: t.version,
-                              });
-                              await reload();
-                            }, 'Team deleted.')
-                          }
-                        >
-                          <Trash2 size={18} />
-                        </ConfirmButton>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                  </div>
+                </td>
+                <td>
+                  <div className="min-w-36 space-y-1">
+                    {t.members.map((m) => (
+                      <p key={m.osuId} className="text-xs">
+                        {m.participant.username}
+                        {m.captain ? ' · Captain' : m.substitute ? ' · Substitute' : ''}
+                      </p>
+                    ))}
+                  </div>
+                </td>
+                <td>
+                  <Badge>{t.status}</Badge>
+                </td>
+                <td>{t.published ? 'Published' : 'Hidden'}</td>
+                <td>
+                  <div className="flex gap-1">
+                    {can(actor, 'teams.edit') && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Edit ${t.name}`}
+                        title="Edit team"
+                        onClick={() => {
+                          setDraft(structuredClone(t));
+                          setDirty(false);
+                          setProfile(null);
+                          setQuery('');
+                        }}
+                      >
+                        <Pencil size={18} />
+                      </Button>
+                    )}
+                    {can(actor, 'teams.publish') && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Publication ${t.name}`}
+                        title="Approval and visibility"
+                        onClick={() => setVisibility({ ...t })}
+                      >
+                        <Eye size={18} />
+                      </Button>
+                    )}
+                    {can(actor, 'teams.delete') && (
+                      <ConfirmButton
+                        title={`Delete ${t.name}?`}
+                        description="Teams used in matches cannot be deleted. Hide them to retain their history."
+                        disabled={busy}
+                        onConfirm={() =>
+                          void run(async () => {
+                            await action({
+                              type: 'team.delete',
+                              id: t.id,
+                              baseVersion: t.version,
+                            });
+                            await reload();
+                          }, 'Team deleted.')
+                        }
+                      >
+                        <Trash2 size={18} />
+                      </ConfirmButton>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
+      <ListPagination {...result!} onPage={setPage} busy={loading || busy} />
       {!data.length && (
         <div className="py-14 text-center text-muted">
           <Users size={32} className="mx-auto mb-4" />

@@ -1,16 +1,29 @@
 import Link from '@/components/tournament-scope';
 import { ArrowUpRight } from 'lucide-react';
 import { PageHeading, EmptyState } from '@/components/content';
-import { publicTeams } from '@/lib/teams-service';
+import { publicTeamsPage } from '@/lib/teams-service';
+import { listPageSchema } from '@/lib/list-pagination';
+import { ListPagination } from '@/components/list-pagination';
 export const metadata = { title: 'Team e giocatori' };
-export default async function Teams() {
-  const teams = await publicTeams();
+export default async function Teams({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const page = listPageSchema.safeParse((await searchParams).page);
+  const result = await publicTeamsPage(page.success ? page.data : 1);
+  const teams = result.items;
   return (
     <div className="wrap pb-20">
       <PageHeading
         eyebrow="I PARTECIPANTI"
         title="Team e giocatori"
         description="Le squadre approvate e i giocatori del torneo."
+      />
+      <ListPagination
+        {...result}
+        previousHref={`/teams?page=${result.page - 1}`}
+        nextHref={`/teams?page=${result.page + 1}`}
       />
       {teams.length ? (
         <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -74,6 +87,11 @@ export default async function Teams() {
       ) : (
         <EmptyState title="Nessuna squadra pubblicata" />
       )}
+      <ListPagination
+        {...result}
+        previousHref={`/teams?page=${result.page - 1}`}
+        nextHref={`/teams?page=${result.page + 1}`}
+      />
     </div>
   );
 }

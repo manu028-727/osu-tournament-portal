@@ -18,6 +18,10 @@ invented announcements, heavy section framing or generic promotional copy.
 
 ## Foundation And Tokens
 
+Long public team/match and organizer team/media lists use compact Previous/Next
+controls with page and total counts. Controls wrap at narrow widths, preserve
+filters and disable unavailable navigation. Team search spans every page.
+
 `src/app/globals.css` owns base tokens, focus, spacing and operational layouts;
 `src/lib/theme.ts` derives readable branding. Feature CSS modules own scoped geometry.
 Use semantic tokens instead of hardcoding a new local palette. Current defaults:

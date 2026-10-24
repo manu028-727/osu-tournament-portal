@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   test: {
     include: [
+      'tests/teams-export.integration.test.ts',
       'tests/media-cleanup.integration.test.ts',
       'tests/public-visibility.integration.test.ts',
       'tests/ownership.integration.test.ts',

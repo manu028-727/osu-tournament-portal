@@ -2,32 +2,33 @@ import { Filter } from 'lucide-react';
 import { PageHeading, EmptyState } from '@/components/content';
 import { MatchList } from '@/components/match-list';
 import { Button } from '@/components/ui/button';
-import { publicMatches } from '@/lib/public-matches';
+import { publicMatchesPage } from '@/lib/public-matches';
+import { listPageSchema } from '@/lib/list-pagination';
+import { ListPagination } from '@/components/list-pagination';
 import Link from '@/components/tournament-scope';
 export const metadata = { title: 'Incontri e risultati' };
 export default async function Matches({
   searchParams,
 }: {
-  searchParams: Promise<{ stage?: string; status?: string }>;
+  searchParams: Promise<{ stage?: string; status?: string; page?: string }>;
 }) {
   const query = await searchParams;
-  const all = await publicMatches();
-  const stages = [...new Map(all.map((m) => [m.stage.slug, m.stage])).values()];
-  const matches = all.filter(
-    (m) =>
-      (!query.stage || m.stage.slug === query.stage) &&
-      (query.status === 'completed'
-        ? m.status === 'COMPLETED'
-        : query.status === 'upcoming'
-          ? !['COMPLETED', 'CANCELLED'].includes(m.status)
-          : true),
-  );
+  const page = listPageSchema.safeParse(query.page);
+  const result = await publicMatchesPage(query, page.success ? page.data : 1);
+  const { items: matches, stages } = result;
+  const href = (page: number) =>
+    '/matches?' +
+    new URLSearchParams({
+      ...(query.stage ? { stage: query.stage } : {}),
+      ...(query.status ? { status: query.status } : {}),
+      page: String(page),
+    });
   return (
     <div className="wrap pb-20">
       <PageHeading
         eyebrow="IL TORNEO"
         title="Incontri e risultati"
-        description={`${all.length} incontri · ${all.filter((m) => m.status === 'COMPLETED').length} conclusi`}
+        description={`${result.allTotal} incontri · ${result.completedTotal} conclusi`}
       />
       <nav aria-label="Competition views" className="mb-5 flex flex-wrap gap-3">
         <Button asChild variant="outline" size="sm">
@@ -66,6 +67,11 @@ export default async function Matches({
           Filtra
         </Button>
       </form>
+      <ListPagination
+        {...result}
+        previousHref={href(result.page - 1)}
+        nextHref={href(result.page + 1)}
+      />
       {matches.length ? (
         <MatchList matches={matches} />
       ) : (
@@ -74,6 +80,11 @@ export default async function Matches({
           description="Non ci sono incontri pubblicati per questa selezione."
         />
       )}
+      <ListPagination
+        {...result}
+        previousHref={href(result.page - 1)}
+        nextHref={href(result.page + 1)}
+      />
     </div>
   );
 }
