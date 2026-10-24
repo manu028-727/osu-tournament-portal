@@ -362,6 +362,10 @@ test('public tournament profile stays mounted across tabs without duplicate navi
   });
   expect(created.ok()).toBe(true);
   const tournament = await created.json();
+  await db.tournamentSettings.update({
+    where: { tournamentId: tournament.id },
+    data: { banner: '/layout-banner.png' },
+  });
   const home = await db.page.findFirstOrThrow({
     where: { tournamentId: tournament.id, slug: 'home' },
   });
@@ -377,7 +381,6 @@ test('public tournament profile stays mounted across tabs without duplicate navi
           visible: true,
           content: {
             title: 'Published profile identity',
-            image: '/layout-banner.png',
             text: 'Published homepage body',
           },
         },
@@ -447,7 +450,11 @@ test('public tournament profile stays mounted across tabs without duplicate navi
         const profile = page.getByRole('banner', { name: 'Tournament profile', exact: true });
         const banner = profile.getByRole('img', { name: 'Persistent profile QA banner' });
         await expect(banner).toBeVisible();
-        await expect(profile).toContainText('Published profile identity');
+        await expect(profile).toContainText('Persistent profile QA');
+        await expect(profile).not.toContainText('Published profile identity');
+        await expect(
+          page.getByRole('heading', { name: 'Published profile identity' }),
+        ).toBeVisible();
         const profileNode = await profile.elementHandle(),
           bannerNode = await banner.elementHandle();
         const initialHeight = (await profile.boundingBox())!.height;

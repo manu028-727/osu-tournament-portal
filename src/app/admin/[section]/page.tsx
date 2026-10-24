@@ -1,7 +1,7 @@
 import { getServerT } from '@/lib/server-locale';
 import { notFound, redirect } from 'next/navigation';
 import { getWorkspaceActor } from '@/lib/workspace-server';
-import { getTournament, publicPage } from '@/lib/queries';
+import { getTournament } from '@/lib/queries';
 import { canAccessSection, WORKSPACE_SECTIONS } from '@/lib/workspace';
 import type { TournamentView } from '@/lib/types';
 import { TeamsEditor } from '@/components/admin/teams-editor';
@@ -12,7 +12,6 @@ import {
   SettingsWorkspace,
 } from '@/components/admin/workspace-sections';
 import { requestScope } from '@/lib/tournament-context';
-import type { PageContent } from '@/lib/types';
 import Link from '@/components/tournament-scope';
 import { can } from '@/lib/permissions';
 export default async function Section({
@@ -60,7 +59,6 @@ export default async function Section({
           actor={actor}
           view={view}
           tournament={(await getTournament()) as unknown as TournamentView}
-          home={(await publicPage('home')) as PageContent | null}
         />
       );
     case 'teams':

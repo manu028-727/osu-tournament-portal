@@ -3,7 +3,7 @@ import { useT } from '@/components/locale';
 
 import Link, { useTournamentScope } from './tournament-scope';
 import { usePathname } from 'next/navigation';
-import styles from './home-pilot.module.css';
+import styles from './tournament-profile.module.css';
 export function TournamentTabs({ links }: { links: { href: string; label: string }[] }) {
   const tr = useT();
   const pathname = usePathname(),

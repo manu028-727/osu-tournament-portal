@@ -30,6 +30,9 @@
 }
 :root {
   color-scheme: light dark;
+  --page-max-width: 2560px;
+  --page-gutter: clamp(12px, 2.5vw, 64px);
+  --page-width: min(var(--page-max-width), calc(100% - 2 * var(--page-gutter)));
   --page: light-dark(#f8f5f6, #231f23);
   --surface: light-dark(#ffffff, #302b30);
   --surface-hover: light-dark(#f1e9ed, #3d353c);
@@ -182,7 +185,7 @@ html[data-appearance='light'] {
   }
 }
 .wrap {
-  width: min(1240px, calc(100% - 64px));
+  width: var(--page-width);
   margin-inline: auto;
 }
 .eyebrow {
@@ -533,9 +536,6 @@ th {
   color: var(--muted);
 }
 @media (max-width: 768px) {
-  .wrap {
-    width: calc(100% - 32px);
-  }
   .grid-fields {
     grid-template-columns: 1fr;
   }

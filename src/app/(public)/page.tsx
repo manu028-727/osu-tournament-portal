@@ -1,4 +1,4 @@
-import { ContentBlocks } from '@/components/content';
+import { HomepageContent } from '@/components/home-content';
 import { getTournament, publicPage } from '@/lib/queries';
 import type { PageContent, TournamentView } from '@/lib/types';
 import { db } from '@/lib/db';
@@ -13,7 +13,7 @@ export default async function Home() {
     return <TournamentDirectory />;
   const [page, tournament] = await Promise.all([publicPage('home'), getTournament()]);
   return (
-    <ContentBlocks
+    <HomepageContent
       showHeader={false}
       page={
         (page || { id: '', title: tournament.name, html: '', blocks: [] }) as unknown as PageContent

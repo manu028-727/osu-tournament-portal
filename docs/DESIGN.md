@@ -69,14 +69,18 @@ Use tabular numerals for scores and comparison columns, not monospace for all pr
 
 - Body 16px, prose 17px, operational text 14px, secondary labels 13px. Compact
   headers are modest, never hero-scale. Profile title is 28px desktop/23px mobile.
-- Letter spacing is zero. Do not scale fonts with viewport width. Long identity
+- Letter spacing is zero. Interface fonts do not scale with viewport width;
+  editable Hero titles range from 26px to 34px with their content container. Long identity
   text wraps; long dense row titles truncate with full text available in details.
 - Shared controls are 12px radius, repeated items/dialogs 16px, compact inner
   inputs/badges can use 8px. Profile banner is 24px desktop/20px mobile. These are
   established design-system exceptions, not a new nested-card aesthetic.
 - Standard controls/touch targets are about 44px. Dense desktop pool inputs remain
   34px; mobile/coarse-pointer actions retain sufficient hit area and spacing.
-- General wrap is max 1240px with 64px total desktop inset, reduced on mobile.
+- General wrap uses shared `--page-width`: max 2560px, with each side inset
+  `clamp(12px, 2.5vw, 64px)`. Profile, navigation, homepage, subpages, footer and
+  organizer workspace share those edges. Prose stays within about 74 characters;
+  organizer forms can stop at 1280px while tables use the available workspace.
   Use minmax(0, ...), min-width:0, explicit aspect ratios and bounded dialogs so
   content/focus/hover cannot resize neighboring controls.
 - Use Button, Badge, StateBadge, MatchStatusBadge, Field, Modal, ConfirmButton,
@@ -93,11 +97,12 @@ Use tabular numerals for scores and comparison columns, not monospace for all pr
 
 The platform header contains platform directory/appearance/account controls only.
 Below it: actual banner, identity/logo/status/dates, **one** tournament tab list,
-then page content. No separate boxed hero or duplicate desktop/mobile tournament
-navigation. Identity/tabs flow naturally into the page, not another floating panel.
+then page content. The profile is independent of editable homepage Heroes. Keep
+one tournament navigation; identity/tabs flow naturally into the page.
 
 The banner is unobstructed: no title/control/gradient laid over text-heavy artwork.
-Use object-fit:contain in a 4:1 desktop, 3:1 mobile frame with letterboxing. Missing
+Use object-fit:contain in a 4:1 desktop, 3:1 mobile frame with letterboxing and a
+360px maximum height. Missing
 banner has a shorter accent surface; missing logo is omitted, never fabricated.
 Identity sits physically below artwork. Tabs remain reachable with contained
 horizontal scrolling/keyboard access on mobile; the page itself must not overflow.
@@ -105,14 +110,27 @@ horizontal scrolling/keyboard access on mobile; the page itself must not overflo
 `src/app/(public)/layout.tsx` keeps profile/banner/identity/tabs mounted across Home,
 Mappools, Matches, Teams, Staff and Rules; only content underneath changes. Preserve
 DOM/image identity and geometry on same-tournament links. Cross-tenant navigation
-resets deliberately. Published homepage overrides remain independent of private
-draft preview. Home retains accessible H1; subpages have their own headings.
+resets deliberately. Name/banner/logo come exclusively from tournament settings;
+neither published nor draft Heroes override the profile. Home retains accessible
+H1; subpages have their own headings.
 
-Authored content is not rewritten to match layout: hero paragraphs become content,
-hidden blocks stay hidden, first configured dates may appear in identity and
-additional timeline content follows. Links already in navigation need not repeat
-as visible CTA buttons, but remain saved/editable. Stage banners are independent.
+Authored content is not rewritten to match layout. Every visible Hero renders its
+own title, body, artwork and links. Title-only/image-only blocks remain meaningful;
+truly empty bodies do not create blank panels. Hidden blocks stay hidden. The
+profile summarizes the first two dates; timelines show the complete calendar.
+Every authored button renders, including links also present in navigation.
+Stage banners are independent.
 Do not ship reference artwork/private tournament fixtures as default branding.
+
+Homepage block treatments use the saved palette and rounded osu! geometry:
+Hero has an accent surface with optional side-by-side contained artwork; text is
+an open editorial band with a heading column; images pair unobstructed artwork
+with authored captions; announcements use a compact notice icon/accent rail;
+button groups have primary/secondary destinations; timelines use connected dated
+milestones. Stack artwork and copy below an 800px content width; switch timelines
+to a vertical rail below 600px. Container queries also apply inside draft previews.
+Keep image-only sections full-width, long content wrapping, 44px actions and visible
+keyboard focus. Saved page introductions render before the ordered blocks.
 
 ## Public Mappool Contract
 
@@ -188,8 +206,10 @@ table geometry or conceal the current match action.
 
 The approved direction remains unchanged. globals.css remaps several Tailwind
 color names to semantic state/team tokens; those usages are not independent fixed
-light/dark palettes. home-pilot.module.css and workspace-pilot.module.css are active
-styles for the approved profile/workspace, despite their historical names.
+light/dark palettes. tournament-profile.module.css owns the persistent identity,
+tabs and page frame; homepage.module.css owns CMS block layouts. The obsolete mixed
+home-pilot stylesheet has been removed. workspace-pilot.module.css remains the
+active organizer stylesheet despite its historical name.
 
 Current editing uses shared Radix Modal/ConfirmButton alongside native confirm
 prompts. Dirty editors share one navigation confirmation, including cancelable
@@ -222,7 +242,8 @@ Use isolated synthetic fixtures and current E2E/rollout harnesses, following
 DOM width assertions alone are not a visual audit. Evidence stays in ignored .data.
 
 Required viewport checks: 1920 desktop, 1366 laptop, 768 tablet, 390 mobile and 320
-narrow mobile; add 375/1024, landscape and zoom-equivalent reflow for shared changes.
+narrow mobile; add 375/1024, landscape and zoom-equivalent reflow for shared changes,
+plus 2560/3440 for changes to shared container widths.
 Test light/dark/system and several saved accents, missing/real artwork, short/long
 names, empty/populated collections, dialogs/errors and responsive navigation.
 Verify touch/keyboard/focus, no page overflow, stable card dimensions/order, first/

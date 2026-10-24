@@ -1,17 +1,5 @@
-import type { PageContent, TournamentView, PoolContent } from '@/lib/types';
-import { HomepageContent } from './home-content';
+import type { PoolContent } from '@/lib/types';
 import { PublicMappool } from './public-mappool';
-export function ContentBlocks({
-  page,
-  tournament,
-  showHeader = true,
-}: {
-  page: PageContent;
-  tournament: TournamentView;
-  showHeader?: boolean;
-}) {
-  return <HomepageContent page={page} tournament={tournament} showHeader={showHeader} />;
-}
 export function PoolDisplay({ pool }: { pool: PoolContent }) {
   return <PublicMappool pool={pool} />;
 }

@@ -8,7 +8,8 @@ import { RichEditor } from './rich-editor';
 import { MediaField } from './media';
 import { Button } from '../ui/button';
 import { StateBadge } from '../ui/badge';
-import { ContentBlocks } from '../content';
+import { HomepageContent } from '../home-content';
+import { themeStyle } from '@/lib/theme';
 import type { PageContent, TournamentView } from '@/lib/types';
 import type { Block } from '@/lib/validation';
 import type { Actor } from '@/lib/permissions';
@@ -37,6 +38,7 @@ type PageData = {
   publishedRevision: PageContent | null;
   revisions: { id: string; title: string; createdAt: string }[];
 };
+type EditableBlock = Block & { editorId: string };
 export function PageEditor({
   kind,
   actor,
@@ -51,7 +53,8 @@ export function PageEditor({
   const { data, error, reload } = useResource<PageData>(kind);
   const [title, setTitle] = useState(''),
     [html, setHtml] = useState(''),
-    [blocks, setBlocks] = useState<Block[]>([]),
+    [blocks, setBlocks] = useState<EditableBlock[]>([]),
+    [hasPageBody, setHasPageBody] = useState(false),
     [base, setBase] = useState<string | null>(null),
     [dirty, setDirty] = useState(false),
     [preview, setPreview] = useState(false),
@@ -63,7 +66,13 @@ export function PageEditor({
       const revision = data.draftRevision || data.publishedRevision;
       setTitle(revision?.title || data.title);
       setHtml(revision?.html || '');
-      setBlocks((revision?.blocks || []) as Block[]);
+      setBlocks(
+        (revision?.blocks || []).map((block) => ({
+          ...block,
+          editorId: crypto.randomUUID(),
+        })) as EditableBlock[],
+      );
+      setHasPageBody(!!revision?.html);
       setBase(data.draftRevisionId);
       setDirty(false);
     }
@@ -82,7 +91,7 @@ export function PageEditor({
         slug: kind === 'homepage' ? 'home' : 'rules',
         title,
         html,
-        blocks,
+        blocks: blocks.map(({ type, visible, content }) => ({ type, visible, content })),
         baseRevisionId: base,
       });
       await reload();
@@ -262,9 +271,28 @@ export function PageEditor({
           </>
         ) : (
           <>
+            <p className="text-sm text-muted">
+              {tr(
+                'Hero sections appear in the homepage content. Edit the shared tournament name and banner in Tournament info and Appearance.',
+              )}
+            </p>
+            {hasPageBody && (
+              <details className="cms-block">
+                <summary>{tr('Page introduction')}</summary>
+                <div className="pt-4">
+                  <RichEditor
+                    value={html}
+                    onChange={(value) => {
+                      setHtml(value);
+                      setDirty(true);
+                    }}
+                  />
+                </div>
+              </details>
+            )}
             <ReorderList
               items={blocks}
-              keyOf={(_, i) => String(i)}
+              keyOf={(block) => block.editorId}
               onChange={(next) => {
                 setBlocks(next);
                 setDirty(true);
@@ -337,7 +365,7 @@ export function PageEditor({
                         />
                       </Field>
                     </div>
-                    {b.type === 'text' ? (
+                    {b.type === 'text' || b.content.html !== undefined ? (
                       <div className="space-y-2">
                         <p className="text-xs font-medium">{tr('Rich text content')}</p>
                         <RichEditor
@@ -345,7 +373,9 @@ export function PageEditor({
                             b.content.html ||
                             `<p>${(b.content.text || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}</p>`
                           }
-                          onChange={(html) => update(i, { content: { ...b.content, html } })}
+                          onChange={(html) =>
+                            update(i, { content: { ...b.content, html, text: '' } })
+                          }
                         />
                       </div>
                     ) : (
@@ -358,7 +388,7 @@ export function PageEditor({
                         />
                       </Field>
                     )}
-                    {['hero', 'image', 'announcements'].includes(b.type) && (
+                    {(['hero', 'image', 'announcements'].includes(b.type) || b.content.image) && (
                       <MediaField
                         label={tr('Section image')}
                         value={b.content.image || ''}
@@ -422,6 +452,7 @@ export function PageEditor({
                       <Button
                         variant="outline"
                         size="sm"
+                        disabled={(b.content.buttons?.length || 0) >= 8}
                         onClick={() =>
                           update(i, {
                             content: {
@@ -453,7 +484,12 @@ export function PageEditor({
               onClick={() => {
                 setBlocks([
                   ...blocks,
-                  { type: 'text', visible: true, content: { title: 'New section', text: '' } },
+                  {
+                    editorId: crypto.randomUUID(),
+                    type: 'text',
+                    visible: true,
+                    content: { title: tr('New section'), text: '' },
+                  },
                 ]);
                 setDirty(true);
               }}
@@ -504,7 +540,16 @@ export function PageEditor({
       >
         {revision &&
           (kind === 'homepage' ? (
-            <ContentBlocks page={revision} tournament={tournament} />
+            <div
+              style={
+                themeStyle(
+                  tournament.settings.primaryColor,
+                  tournament.settings.accentColor,
+                ) as React.CSSProperties
+              }
+            >
+              <HomepageContent page={revision} tournament={tournament} />
+            </div>
           ) : (
             <div className="prose" dangerouslySetInnerHTML={{ __html: revision.html }} />
           ))}

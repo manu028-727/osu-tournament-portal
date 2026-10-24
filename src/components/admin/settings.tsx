@@ -8,10 +8,10 @@ import { useRouter } from 'next/navigation';
 import { Plus, Trash2, Save, Eye, X } from 'lucide-react';
 import Link from '@/components/tournament-scope';
 import { Button } from '../ui/button';
-import { TournamentProfileHeader } from '../home-content';
+import { TournamentProfileHeader } from '../tournament-profile';
 import { TournamentTabs } from '../tournament-tabs';
 import { themeStyle } from '@/lib/theme';
-import type { PageContent, TournamentView } from '@/lib/types';
+import type { TournamentView } from '@/lib/types';
 import { MediaField } from './media';
 import { ExportTournamentButton } from './tournament-export-button';
 import { can, type Actor } from '@/lib/permissions';
@@ -47,11 +47,9 @@ const titles = {
 export function SettingsEditor({
   actor,
   area = 'advanced',
-  home = null,
 }: {
   actor: Actor;
   area?: SettingsArea;
-  home?: PageContent | null;
 }) {
   const tr = useT();
   const { data, error, reload } = useResource<SettingsData>('settings');
@@ -98,7 +96,6 @@ export function SettingsEditor({
     </Field>
   );
   const saveLabel = area === 'advanced' ? 'Save settings' : 'Save changes';
-  const identityOverride = home?.blocks.find((block) => block.visible && block.type === 'hero');
   return (
     <>
       <form
@@ -146,14 +143,6 @@ export function SettingsEditor({
         <fieldset disabled={busy} className="space-y-6">
           {area === 'info' && (
             <>
-              {identityOverride?.content.title && identityOverride.content.title !== form.name && (
-                <p className="text-sm text-muted">
-                  {tr('Homepage title override:')} {identityOverride.content.title}.{' '}
-                  <Link href="/admin/website?view=homepage" className="text-primary">
-                    {tr('Edit homepage')}
-                  </Link>
-                </p>
-              )}
               <div className="grid-fields">
                 {text('name', tr('Tournament name'))}
                 {text('acronym', tr('Acronym'))}
@@ -261,14 +250,6 @@ export function SettingsEditor({
           )}
           {area === 'branding' && (
             <>
-              {identityOverride?.content.image && (
-                <p className="text-sm text-muted">
-                  {tr('The homepage has its own banner override.')}{' '}
-                  <Link href="/admin/website?view=homepage" className="text-primary">
-                    {tr('Edit homepage artwork')}
-                  </Link>
-                </p>
-              )}
               <div className="grid-fields">
                 {(['logo', 'favicon'] as const).map((key) => (
                   <MediaField
@@ -579,7 +560,6 @@ export function SettingsEditor({
       <Modal open={preview} onOpenChange={setPreview} title={tr('Appearance preview')} wide>
         <div inert style={themeStyle(form.primaryColor, form.accentColor) as React.CSSProperties}>
           <TournamentProfileHeader
-            page={home}
             tournament={{ ...data, ...form, settings: { ...data.settings, ...form } }}
           />
         </div>

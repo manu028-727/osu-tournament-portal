@@ -18,31 +18,32 @@ append another guide. SPEC's capability labels do not override discrepancies her
 
 ## Ordered Delivery History
 
-| Order | Delivery                                                                                                                                                                      | State                                                  | Source Checkpoint             |
-| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ----------------------------- |
-| 1     | Extract generic multi-tournament app from private tournament implementations; retain OAuth, scoped roles, CMS revisions, media, teams, referee engine and historical importer | Done                                                   | `7d4a4d9`                     |
-| 2     | Public MIT distribution, legal notices, no private fixtures or artwork; Docker-first provisioning and optional private storage/IRC                                            | Done                                                   | `924abbd`                     |
-| 3     | Simplify to one default Compose stack and `portal` lifecycle helper, isolate advanced overrides and remove generated clutter                                                  | Done                                                   | `a9d82fb`                     |
-| 4     | Repair fresh tournament lifecycle: chooser boundary, `/t/<slug>/admin/...`, missing-context errors, empty page defaults, unpublished editing and authorization tests          | Done                                                   | `6fab893`                     |
-| 5     | Approve tournament profile design, persistent shared banner/identity/tabs, platform-only header, both themes, editable contrast-safe accents and application rollout          | Done                                                   | `fd6bc44`                     |
-| 6     | Portable versioned ZIPs, strict previews, fresh unpublished imports, media hashes, identity remapping, recovery journals and isolated legacy migration                        | Done                                                   | `3182a5c`                     |
-| 7     | Simplify organizer destinations, Website/Staff subsections, canonical Matches list, guarded changes and real previews                                                         | Done                                                   | `42d111c`                     |
-| 8     | Correct Bancho PASS/NICK/USER registration, current per-user identity and secret-free stage/code diagnostics                                                                  | Done                                                   | `0c1b51a`                     |
-| 9     | Recognize command acknowledgements, then replace ordinary-command verification with honest nonblocking Sent receipts; preserve uncertain room-creation safeguards             | Done; acknowledgement gating superseded                | `d65c4e7`, `dc73647`          |
-| 10    | Canonical gameplay scoring, native SE/DE/groups, path eligibility, confirmed advancement, stage repair, qualifier runs/provenance and immutable reviewed standings            | Done with explicit provider/layout limits              | `d7d738c`                     |
-| 11    | Stable tournament match numbers, bracket reservations and improved organizer workflows                                                                                        | Done                                                   | `39e5b68`                     |
-| 12    | Persistent pool planning/suggestions/reviews, bulk stages/schedules/staff/qualifiers, safe pool release, historical bracket linking and archive extensions                    | Done                                                   | `c6b9935`                     |
-| 13    | Consolidate project knowledge into AGENTS, INTENT, SPEC, PLAN, ARCHITECTURE and DESIGN; retain README entry point, remove superseded guides                                   | Done                                                   | `fc41596`                     |
-| 14    | Audit every major subsystem, rerun the safe baseline and align documentation; prepare the cleanup without changing application behavior                                       | Verified completed within audit scope                  | `d88724d`, audit of `fc41596` |
-| 15    | Enforce nested ownership, saved revision owners and same-match action relationships with additive migrations                                                                  | Verified completed                                     | `2ec77f8`                     |
-| 16    | Align guest lifecycle/projections, explicit editing context and fresh CMS state                                                                                               | Verified completed                                     | `b34cf3a`                     |
-| 17    | Reject stale settings, staff and category writes with reviewed patches                                                                                                        | Verified completed                                     | `0e07e51`                     |
-| 18    | Share match/qualifier resource scheduling and stage pool validation                                                                                                           | Verified completed                                     | `5790dd5`                     |
-| 19    | Journal ordinary media writes/deletes and protect historical references                                                                                                       | Verified completed within synthetic/filesystem scope   | `fe46534`                     |
-| 20    | Paginate long lists and stream complete roster exports                                                                                                                        | Verified completed; representative load tuning Blocked | `4a9d953`                     |
-| 21    | Separate domain reads/restoration and enforce archive/schema coverage; remove verified obsolete code                                                                          | Verified completed                                     | `a6c93f6`                     |
-| 22    | Patch dependency advisories, reproduce adapter warning and gate releases on checks                                                                                            | Verified completed; upstream warning Blocked           | `14acd73`                     |
-| 23    | Add complete English/Italian built-in interfaces and shared dirty-navigation/dialog ownership                                                                                 | Verified within recorded frontend scope                | This change; checks below     |
+| Order | Delivery                                                                                                                                                                      | State                                                  | Source Checkpoint                          |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------ |
+| 1     | Extract generic multi-tournament app from private tournament implementations; retain OAuth, scoped roles, CMS revisions, media, teams, referee engine and historical importer | Done                                                   | `7d4a4d9`                                  |
+| 2     | Public MIT distribution, legal notices, no private fixtures or artwork; Docker-first provisioning and optional private storage/IRC                                            | Done                                                   | `924abbd`                                  |
+| 3     | Simplify to one default Compose stack and `portal` lifecycle helper, isolate advanced overrides and remove generated clutter                                                  | Done                                                   | `a9d82fb`                                  |
+| 4     | Repair fresh tournament lifecycle: chooser boundary, `/t/<slug>/admin/...`, missing-context errors, empty page defaults, unpublished editing and authorization tests          | Done                                                   | `6fab893`                                  |
+| 5     | Approve tournament profile design, persistent shared banner/identity/tabs, platform-only header, both themes, editable contrast-safe accents and application rollout          | Done                                                   | `fd6bc44`                                  |
+| 6     | Portable versioned ZIPs, strict previews, fresh unpublished imports, media hashes, identity remapping, recovery journals and isolated legacy migration                        | Done                                                   | `3182a5c`                                  |
+| 7     | Simplify organizer destinations, Website/Staff subsections, canonical Matches list, guarded changes and real previews                                                         | Done                                                   | `42d111c`                                  |
+| 8     | Correct Bancho PASS/NICK/USER registration, current per-user identity and secret-free stage/code diagnostics                                                                  | Done                                                   | `0c1b51a`                                  |
+| 9     | Recognize command acknowledgements, then replace ordinary-command verification with honest nonblocking Sent receipts; preserve uncertain room-creation safeguards             | Done; acknowledgement gating superseded                | `d65c4e7`, `dc73647`                       |
+| 10    | Canonical gameplay scoring, native SE/DE/groups, path eligibility, confirmed advancement, stage repair, qualifier runs/provenance and immutable reviewed standings            | Done with explicit provider/layout limits              | `d7d738c`                                  |
+| 11    | Stable tournament match numbers, bracket reservations and improved organizer workflows                                                                                        | Done                                                   | `39e5b68`                                  |
+| 12    | Persistent pool planning/suggestions/reviews, bulk stages/schedules/staff/qualifiers, safe pool release, historical bracket linking and archive extensions                    | Done                                                   | `c6b9935`                                  |
+| 13    | Consolidate project knowledge into AGENTS, INTENT, SPEC, PLAN, ARCHITECTURE and DESIGN; retain README entry point, remove superseded guides                                   | Done                                                   | `fc41596`                                  |
+| 14    | Audit every major subsystem, rerun the safe baseline and align documentation; prepare the cleanup without changing application behavior                                       | Verified completed within audit scope                  | `d88724d`, audit of `fc41596`              |
+| 15    | Enforce nested ownership, saved revision owners and same-match action relationships with additive migrations                                                                  | Verified completed                                     | `2ec77f8`                                  |
+| 16    | Align guest lifecycle/projections, explicit editing context and fresh CMS state                                                                                               | Verified completed                                     | `b34cf3a`                                  |
+| 17    | Reject stale settings, staff and category writes with reviewed patches                                                                                                        | Verified completed                                     | `0e07e51`                                  |
+| 18    | Share match/qualifier resource scheduling and stage pool validation                                                                                                           | Verified completed                                     | `5790dd5`                                  |
+| 19    | Journal ordinary media writes/deletes and protect historical references                                                                                                       | Verified completed within synthetic/filesystem scope   | `fe46534`                                  |
+| 20    | Paginate long lists and stream complete roster exports                                                                                                                        | Verified completed; representative load tuning Blocked | `4a9d953`                                  |
+| 21    | Separate domain reads/restoration and enforce archive/schema coverage; remove verified obsolete code                                                                          | Verified completed                                     | `a6c93f6`                                  |
+| 22    | Patch dependency advisories, reproduce adapter warning and gate releases on checks                                                                                            | Verified completed; upstream warning Blocked           | `14acd73`                                  |
+| 23    | Add complete English/Italian built-in interfaces and shared dirty-navigation/dialog ownership                                                                                 | Verified within recorded frontend scope                | This change; checks below                  |
+| 24    | Separate editable homepage Heroes, polish all block types and widen shared responsive containers                                                                              | Verified within recorded Chromium scope                | Working tree after `4c74c4c`; checks below |
 
 Rejected calm/earlier redesign pilots are not design authority. Their useful
 usability lessons and verification procedures are incorporated in DESIGN and
@@ -767,6 +768,53 @@ conditional are extensions, not already approved commitments or release blockers
    or mappack generation only with concrete workflows and security review. Arbitrary
    blank bracket graph editing and automatic historical reseeding are not current
    promises. Preserve the supported source-stage/default reuse and existing graph.
+
+## Homepage And Layout Repair - 25 October 2026
+
+Source scope: working tree based on `4c74c4c`, following the maintainer's request
+to separate editable Heroes from the persistent profile and widen page layouts.
+
+- Profile name, banner, logo and tabs now belong only to tournament settings.
+  Removed homepage reads from the shared public layout and organizer settings
+  wrapper, obsolete override warnings, the ContentBlocks forwarding component
+  and the mixed home-pilot stylesheet after checking source/test/script callers.
+- Homepage renders every visible Hero independently, title-only/image-only
+  blocks, explicit buttons even when navigation shares the destination, all
+  configured timeline dates and saved page-level rich text. Empty TipTap bodies
+  do not create blank panels. Saved content and schema are unchanged.
+- Added distinct theme-aware Hero/editorial/image/announcement/button/timeline
+  layouts, responsive preview container queries and shared 2560px maximum page
+  width. Prose remains bounded; organizer form widths are separate from tables.
+  Existing compact mappool dimensions and breakpoints are retained.
+- Editor block identity survives reordering; rich bodies remain editable after
+  changing type, and rich edits clear obsolete plain-text fallbacks. Existing
+  introductions have an editor. Draft save/preview/publish/history remain separate.
+- **Verified completed within Chromium scope.** Node 22.23.3 `npm ci`, format,
+  lint, types, 355 unit tests, 208 integration tests, source audit and standalone
+  production build passed. Final browser evidence: 48 production tests completed
+  with Playwright's `status: passed` report and no failed cases; four development
+  homepage cases completed with exit 0. A long shell wrapper received SIGTERM,
+  but its detached browser runner continued and completed the final report; the
+  wrapper interruption is not counted as a completed check. Port 3001 was free
+  after the task-owned server shut down.
+- Browser coverage includes add/edit/type change/reorder with retained editor DOM,
+  draft preview/public isolation, publication, hiding/deletion without changing
+  the publication, title-only/image-only/empty rich bodies, all six block types,
+  all timeline dates and shared-navigation destinations. Shared profile nodes and
+  banner requests remain stable across tabs. Mappool tests retain 64/72px cards,
+  one/two/three columns, grouping, hover/details/copy and keyboard/touch behavior,
+  including new 2560/3440px cases.
+- Rendered evidence covers light/dark, system changes, saved accents, English and
+  Italian with authored copy preserved, missing/present artwork, long identity,
+  empty/populated pages and mobile preview scrolling. Homepage screenshots cover
+  320, 375, 390, 683, 768, 844 landscape, 1024, 1366, 1920, 2560 and 3440px;
+  sampled screenshots were inspected. Evidence is in ignored
+  `.data/homepage-20261025/development/`, `production-final/` and `checks/`.
+
+No database migration or authored-content conversion is required. No deployment,
+service restart or installation-data changes were performed. Provider behavior
+and additional browser engines remain outside this UI verification scope; the
+previously recorded upstream pg warning is unchanged.
 
 ## Completion Rules
 

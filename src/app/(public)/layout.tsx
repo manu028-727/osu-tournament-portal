@@ -3,15 +3,15 @@ import { siteCopy } from '@/lib/copy';
 import { ArrowUpRight } from 'lucide-react';
 import { PublicNav } from '@/components/public-nav';
 import { getActor } from '@/lib/auth';
-import { getTournament, publicPage } from '@/lib/queries';
-import type { PageContent, TournamentView } from '@/lib/types';
+import { getTournament } from '@/lib/queries';
+import type { TournamentView } from '@/lib/types';
 import { canAccessWorkspace } from '@/lib/workspace';
 import { notFound } from 'next/navigation';
 import { requestScope } from '@/lib/tournament-context';
 import { db } from '@/lib/db';
 import { themeStyle } from '@/lib/theme';
-import pilot from '@/components/home-pilot.module.css';
-import { TournamentProfileHeader } from '@/components/home-content';
+import styles from '@/components/tournament-profile.module.css';
+import { TournamentProfileHeader } from '@/components/tournament-profile';
 import { isPublicTournament } from '@/lib/public-visibility';
 export const dynamic = 'force-dynamic';
 export async function generateMetadata() {
@@ -40,10 +40,9 @@ export default async function PublicLayout({ children }: { children: React.React
   const [raw, actor] = await Promise.all([getTournament(), getActor()]);
   if (!isPublicTournament(raw)) notFound();
   const t = raw as unknown as TournamentView;
-  const home = await publicPage('home');
   return (
     <div
-      className={pilot.page}
+      className={styles.page}
       style={themeStyle(t.settings.primaryColor, t.settings.accentColor) as React.CSSProperties}
     >
       <PublicNav
@@ -58,12 +57,12 @@ export default async function PublicLayout({ children }: { children: React.React
             : undefined
         }
       />
-      <TournamentProfileHeader page={home as PageContent | null} tournament={t} />
+      <TournamentProfileHeader tournament={t} />
       <main id="main" className="public-main min-h-[65vh]">
         {children}
       </main>
       <footer className="public-footer border-t">
-        <div className={pilot.footer}>
+        <div className={styles.footer}>
           {t.settings.footer && <p>{t.settings.footer}</p>}
           <nav aria-label={tr('Social links')}>
             {t.settings.socialLinks.map((link, i) => (

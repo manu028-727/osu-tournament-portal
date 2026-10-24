@@ -244,19 +244,29 @@ principle. Public readers use only publications behind the tournament gate; prev
 authorize and explicitly select a revision.
 
 `rich-text.ts` sanitizes TipTap rendering and imports. Heading navigation derives
-from the document. Shared public profile uses visible published homepage branding
-override, then tournament settings, never the newest draft; preview uses its draft
-explicitly. The editor API can synthesize defaults for absent pages; however,
-`tournamentAction(create)` currently creates home/rules pages and one blank saved
-draft revision for each. The setup checklist treats these as saved work. This
-differs from the empty-tournament contract; see [F12](PLAN.md#f12-fresh-cms-state).
+from the document. The shared `TournamentProfileHeader` reads only tournament
+settings; public layout does not fetch homepage revisions. `HomepageContent`
+renders each visible block independently, including all Hero fields, explicit
+navigation-destination buttons, all important dates and existing page-level HTML.
+Draft preview uses the same renderer under the tournament palette. The editor API
+synthesizes empty defaults for absent pages; tournament creation does not write
+blank saved revisions or mark unsaved pages as completed work.
+
+Homepage editor IDs exist only in mounted client state and stay stable across
+reordering. Save sends the canonical block envelope without those IDs. When a
+block carries HTML, changing its type retains the rich editor; editing HTML clears
+the obsolete plain-text fallback so it cannot mask or resurrect older body text.
+Existing page HTML has a separate introduction editor. These presentation changes
+require no schema or content migration. Profile/tab styling and homepage styling
+have separate owners, with shared page-width tokens in globals.css.
 
 RichEditor emits `editor.getHTML()`, not a persisted TipTap document tree.
 `PageRevision.html` and block `content.html` are sanitized on save/import and public
-read. Block envelopes remain JSON. `publicPage` returns all published-revision
-blocks, while HomepageContent filters `visible` during rendering; API serialization
-and media reference inference do not apply that filter. Public projection review
-is tracked in [F14](PLAN.md#f14-public-projections).
+read. Block envelopes remain JSON. `publicPage` selects visible blocks from the
+published revision behind the tournament lifecycle gate; the renderer also checks
+visibility for authorized previews. Public media-reference inference excludes
+hidden-block content. Independent saved drafts remain private. Historical findings
+are recorded in [F14](PLAN.md#f14-public-projections).
 
 ## Pool Planning, Ordering And Release
 

@@ -2,7 +2,7 @@
 import { useT } from '@/components/locale';
 import { can, type Actor } from '@/lib/permissions';
 import { canAccessSection } from '@/lib/workspace';
-import type { PageContent, TournamentView } from '@/lib/types';
+import type { TournamentView } from '@/lib/types';
 import { SectionNav } from './section-nav';
 import { PageEditor } from './page-editor';
 import { SettingsEditor } from './settings';
@@ -18,12 +18,10 @@ export function WebsiteWorkspace({
   actor,
   tournament,
   view,
-  home,
 }: {
   actor: Actor;
   tournament: TournamentView;
   view?: string;
-  home: PageContent | null;
 }) {
   const tr = useT();
   const views = [
@@ -51,7 +49,6 @@ export function WebsiteWorkspace({
           key={selected}
           actor={actor}
           area={selected as 'info' | 'branding' | 'navigation'}
-          home={home}
         />
       )}
     </>

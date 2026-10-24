@@ -129,7 +129,7 @@ test.beforeEach(async ({ context }) => {
   ]);
 });
 
-for (const width of [1920, 1366, 768, 390, 320]) {
+for (const width of [3440, 2560, 1920, 1366, 768, 390, 320]) {
   test(`public mappool grid and details at ${width}px`, async ({ browser }, testInfo) => {
     const touch = width <= 768;
     const context = await browser.newContext({

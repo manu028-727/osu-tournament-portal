@@ -61,8 +61,14 @@ qualifier standings, teams, staff and rules with useful empty/loading/error stat
 public metadata and responsive, accessible navigation.
 
 The shared tournament banner, identity and single tab navigation persist across
-same-tournament pages. Platform controls remain separate. Missing artwork is
-handled without invented branding. Support light/dark/system appearance and saved
+same-tournament pages and use tournament settings, independently of homepage
+revisions. An editable Hero is homepage content: its title, artwork, body and
+buttons render in saved order without overriding or disappearing into the shared
+profile. Multiple Heroes and title-only/image-only blocks are supported. Explicit
+CMS links remain visible even when their destinations also appear in navigation.
+Timeline blocks show all configured important dates. Platform controls remain
+separate. Missing artwork is handled without invented branding. Support
+light/dark/system appearance and saved
 tournament colors; the complete visual contract is [DESIGN.md](DESIGN.md).
 
 Homepage blocks support authored text, hero content, images, announcements, links,
@@ -70,6 +76,10 @@ button groups and dates, with visibility/order controls. Rules support rich text
 headings, lists, tables, links, images, dividers and heading navigation. Both retain
 draft saves, explicit preview/publish/unpublish and revision history. Editing a
 published page creates a draft; only explicit publication changes guest content.
+Block type changes and reordering retain authored content and editor identity;
+existing page-level rich text remains editable and visible. Responsive containers
+use desktop and ultrawide space while prose keeps a readable line length and
+public mappools retain their compact card geometry.
 
 Settings saves apply only reviewed changed fields. An older form, including another
 Website subsection, must fail visibly after a newer settings or lifecycle save.
