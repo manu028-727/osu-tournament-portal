@@ -41,6 +41,7 @@ async function settings(context: BrowserContext, changes: Record<string, unknown
     ...t.settings,
     ...changes,
     type: 'settings.save',
+    baseVersion: t.version,
   });
 }
 async function setAppearance(page: Page, value: 'Light' | 'Dark' | 'System') {

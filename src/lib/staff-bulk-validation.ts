@@ -22,6 +22,7 @@ export const staffAssignmentPatchSchema = z.discriminatedUnion('operation', [
 export const staffBulkActionSchema = z
   .object({
     type: z.literal('staff.bulk'),
+    baseVersions: z.record(id, z.number().int().positive()),
     memberIds: z
       .array(id)
       .min(1)

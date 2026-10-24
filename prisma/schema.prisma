@@ -249,6 +249,7 @@ model TournamentStage {
 }
 
 model ModCategory {
+  version      Int        @default(1)
   id           String     @id @default(cuid())
   tournamentId String     @default("main")
   tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
@@ -425,6 +426,7 @@ model PoolArtistWarning {
 }
 
 model StaffMember {
+  version      Int               @default(1)
   tournamentId String            @default("main")
   tournament   Tournament        @relation(fields: [tournamentId], references: [id], onDelete: Restrict)
   id           String            @id @default(cuid())
@@ -444,6 +446,7 @@ model StaffMember {
 }
 
 model StaffCategory {
+  version      Int               @default(1)
   id           String            @id @default(cuid())
   tournamentId String            @default("main")
   tournament   Tournament        @relation(fields: [tournamentId], references: [id], onDelete: Cascade)

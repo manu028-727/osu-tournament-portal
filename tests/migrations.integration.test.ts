@@ -75,3 +75,18 @@ it('stops on pre-existing mismatched pointers and leaves the witness unchanged',
     ).toBe('revision');
   });
 });
+
+it('adds edit versions to populated staff and categories without altering authored fields', async () => {
+  await migrationFixture(async (client, apply) => {
+    await client.query(`INSERT INTO "StaffMember" (id,"tournamentId","osuId",username,"avatarUrl","profileUrl",bio) VALUES ('member','test',123,'Synthetic','','','Keep biography');
+      INSERT INTO "StaffCategory" (id,"tournamentId",name,description) VALUES ('category','test','Hosts','Keep description');`);
+    for (const index of [7, 8, 9, 10]) await apply(index);
+    expect(
+      (await client.query(`SELECT bio,version FROM "StaffMember" WHERE id='member'`)).rows,
+    ).toEqual([{ bio: 'Keep biography', version: 1 }]);
+    expect(
+      (await client.query(`SELECT description,version FROM "StaffCategory" WHERE id='category'`))
+        .rows,
+    ).toEqual([{ description: 'Keep description', version: 1 }]);
+  });
+});

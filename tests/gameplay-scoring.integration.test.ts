@@ -67,6 +67,7 @@ async function save(
       ...t,
       ...t.settings,
       type: 'settings.save',
+      baseVersion: t.version,
       gameplayScoring: mode,
       scoringReview,
     }),

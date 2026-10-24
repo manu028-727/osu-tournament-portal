@@ -12,6 +12,7 @@ import { MediaField } from './media';
 import { ExportTournamentButton } from './tournament-export-button';
 import { can, type Actor } from '@/lib/permissions';
 import { DEFAULT_COPY, siteCopy } from '@/lib/copy';
+import { settingsFieldsSchema } from '@/lib/validation';
 import { SCORING_LABELS, SCORING_DESCRIPTIONS, type GameplayScoring } from '@/lib/gameplay-scoring';
 import {
   action,
@@ -26,6 +27,7 @@ import {
   useUnsaved,
 } from './shared';
 type SettingsData = TournamentView & {
+  version: number;
   settings: TournamentView['settings'] & { favicon: string };
   scoringImpact?: { locked: boolean; affected: { id: string; code: string; kind: string }[] };
 };
@@ -98,7 +100,23 @@ export function SettingsEditor({
         onSubmit={(e) => {
           e.preventDefault();
           void run(async () => {
-            await action({ type: 'settings.save', ...form, scoringReview });
+            const original = settingsFieldsSchema.parse({
+              ...data,
+              ...data.settings,
+              copy: siteCopy(data.settings.copy),
+            });
+            const patch = Object.fromEntries(
+              Object.entries(settingsFieldsSchema.parse(form)).filter(
+                ([key, value]) =>
+                  JSON.stringify(value) !== JSON.stringify(original[key as keyof typeof original]),
+              ),
+            );
+            await action({
+              type: 'settings.save',
+              baseVersion: data.version,
+              ...patch,
+              scoringReview,
+            });
             await reload();
             router.refresh();
           }, 'Saved. Website settings take effect immediately; page and mappool drafts are unchanged.');

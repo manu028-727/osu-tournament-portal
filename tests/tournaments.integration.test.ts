@@ -8,6 +8,7 @@ import { actionSchema } from '../src/lib/validation';
 import type { Actor } from '../src/lib/permissions';
 import { matchRulesSchema } from '../src/lib/match-rules';
 import { matchData } from '../src/lib/matches-service';
+import { getTournament } from '../src/lib/queries';
 const prefix = `tenant-${Date.now()}`;
 let platform: Actor, a: string, b: string, staffId: string, platformId: string;
 const ids: string[] = [];
@@ -148,6 +149,40 @@ describe('multi-tournament isolation', () => {
       }),
     ).rejects.toMatchObject({ status: 403 });
   });
+  it('rejects old settings forms across subsections and preserves fields omitted from a patch', async () => {
+    const manager = await actor(platformId, a);
+    const initial = await getTournament(a);
+    await act(manager, {
+      type: 'settings.save',
+      baseVersion: initial.version,
+      primaryColor: '#123456',
+    });
+    await expect(
+      act(manager, { type: 'settings.save', baseVersion: initial.version, footer: 'Old form' }),
+    ).rejects.toMatchObject({ status: 409 });
+    const latest = await getTournament(a);
+    await act(manager, {
+      type: 'settings.save',
+      baseVersion: latest.version,
+      footer: 'Reviewed footer',
+    });
+    const saved = await getTournament(a);
+    expect(saved.settings).toMatchObject({ primaryColor: '#123456', footer: 'Reviewed footer' });
+    expect(saved.name).toBe(initial.name);
+    expect(saved.settings?.navigation).toEqual(initial.settings?.navigation);
+    const results = await Promise.allSettled(
+      ['One', 'Two'].map((description) =>
+        act(manager, { type: 'settings.save', baseVersion: saved.version, description }),
+      ),
+    );
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((r) => r.status === 'rejected').map((r) => r.reason.status)).toEqual([
+      409,
+    ]);
+    expect(actionSchema.safeParse({ type: 'settings.save', footer: 'No witness' }).success).toBe(
+      false,
+    );
+  });
   it('allows overlapping stage slugs but scopes reads, ID mutations and nested transactions', async () => {
     const stageA = await scopedDb(db, a).tournamentStage.create({
       data: { name: 'Finals', slug: 'finals', mappool: { create: {} } },
@@ -158,6 +193,17 @@ describe('multi-tournament isolation', () => {
       include: { mappool: true },
     });
     expect(stageA.mappool?.tournamentId).toBe(a);
+    await expect(
+      act(await actor(platformId, a), {
+        type: 'stage.save',
+        id: stageA.id,
+        name: 'Missing review witness',
+        slug: stageA.slug,
+        description: '',
+        position: 0,
+        startsAt: null,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
     expect(stageB.mappool?.tournamentId).toBe(b);
     expect(
       await scopedDb(db, a).tournamentStage.findUnique({ where: { id: stageB.id } }),

@@ -30,13 +30,30 @@ let alpha = '',
   foreignCategory = '',
   roleId = '';
 let verified = false;
+let reviewVersions: Record<string, number> = {};
 const payload = (patch: StaffBulkAction['patch'], memberIds = [alpha, beta]): StaffBulkAction => ({
   type: 'staff.bulk',
   memberIds,
+  baseVersions: Object.fromEntries(memberIds.map((id) => [id, reviewVersions[id] || 1])),
   patch,
 });
-const apply = (input: StaffBulkAction, user: Actor | null = actor) =>
-  db.$transaction((tx) => applyStaffBulkAction(tx, user, input), { timeout: 15000 });
+const refreshReview = async () => {
+  reviewVersions = Object.fromEntries(
+    (
+      await db.staffMember.findMany({
+        where: { tournamentId },
+        select: { id: true, version: true },
+      })
+    ).map((member) => [member.id, member.version]),
+  );
+};
+const apply = async (input: StaffBulkAction, user: Actor | null = actor) => {
+  const result = await db.$transaction((tx) => applyStaffBulkAction(tx, user, input), {
+    timeout: 15000,
+  });
+  await refreshReview();
+  return result;
+};
 const snapshot = () =>
   db.staffMember.findMany({
     where: { tournamentId },
@@ -118,6 +135,7 @@ beforeEach(async () => {
       update: {},
     });
   });
+  await refreshReview();
 });
 
 afterAll(async () => {
@@ -197,6 +215,39 @@ describe('staff bulk input validation', () => {
 });
 
 describe('atomic public staff bulk operations', () => {
+  it('rejects stale selections atomically after another staff edit', async () => {
+    const stale = payload({ visible: false });
+    await apply(
+      payload({ assignment: { operation: 'LABEL', categoryId: hosts, position: 'New label' } }),
+    );
+    const before = await snapshot();
+    await expect(apply(stale)).rejects.toMatchObject({ status: 409 });
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('rejects stale single-member and category forms, including omitted witnesses', async () => {
+    const [member] = await snapshot();
+    const input = actionSchema.parse({
+      ...member,
+      type: 'staff.save',
+      baseVersion: member.version,
+      bio: 'Reviewed bio',
+    });
+    await executeAction(actor, input);
+    await expect(executeAction(actor, input)).rejects.toMatchObject({ status: 409 });
+    await expect(
+      executeAction(actor, actionSchema.parse({ ...member, type: 'staff.save' })),
+    ).rejects.toMatchObject({ status: 409 });
+    const category = await db.staffCategory.findUniqueOrThrow({ where: { id: hosts } });
+    const categoryInput = actionSchema.parse({
+      ...category,
+      type: 'staff.category.save',
+      baseVersion: category.version,
+      name: 'Reviewed category',
+    });
+    await executeAction(actor, categoryInput);
+    await expect(executeAction(actor, categoryInput)).rejects.toMatchObject({ status: 409 });
+  });
   it('dispatches the root action contract and stores its full typed payload', async () => {
     const input = payload({
       visible: false,
@@ -237,7 +288,9 @@ describe('atomic public staff bulk operations', () => {
     const before = await snapshot();
     expect(await apply(payload({ visible: false }))).toEqual({ updated: 2 });
     const after = await snapshot();
-    expect(after).toEqual(before.map((member) => ({ ...member, visible: false })));
+    expect(after).toEqual(
+      before.map((member) => ({ ...member, visible: false, version: member.version + 1 })),
+    );
     expect(await db.auditLog.count({ where: { tournamentId, action: 'staff.bulk' } })).toBe(2);
     await apply(payload({ visible: true }));
     expect((await snapshot()).every((member) => member.visible)).toBe(true);
@@ -302,6 +355,7 @@ describe('atomic public staff bulk operations', () => {
     expect(after).toEqual(
       before.map((member) => ({
         ...member,
+        version: member.version + 1,
         assignments: member.assignments.map((entry) =>
           entry.categoryId === hosts ? { ...entry, position: 'New label' } : entry,
         ),

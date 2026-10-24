@@ -785,6 +785,16 @@ slug. Public featured-root fallback does not select an editing context. Registra
 redirects reuse the pure scopedHref helper from tournament-paths.ts. New tournament
 page containers have no saved revision until the first successful save.
 
+settings-service.ts owns settings patch application within the dispatcher's locked,
+authorized transaction. settings.save requires Tournament.version and writes only
+submitted fields, incrementing that same version; lifecycle changes also invalidate
+old settings forms. Scoring impact checks and frozen gameplay snapshots are retained.
+StaffMember/StaffCategory/ModCategory version fields are introduced additively with
+default one. Edits/deletes and staff bulk operations validate reviewed witnesses;
+bulk assignment changes advance member versions and stale batches roll back. Stage
+updates require the existing configuration token. Archive inspection validates
+settings fields separately from editor action metadata, preserving old archives.
+
 ### Current Verified Ownership
 
 Source inspection at `fc41596` found one application with domain services, not

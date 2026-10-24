@@ -64,6 +64,11 @@ headings, lists, tables, links, images, dividers and heading navigation. Both re
 draft saves, explicit preview/publish/unpublish and revision history. Editing a
 published page creates a draft; only explicit publication changes guest content.
 
+Settings saves apply only reviewed changed fields. An older form, including another
+Website subsection, must fail visibly after a newer settings or lifecycle save.
+Staff/category edits and bulk selections also reject stale review witnesses without
+partial application.
+
 ## Branding And Media
 
 **Current.** Organizers edit tournament name/acronym/description, mode, status,

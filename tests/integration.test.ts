@@ -441,6 +441,7 @@ describe.sequential('persistent authorization and publishing workflows', () => {
     const before = await getTournament();
     const original = actionSchema.parse({
       type: 'settings.save',
+      baseVersion: before.version,
       ...before,
       ...before.settings,
       copy: siteCopy(before.settings?.copy),
@@ -463,7 +464,10 @@ describe.sequential('persistent authorization and publishing workflows', () => {
         registrationUrl: 'https://example.com/registration',
       });
     } finally {
-      await executeAction(owner, original);
+      await executeAction(
+        owner,
+        actionSchema.parse({ ...original, baseVersion: (await getTournament()).version }),
+      );
     }
   });
   it('enforces distributed rate limits and same-origin CSRF checks', async () => {

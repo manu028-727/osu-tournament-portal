@@ -23,6 +23,11 @@ export async function applyStaffBulkAction(
   });
   if (records.length !== action.memberIds.length)
     throw new AppError('A selected staff member no longer exists in this tournament.', 404);
+  if (records.some((record) => record.version !== action.baseVersions[record.id]))
+    throw new AppError(
+      'The selected staff changed. Reload and review before applying changes.',
+      409,
+    );
 
   const assignment = action.patch.assignment;
   if (assignment) {
@@ -47,15 +52,13 @@ export async function applyStaffBulkAction(
     }
   }
 
-  if (action.patch.visible !== undefined) {
-    const updated = await tx.staffMember.updateMany({
-      where: { tournamentId, id: { in: action.memberIds } },
-      data: { visible: action.patch.visible },
-    });
-    if (updated.count !== records.length)
-      throw new AppError('The selected staff changed. Reload before applying changes.', 409);
-  }
   for (const record of records) {
+    const updated = await tx.staffMember.updateMany({
+      where: { id: record.id, version: action.baseVersions[record.id] },
+      data: { visible: action.patch.visible, version: { increment: 1 } },
+    });
+    if (updated.count !== 1)
+      throw new AppError('The selected staff changed. Reload before applying changes.', 409);
     if (assignment?.operation === 'REMOVE') {
       await tx.staffAssignment.deleteMany({
         where: { tournamentId, memberId: record.id, categoryId: assignment.categoryId },

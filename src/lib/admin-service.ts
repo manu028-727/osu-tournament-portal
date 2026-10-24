@@ -27,7 +27,7 @@ import {
 } from './qualifiers-service';
 import type { QualifierAction } from './qualifiers-validation';
 import { inheritedRules } from './gameplay-scoring';
-import { assertScoringChange } from './gameplay-scoring-service';
+import { applySettingsAction } from './settings-service';
 import { qualifierPolicySchema } from './qualifier-policy';
 import { applyCompetitionAction } from './competition-service';
 import type { CompetitionAction } from './competition-validation';
@@ -326,8 +326,10 @@ export async function executeAction(
             ? await tx.tournamentStage.findUniqueOrThrow({ where: { id } })
             : null;
           if (
-            baseConfigurationToken &&
-            (!beforeStage || stageConfigurationToken(beforeStage) !== baseConfigurationToken)
+            id &&
+            (!baseConfigurationToken ||
+              !beforeStage ||
+              stageConfigurationToken(beforeStage) !== baseConfigurationToken)
           )
             throw new AppError('This stage changed. Reload and review before saving.', 409);
           if (qualifierPolicy !== undefined) assertPermission(actor, 'matches.manage');
@@ -497,17 +499,29 @@ export async function executeAction(
           entityId = a.id;
           break;
         case 'category.save': {
-          const { type, id, ...data } = a;
+          const { type, id, baseVersion, ...data } = a;
           void type;
+          if (
+            id &&
+            (!baseVersion ||
+              !(await tx.modCategory.findFirst({ where: { id, version: baseVersion } })))
+          )
+            throw new AppError('Category changed. Reload and review before saving.', 409);
           const category = id
-            ? await tx.modCategory.update({ where: { id }, data })
+            ? await tx.modCategory.update({
+                where: { id, version: baseVersion },
+                data: { ...data, version: { increment: 1 } },
+              })
             : await tx.modCategory.create({ data });
           entityId = category.id;
           break;
         }
         case 'category.delete':
           {
-            const category = await tx.modCategory.findUniqueOrThrow({ where: { id: a.id } });
+            const category = await tx.modCategory.findFirst({
+              where: { id: a.id, version: a.baseVersion },
+            });
+            if (!category) throw new AppError('Category changed. Reload before deleting.', 409);
             const plans = await tx.poolPlan.findMany();
             if (
               (await tx.poolCandidate.count({ where: { category: category.acronym } })) ||
@@ -528,7 +542,7 @@ export async function executeAction(
                 409,
               );
           }
-          await tx.modCategory.delete({ where: { id: a.id } });
+          await tx.modCategory.delete({ where: { id: a.id, version: a.baseVersion } });
           entityId = a.id;
           break;
         case 'staff.bulk':
@@ -536,19 +550,40 @@ export async function executeAction(
           entityId = 'bulk';
           break;
         case 'staff.category.save': {
-          const { type, id, ...data } = a;
+          const { type, id, baseVersion, ...data } = a;
           void type;
+          if (
+            id &&
+            (!baseVersion ||
+              !(await tx.staffCategory.findFirst({ where: { id, version: baseVersion } })))
+          )
+            throw new AppError('Staff category changed. Reload and review before saving.', 409);
           const category = id
-            ? await tx.staffCategory.update({ where: { id }, data })
+            ? await tx.staffCategory.update({
+                where: { id, version: baseVersion },
+                data: { ...data, version: { increment: 1 } },
+              })
             : await tx.staffCategory.create({ data });
           entityId = category.id;
           break;
         }
         case 'staff.category.delete':
-          await tx.staffCategory.delete({ where: { id: a.id } });
+          if (!(await tx.staffCategory.findFirst({ where: { id: a.id, version: a.baseVersion } })))
+            throw new AppError('Category changed. Reload before deleting.', 409);
+          await tx.staffMember.updateMany({
+            where: { assignments: { some: { categoryId: a.id } } },
+            data: { version: { increment: 1 } },
+          });
+          await tx.staffCategory.delete({ where: { id: a.id, version: a.baseVersion } });
           entityId = a.id;
           break;
         case 'staff.save': {
+          if (
+            a.id &&
+            (!a.baseVersion ||
+              !(await tx.staffMember.findFirst({ where: { id: a.id, version: a.baseVersion } })))
+          )
+            throw new AppError('Staff member changed. Reload and review before saving.', 409);
           const data = {
             osuId: a.osuId,
             username: profile!.username,
@@ -562,13 +597,18 @@ export async function executeAction(
           if (a.id) await tx.staffAssignment.deleteMany({ where: { memberId: a.id } });
           const assignments = { create: a.assignments };
           const member = a.id
-            ? await tx.staffMember.update({ where: { id: a.id }, data: { ...data, assignments } })
+            ? await tx.staffMember.update({
+                where: { id: a.id, version: a.baseVersion },
+                data: { ...data, assignments, version: { increment: 1 } },
+              })
             : await tx.staffMember.create({ data: { ...data, assignments } });
           entityId = member.id;
           break;
         }
         case 'staff.delete':
-          await tx.staffMember.delete({ where: { id: a.id } });
+          if (!(await tx.staffMember.findFirst({ where: { id: a.id, version: a.baseVersion } })))
+            throw new AppError('Staff member changed. Reload before deleting.', 409);
+          await tx.staffMember.delete({ where: { id: a.id, version: a.baseVersion } });
           entityId = a.id;
           break;
         case 'role.save': {
@@ -686,118 +726,9 @@ export async function executeAction(
           entityId = target.id;
           break;
         }
-        case 'settings.save': {
-          const {
-            type,
-            name,
-            acronym,
-            description,
-            status,
-            gameMode,
-            timezone,
-            format,
-            startsAt,
-            endsAt,
-            scoringReview,
-            ...settings
-          } = a;
-          void type;
-          const currentSettings = await tx.tournamentSettings.findUniqueOrThrow({
-            where: { tournamentId },
-          });
-          if (a.gameplayScoring === null && currentSettings.gameplayScoring)
-            throw new AppError(
-              'An established gameplay scoring system cannot be cleared. Choose a supported mode and review its impact.',
-              409,
-            );
-          if (a.gameplayScoring && a.gameplayScoring !== currentSettings.gameplayScoring) {
-            await assertScoringChange(
-              tx,
-              tournamentId,
-              currentSettings.gameplayScoring,
-              a.gameplayScoring,
-              !!scoringReview,
-            );
-            // Scheduled, unplayed snapshots may follow a configuration change.
-            // Recorded competitive snapshots are never rewritten.
-            for (const match of await tx.match.findMany({
-              where: { status: 'SCHEDULED' },
-              include: { actions: true, results: true },
-            })) {
-              if (match.actions.length || match.results.length) continue;
-              await tx.match.update({
-                where: { id: match.id },
-                data: {
-                  rules: JSON.parse(
-                    JSON.stringify(inheritedRules(match.rules, a.gameplayScoring, gameMode)),
-                  ),
-                  version: { increment: 1 },
-                },
-              });
-              await tx.matchEvent.create({
-                data: {
-                  matchId: match.id,
-                  version: match.version + 1,
-                  actorId: actor.id,
-                  kind: 'scoring.configuration',
-                  data: { before: currentSettings.gameplayScoring, after: a.gameplayScoring },
-                },
-              });
-            }
-            for (const lobby of await tx.qualifierLobby.findMany({
-              where: { status: 'SCHEDULED' },
-              include: { scores: true },
-            })) {
-              if (lobby.scores.length) continue;
-              await tx.qualifierLobby.update({
-                where: { id: lobby.id },
-                data: {
-                  gameplayScoring: a.gameplayScoring,
-                  rules: JSON.parse(
-                    JSON.stringify(inheritedRules(lobby.rules, a.gameplayScoring, gameMode)),
-                  ),
-                  version: { increment: 1 },
-                },
-              });
-              await tx.qualifierEvent.create({
-                data: {
-                  lobbyId: lobby.id,
-                  version: lobby.version + 1,
-                  actorId: actor.id,
-                  kind: 'scoring.configuration',
-                  data: { before: currentSettings.gameplayScoring, after: a.gameplayScoring },
-                },
-              });
-            }
-          }
-          if (timezone)
-            try {
-              new Intl.DateTimeFormat('en', { timeZone: timezone });
-            } catch {
-              throw new AppError('Choose a valid IANA timezone.');
-            }
-          if (
-            gameMode !== tournament.gameMode &&
-            (await tx.mappool.count({ where: { state: 'PUBLISHED' } })) > 0
-          )
-            throw new AppError('Unpublish all mappools before changing the game mode.');
-          await tx.tournament.update({
-            where: { id: tournamentId },
-            data: {
-              name,
-              acronym,
-              description,
-              status,
-              gameMode,
-              timezone,
-              format,
-              startsAt,
-              endsAt,
-              settings: { update: settings },
-            },
-          });
+        case 'settings.save':
+          await applySettingsAction(tx, actor, tournamentId, a);
           break;
-        }
         case 'media.delete':
           throw new AppError('Use the media deletion endpoint.');
         default: {

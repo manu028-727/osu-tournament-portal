@@ -37,7 +37,14 @@ import { PoolSlotTable, type EditorSlot } from './pool-slot-table';
 import { movePoolSlot, nextSlotName, poolSlotErrors, sortPoolSlots } from '@/lib/mappool-order';
 import type { PoolPlanView } from '@/lib/pooling-types';
 import { PoolReleaseManager } from './pool-release-manager';
-type Category = { id: string; name: string; acronym: string; color: string; position: number };
+type Category = {
+  id: string;
+  version: number;
+  name: string;
+  acronym: string;
+  color: string;
+  position: number;
+};
 type Pool = {
   id: string;
   state: string;
@@ -957,7 +964,7 @@ export function PoolEditor({
                 description="Saved revisions are preserved. New drafts must use existing categories."
                 onConfirm={() =>
                   void run(async () => {
-                    await action({ type: 'category.delete', id: c.id });
+                    await action({ type: 'category.delete', id: c.id, baseVersion: c.version });
                     await reload();
                   }, 'Category deleted.')
                 }
@@ -979,6 +986,7 @@ export function PoolEditor({
                 color: '#b6a0e5',
                 position: data.categories.length,
                 ...categoryDraft,
+                baseVersion: categoryDraft.version,
               });
               setCategoryDraft({});
               await reload();

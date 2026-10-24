@@ -57,6 +57,33 @@ export const slotSchema = z.object({
   beatmapId: z.number().int().positive().max(2147483647),
 });
 const base = z.object({ type: z.string() });
+export const settingsFieldsSchema = z.object({
+  gameplayScoring: gameplayScoringSchema.nullable().optional(),
+  name: label,
+  acronym: z.string().trim().min(1).max(20),
+  description: z.string().max(2000),
+  status: z.enum(['DRAFT', 'UPCOMING', 'REGISTRATIONS_OPEN', 'ONGOING', 'COMPLETED']),
+  timezone: z.string().max(100).optional(),
+  format: z.enum(['SOLO', 'TEAMS', 'CUSTOM']).optional(),
+  startsAt: z.iso.datetime().nullable().optional(),
+  endsAt: z.iso.datetime().nullable().optional(),
+  gameMode: z.enum(['osu', 'taiko', 'fruits', 'mania']),
+  logo: safeUrl,
+  favicon: safeUrl,
+  banner: safeUrl,
+  primaryColor: color,
+  accentColor: color,
+  registrationUrl: safeUrl,
+  socialLinks: z.array(z.object({ label, href: safeUrl })).max(15),
+  importantDates: z.array(z.object({ label, date: z.iso.date() })).max(30),
+  navigation: z.array(z.object({ label, href: safeUrl })).max(15),
+  copy: z.object(
+    Object.fromEntries(
+      Object.keys(DEFAULT_COPY).map((key) => [key, z.string().max(2000)]),
+    ) as Record<keyof typeof DEFAULT_COPY, z.ZodString>,
+  ),
+  footer: z.string().max(1000),
+});
 export const actionSchema = z.discriminatedUnion('type', [
   ...poolingActionOptions,
   ...stageWorkflowActionSchemas,
@@ -119,23 +146,30 @@ export const actionSchema = z.discriminatedUnion('type', [
   base.extend({ type: z.literal('pool.unpublish'), id }),
   base.extend({
     type: z.literal('category.save'),
+    baseVersion: z.number().int().positive().optional(),
     id: id.optional(),
     name: label,
     acronym: z.string().regex(/^[A-Z0-9]{1,10}$/),
     color,
     position: z.number().int().min(0),
   }),
-  base.extend({ type: z.literal('category.delete'), id }),
+  base.extend({ type: z.literal('category.delete'), id, baseVersion: z.number().int().positive() }),
   base.extend({
     type: z.literal('staff.category.save'),
+    baseVersion: z.number().int().positive().optional(),
     id: id.optional(),
     name: label,
     description: z.string().max(500),
     position: z.number().int().min(0),
   }),
-  base.extend({ type: z.literal('staff.category.delete'), id }),
+  base.extend({
+    type: z.literal('staff.category.delete'),
+    id,
+    baseVersion: z.number().int().positive(),
+  }),
   base.extend({
     type: z.literal('staff.save'),
+    baseVersion: z.number().int().positive().optional(),
     id: id.optional(),
     osuId: z.number().int().positive(),
     bio: z.string().max(2000),
@@ -144,7 +178,7 @@ export const actionSchema = z.discriminatedUnion('type', [
     position: z.number().int().min(0),
     assignments: z.array(z.object({ categoryId: id, position: z.string().max(120) })).max(20),
   }),
-  base.extend({ type: z.literal('staff.delete'), id }),
+  base.extend({ type: z.literal('staff.delete'), id, baseVersion: z.number().int().positive() }),
   base.extend({
     type: z.literal('role.save'),
     id: id.optional(),
@@ -154,36 +188,10 @@ export const actionSchema = z.discriminatedUnion('type', [
   }),
   base.extend({ type: z.literal('role.delete'), id }),
   base.extend({ type: z.literal('user.roles'), userId: id, roleIds: z.array(id).max(30) }),
-  base.extend({
+  settingsFieldsSchema.partial().extend({
     type: z.literal('settings.save'),
+    baseVersion: z.number().int().positive(),
     scoringReview: z.boolean().optional(),
-    gameplayScoring: gameplayScoringSchema.nullable().optional(),
-    name: label,
-    acronym: z.string().trim().min(1).max(20),
-    description: z.string().max(2000),
-    status: z.enum(['DRAFT', 'UPCOMING', 'REGISTRATIONS_OPEN', 'ONGOING', 'COMPLETED']),
-    timezone: z.string().max(100).optional(),
-    format: z.enum(['SOLO', 'TEAMS', 'CUSTOM']).optional(),
-    startsAt: z.iso.datetime().nullable().optional(),
-    endsAt: z.iso.datetime().nullable().optional(),
-    gameMode: z.enum(['osu', 'taiko', 'fruits', 'mania']),
-    logo: safeUrl,
-    favicon: safeUrl,
-    banner: safeUrl,
-    primaryColor: color,
-    accentColor: color,
-    registrationUrl: safeUrl,
-    socialLinks: z.array(z.object({ label, href: safeUrl })).max(15),
-    importantDates: z.array(z.object({ label, date: z.iso.date() })).max(30),
-    navigation: z.array(z.object({ label, href: safeUrl })).max(15),
-    copy: z
-      .object(
-        Object.fromEntries(
-          Object.keys(DEFAULT_COPY).map((key) => [key, z.string().max(2000)]),
-        ) as Record<keyof typeof DEFAULT_COPY, z.ZodString>,
-      )
-      .default(DEFAULT_COPY),
-    footer: z.string().max(1000),
   }),
   base.extend({ type: z.literal('media.delete'), id }),
 ]);

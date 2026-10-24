@@ -18,8 +18,15 @@ import {
   useTask,
   useUnsaved,
 } from './shared';
-type Category = { id: string; name: string; description: string; position: number };
+type Category = {
+  id: string;
+  version: number;
+  name: string;
+  description: string;
+  position: number;
+};
 type Member = {
+  version: number;
   id: string;
   osuId: number;
   username: string;
@@ -31,7 +38,10 @@ type Member = {
   position: number;
   assignments: { categoryId: string; position: string }[];
 };
-type Draft = Omit<Member, 'id' | 'username' | 'avatarUrl' | 'profileUrl'> & { id?: string };
+type Draft = Omit<Member, 'id' | 'username' | 'avatarUrl' | 'profileUrl' | 'version'> & {
+  id?: string;
+  version?: number;
+};
 export function StaffEditor({ actor }: { actor: Actor }) {
   const { data, error, reload } = useResource<{ members: Member[]; categories: Category[] }>(
     'staff',
@@ -303,7 +313,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                   disabled={busy}
                   onConfirm={() =>
                     void run(async () => {
-                      await action({ type: 'staff.delete', id: m.id });
+                      await action({ type: 'staff.delete', id: m.id, baseVersion: m.version });
                       await reload();
                     }, 'Staff member removed.')
                   }
@@ -360,7 +370,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
             onSubmit={(e) => {
               e.preventDefault();
               void run(async () => {
-                await action({ type: 'staff.save', ...member });
+                await action({ type: 'staff.save', ...member, baseVersion: member.version });
                 await reload();
                 setMember(null);
                 setDirty(false);
@@ -490,7 +500,11 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                 description="Staff members will remain, but their assignments to this category will be removed."
                 onConfirm={() =>
                   void run(async () => {
-                    await action({ type: 'staff.category.delete', id: c.id });
+                    await action({
+                      type: 'staff.category.delete',
+                      id: c.id,
+                      baseVersion: c.version,
+                    });
                     await reload();
                   }, 'Category removed.')
                 }
@@ -510,6 +524,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                 description: '',
                 position: data.categories.length,
                 ...category,
+                baseVersion: category?.version,
               });
               setCategory(null);
               await reload();
@@ -621,6 +636,7 @@ function StaffBulkDialog({
           onSave({
             type: 'staff.bulk',
             memberIds: members.map((member) => member.id),
+            baseVersions: Object.fromEntries(members.map((member) => [member.id, member.version])),
             patch: {
               ...(visibility !== 'KEEP' ? { visible: visibility === 'SHOW' } : {}),
               ...(assignment ? { assignment } : {}),

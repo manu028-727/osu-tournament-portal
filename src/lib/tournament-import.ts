@@ -18,7 +18,7 @@ import {
   type ParsedArchive,
 } from './tournament-archive-format';
 import { cleanHtml } from './rich-text';
-import { blockSchema, actionSchema, safeUrl } from './validation';
+import { blockSchema, settingsFieldsSchema, safeUrl } from './validation';
 import { matchRulesSchema } from './match-rules';
 import type { Prisma } from '@/generated/prisma/client';
 import { competitionActionSchema } from './competition-validation';
@@ -84,7 +84,7 @@ export async function inspectArchive(bytes: Buffer) {
   // Validate real CMS/rule contracts before staging files, not just the ZIP envelope.
   const t = archive.data.tournament[0],
     settings = archive.data.settings[0];
-  actionSchema.parse({ ...t, ...settings, type: 'settings.save' });
+  settingsFieldsSchema.parse({ ...t, ...settings });
   matchRulesSchema.parse(settings.matchRules);
   for (const block of archive.data.blocks) blockSchema.parse(block);
   for (const stage of archive.data.stages)

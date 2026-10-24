@@ -591,6 +591,17 @@ this delivery record owns the current implementation/check state.
   Persistent profiles pass 1920/1366/768/390/320 in light/dark; desktop and narrow
   screenshots were inspected. Evidence: .data/cleanup-20261024/browser-context-final
   and the ignored profile screenshots. No saved publication flags were rewritten.
+- Stale-write phase (F02): settings writes moved into settings-service.ts and now
+  apply narrow patches with Tournament.version checks; staff/category additive
+  versions protect edits/deletes/bulk batches, and stage updates require review
+  tokens. Archive inspection now shares field validation independently of actions.
+  188 integration tests, 339 unit tests, lint, format, types and production build
+  pass, including populated-version migration and concurrent old-form regressions.
+  The new production browser regression passes exact patch payload, visible stale
+  rejection, retained dirty values and preserved current data in two open forms.
+  It exposed and fixed JSON object-key ordering in patch comparison. Evidence:
+  .data/cleanup-20261024/browser-stale-forms-pass. Other four platform browser cases
+  passed in the earlier batch. No installation migrations were applied.
 
 Work in this order unless the maintainer explicitly reprioritizes. Items marked
 conditional are extensions, not already approved commitments or release blockers.

@@ -121,6 +121,7 @@ try {
   assert.equal((await guest.request.get(origin + asset.url)).status(), 404);
   await post(context.request, endpoint, {
     type: 'settings.save',
+    baseVersion: t.version,
     name: t.name,
     acronym: t.acronym,
     description: '',

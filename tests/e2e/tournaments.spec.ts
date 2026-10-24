@@ -296,6 +296,56 @@ test('creates private tournaments, switches scoped CMS contexts and publishes in
   }
 });
 
+test('independent settings forms retain stale edits and send only changed fields', async ({
+  page,
+  context,
+}) => {
+  await context.addCookies([
+    { name: 'tournament_session', value: raw, url: 'http://localhost:3001' },
+  ]);
+  const slug = `${prefix}-settings`;
+  const created = await context.request.post('/api/tournaments', {
+    headers: { Origin: 'http://localhost:3001' },
+    data: { type: 'create', name: 'Concurrent settings QA', acronym: 'QA', slug, gameMode: 'osu' },
+  });
+  expect(created.ok()).toBe(true);
+  const tournament = await created.json();
+  const other = await context.newPage();
+  await page.goto(`/t/${slug}/admin/website?view=info`);
+  await other.goto(`/t/${slug}/admin/website?view=navigation`);
+  await page.getByLabel('Tournament name', { exact: true }).fill('Reviewed identity');
+  await other.getByLabel('Footer content', { exact: true }).fill('Independent stale footer');
+  const request = page.waitForRequest(
+    (r) => r.url().includes('/api/admin/action') && r.method() === 'POST',
+  );
+  await page.getByRole('button', { name: 'Save changes', exact: true }).first().click();
+  expect((await request).postDataJSON()).toEqual({
+    type: 'settings.save',
+    baseVersion: 1,
+    name: 'Reviewed identity',
+    scoringReview: false,
+  });
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Saved. Website settings' }),
+  ).toBeVisible();
+  await other.getByRole('button', { name: 'Save changes', exact: true }).first().click();
+  await expect(other.getByRole('alert').filter({ hasText: 'settings changed' })).toBeVisible();
+  await expect(other.getByLabel('Footer content', { exact: true })).toHaveValue(
+    'Independent stale footer',
+  );
+  await expect(
+    other.getByRole('button', { name: 'Save changes', exact: true }).first(),
+  ).toBeEnabled();
+  expect((await db.tournament.findUniqueOrThrow({ where: { id: tournament.id } })).name).toBe(
+    'Reviewed identity',
+  );
+  expect(
+    (await db.tournamentSettings.findUniqueOrThrow({ where: { tournamentId: tournament.id } }))
+      .footer,
+  ).toBe('Concurrent settings QA');
+  await other.close();
+});
+
 test('public tournament profile stays mounted across tabs without duplicate navigation', async ({
   browser,
   context,
