@@ -9,13 +9,13 @@ import {
 } from '@playwright/test';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
-import { PrismaClient } from '../../src/generated/prisma/client';
 import type { Prisma } from '../../src/generated/prisma/client';
-import { matchRulesSchema } from '../../src/lib/match-rules';
-import type { CompetitionCreate } from '../../src/lib/competition-validation';
+import { PrismaClient } from '../../src/generated/prisma/client';
 import type { CompetitionData } from '../../src/lib/competition-types';
-import type { QualifierStandingsData } from '../../src/lib/qualifier-standings-service';
+import type { CompetitionCreate } from '../../src/lib/competition-validation';
+import { matchRulesSchema } from '../../src/lib/match-rules';
 import type { MatchListData } from '../../src/lib/matches-types';
+import type { QualifierStandingsData } from '../../src/lib/qualifier-standings-contract';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl || new URL(databaseUrl).pathname !== '/tournament_platform_test')

@@ -1,23 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Prisma } from '../src/generated/prisma/client';
-import type { Actor } from '../src/lib/permissions';
 import { matchRulesSchema } from '../src/lib/match-rules';
+import type { Actor } from '../src/lib/permissions';
 import { qualifierPolicySchema } from '../src/lib/qualifier-policy';
 import { qualifierSourceHash } from '../src/lib/qualifier-seeding';
-
-const { root } = vi.hoisted(() => ({ root: {} as Record<string, unknown> }));
-vi.mock('../src/lib/db', () => ({ db: root }));
+import {
+  qualifierStandingSnapshot,
+  type QualifierStandingSnapshot,
+} from '../src/lib/qualifier-standings-contract';
+import { rebindImportedQualifierStandings } from '../src/lib/qualifier-standings-restoration';
 import {
   applyQualifierStandingsAction,
   assertQualifierMutable,
   finalizedQualifierSeeds,
+} from '../src/lib/qualifier-standings-service';
+import {
   loadQualifierCalculation,
   publishedQualifierStandings,
   qualifierStandingsData,
-  rebindImportedQualifierStandings,
-  qualifierStandingSnapshot,
-  type QualifierStandingSnapshot,
-} from '../src/lib/qualifier-standings-service';
+} from '../src/lib/qualifier-standings-sources';
+
+const { root } = vi.hoisted(() => ({ root: {} as Record<string, unknown> }));
+vi.mock('../src/lib/db', () => ({ db: root }));
 
 const actor: Actor = {
   id: 'organizer',

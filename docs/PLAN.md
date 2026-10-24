@@ -416,7 +416,7 @@ maintainer direction and must never translate saved content automatically.
 
 ### F10 Obsolescence And Compatibility Inventory
 
-Sources: [old pilot harness](../tests/smoke/calm-pilot.ts),
+Sources at the audit revision: old `tests/smoke/calm-pilot.ts`,
 [active profile](../src/components/home-content.tsx),
 [active shell](../src/components/admin/shell.tsx),
 [obsolete-action response](../src/lib/admin-service.ts).
@@ -630,6 +630,23 @@ this delivery record owns the current implementation/check state.
   No migration. Representative installation query/index/archive-memory tuning
   remains blocked on an approved restored dataset; synthetic correctness fixtures
   do not establish production performance or justify speculative indexes.
+- Domain/archive phase (F05/F08/F10): separated authorized match/competition reads,
+  record helpers, group seed witnesses and archive restoration from mutation
+  services. Qualifier source assembly, shared contracts and restoration now have
+  independent owners; the standings mutation service is 289 lines. Client types
+  no longer point into match mutation code. Schema tests explicitly account for
+  all generated models/scalars, wire exclusions, insertion order and deferred
+  references. One version 1 JSON identity traversal preserves historical behavior;
+  competitive witnesses still prove equivalence before rebinding hashes. Removed
+  the obsolete rejected media action and calm pilot harness after checking current
+  browser coverage. Active CSS and historical compatibility remain.
+  343 unit tests, 208 integration tests, lint/types and production build pass.
+  A two-connection isolated lock probe measured 151.7ms wait for a controlled 150ms
+  hold (.data/cleanup-20261024/lock-contention.json); this confirms serialization,
+  not a production throughput limit. The shared lock remains unchanged.
+  Production Chromium passes 18 competition/qualifier/referee cases; the optional
+  mock-IRC case was skipped in this phase and remains a final gate. Evidence:
+  .data/cleanup-20261024/browser-domain-extraction. No migration for extraction.
 
 Work in this order unless the maintainer explicitly reprioritizes. Items marked
 conditional are extensions, not already approved commitments or release blockers.

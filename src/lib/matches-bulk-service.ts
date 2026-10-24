@@ -1,6 +1,6 @@
 import { Prisma } from '@/generated/prisma/client';
 import { AppError, assertPermission, type Actor } from './permissions';
-import type { MatchParticipants } from './matches-service';
+import type { MatchParticipants } from './matches-types';
 import { assertScheduleAvailability } from './schedule-availability';
 import {
   matchesSchedulingActionSchema,

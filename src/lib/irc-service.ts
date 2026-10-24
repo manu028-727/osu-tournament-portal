@@ -3,7 +3,8 @@ import { db } from './db';
 import { actorForTournament } from './auth';
 import { assertPermission, AppError, can } from './permissions';
 import { matchAccess } from './match-access';
-import { matchScope, lobbyInfo } from './matches-service';
+import { matchScope } from './match-access';
+import { lobbyInfo } from './match-record';
 import type { Prisma } from '@/generated/prisma/client';
 
 export const gatewayRequest = z.object({

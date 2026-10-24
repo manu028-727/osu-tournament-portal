@@ -3,13 +3,10 @@ import { db as rootDb } from './db';
 import { scopedDb } from './scoped-db';
 import { can, assertPermission, AppError, type Actor, type PermissionKey } from './permissions';
 import { matchAccess } from './match-access';
-import {
-  matchScope,
-  rosterSnapshot,
-  matchOptions,
-  lobbyInfo,
-  type MatchParticipants,
-} from './matches-service';
+import { matchScope } from './match-access';
+import { rosterSnapshot, lobbyInfo } from './match-record';
+import { matchOptions } from './match-queries';
+import { type MatchParticipants } from './matches-types';
 import { teamInclude } from './teams-service';
 import { matchRulesSchema } from './match-rules';
 import { convertedScore } from './match-engine';

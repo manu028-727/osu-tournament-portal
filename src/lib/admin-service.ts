@@ -70,7 +70,6 @@ export function actionPermission(a: AdminAction): PermissionKey {
   if (a.type.startsWith('role.')) return 'roles.manage';
   if (a.type === 'user.roles') return 'users.manage';
   if (a.type === 'settings.save') return 'settings.manage';
-  if (a.type === 'media.delete') return 'media.upload';
   if (a.type === 'stage.delete') return 'mappools.delete';
   if (a.type === 'stage.save') return 'id' in a && a.id ? 'mappools.edit' : 'mappools.create';
   if (a.type === 'pool.publish' || a.type === 'pool.unpublish') return 'mappools.publish';
@@ -729,8 +728,6 @@ export async function executeAction(
         case 'settings.save':
           await applySettingsAction(tx, actor, tournamentId, a);
           break;
-        case 'media.delete':
-          throw new AppError('Use the media deletion endpoint.');
         default: {
           const unsupported: never = a;
           void unsupported;

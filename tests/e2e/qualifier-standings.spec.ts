@@ -1,14 +1,14 @@
 import { test as base, expect } from '@playwright/test';
-import { PrismaClient } from '../../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
+import { PrismaClient } from '../../src/generated/prisma/client';
 import { DEFAULT_COPY } from '../../src/lib/copy';
 import { qualifierPolicySchema } from '../../src/lib/qualifier-policy';
 import { calculateQualifierStandings, qualifierSourceHash } from '../../src/lib/qualifier-seeding';
 import type {
   QualifierStandingsData,
   QualifierStandingVersion,
-} from '../../src/lib/qualifier-standings-service';
+} from '../../src/lib/qualifier-standings-contract';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl || new URL(databaseUrl).pathname !== '/tournament_platform_test')

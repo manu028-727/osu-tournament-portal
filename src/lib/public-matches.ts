@@ -2,7 +2,7 @@ import { db as rootDb } from './db';
 import { scopedDb } from './scoped-db';
 import { requestScope } from './tournament-context';
 import { matchCredits } from './match-display';
-import type { MatchParticipants } from './matches-service';
+import type { MatchParticipants } from './matches-types';
 import type { Prisma } from '@/generated/prisma/client';
 import { numericMatchIdentifier } from './match-numbering';
 import { isPublicTournament, publicTournamentWhere } from './public-visibility';

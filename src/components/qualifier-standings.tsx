@@ -1,5 +1,5 @@
 import type { QualifierStandingRow } from '@/lib/qualifier-seeding';
-import type { PublishedQualifierStandings } from '@/lib/qualifier-standings-service';
+import type { PublishedQualifierStandings } from '@/lib/qualifier-standings-contract';
 import { QUALIFIER_METHOD_LABELS, type QualifierPolicy } from '@/lib/qualifier-policy';
 
 const number = (value: number | null) =>

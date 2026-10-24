@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { db } from '../src/lib/db';
-import { actorForTournament } from '../src/lib/auth';
-import { tournamentAction } from '../src/lib/tournaments-service';
 import { executeAction } from '../src/lib/admin-service';
-import { actionSchema } from '../src/lib/validation';
+import { actorForTournament } from '../src/lib/auth';
+import { db } from '../src/lib/db';
 import { inheritedRules } from '../src/lib/gameplay-scoring';
 import { scoringImpact } from '../src/lib/gameplay-scoring-service';
+import { matchOptions } from '../src/lib/match-queries';
 import type { Actor } from '../src/lib/permissions';
-import { matchOptions } from '../src/lib/matches-service';
+import { tournamentAction } from '../src/lib/tournaments-service';
+import { actionSchema } from '../src/lib/validation';
 const prefix = `scoring-${Date.now()}`;
 const ids: string[] = [];
 const users: string[] = [];

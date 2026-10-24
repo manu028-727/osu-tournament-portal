@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { remapArchiveValue } from './archive-identities';
 import sharp from 'sharp';
 import { z } from 'zod';
 import { inferLegacyScoring } from './gameplay-scoring';
@@ -8,6 +9,8 @@ import { getObject, putObject, deleteObject, contentHash } from './storage';
 import { archiveDelegate, type TransferClient } from './tournament-export';
 import {
   ARCHIVE_TABLES,
+  archiveInsertionOrder,
+  archiveDeferredFields,
   tableNames,
   tokens,
   readArchive,
@@ -23,8 +26,8 @@ import { matchRulesSchema } from './match-rules';
 import type { Prisma } from '@/generated/prisma/client';
 import { competitionActionSchema } from './competition-validation';
 import { qualifierPolicySchema } from './qualifier-policy';
-import { rebindImportedQualifierStandings } from './qualifier-standings-service';
-import { rebindImportedCompetition, validateCompetitionArchive } from './competition-service';
+import { rebindImportedQualifierStandings } from './qualifier-standings-restoration';
+import { rebindImportedCompetition, validateCompetitionArchive } from './competition-restoration';
 import { restoreArchiveMatchNumbers } from './match-numbering';
 
 export const importSlug = z
@@ -183,15 +186,8 @@ function remapJson(
   ids: Map<string, string>,
   archive: ParsedArchive,
   slug: string,
-  field = '',
-  path: string[] = [],
 ): unknown {
-  if (typeof value === 'string') {
-    const identityField =
-      /^(?:id|.*Id|.*Ids|createdBy|calculatedBy|seedOrder|groupTieOrder)$/.test(field) ||
-      path.at(-2) === 'roundStages' ||
-      (field === 'order' && path.at(-2) === 'tieResolution');
-    if (identityField && ids.has(value)) return ids.get(value)!;
+  return remapArchiveValue(value, ids, (value) => {
     const sourcePrefix = `/t/${archive.manifest.sourceSlug}`;
     const text = value.replace(
       /(?:https?:\/\/[^\s"'<>]+)?\/api\/media\/([a-zA-Z0-9_-]+)/g,
@@ -205,58 +201,8 @@ function remapJson(
     return text
       .replaceAll(archive.manifest.sourceOrigin + sourcePrefix, `/t/${slug}`)
       .replace(new RegExp(sourcePrefix + '(?=[/?#"\'\\s<]|$)', 'g'), `/t/${slug}`);
-  }
-  if (Array.isArray(value))
-    return value.map((child) => remapJson(child, ids, archive, slug, field, path));
-  if (value && typeof value === 'object')
-    return Object.fromEntries(
-      Object.entries(value).map(([key, child]) => [
-        key,
-        remapJson(child, ids, archive, slug, key, [...path, key]),
-      ]),
-    );
-  return value;
+  });
 }
-const insertionOrder: ArchiveTable[] = [
-  'media',
-  'stages',
-  'categories',
-  'poolPlans',
-  'poolSkillsets',
-  'poolWarnings',
-  'poolCandidates',
-  'poolTags',
-  'poolReviews',
-  'pages',
-  'pageRevisions',
-  'blocks',
-  'pools',
-  'poolRevisions',
-  'slots',
-  'staffCategories',
-  'staffMembers',
-  'staffAssignments',
-  'teams',
-  'rosters',
-  'matches',
-  'actions',
-  'mapResults',
-  'playerScores',
-  'events',
-  'resultRevisions',
-  'multiplayerGames',
-  'qualifierLobbies',
-  'qualifierEntries',
-  'qualifierScores',
-  'qualifierEvents',
-  'qualifierStandings',
-  'brackets',
-  'bracketRounds',
-  'bracketNodes',
-  'bracketSlots',
-  'bracketEntries',
-  'audits',
-];
 async function insert(client: TransferClient, table: ArchiveTable, rows: ArchiveRow[]) {
   for (let index = 0; index < rows.length; index += 500)
     await archiveDelegate(client, table).createMany({ data: rows.slice(index, index + 500) });
@@ -438,7 +384,7 @@ export async function importTournament(
           skipDuplicates: true,
         });
         const deferred: { table: ArchiveTable; id: unknown; fields: ArchiveRow }[] = [];
-        for (const table of insertionOrder) {
+        for (const table of archiveInsertionOrder) {
           const rows = mapped[table].map((row) => {
             const data: ArchiveRow = { ...row };
             for (const { name, type } of tokens(table)) {
@@ -446,11 +392,7 @@ export async function importTournament(
               if (type === 'j' && data[name] === null) data[name] = undefined;
             }
             const fields: ArchiveRow = {};
-            for (const key of table === 'stages'
-              ? ['nextStageId']
-              : ['pages', 'pools'].includes(table)
-                ? ['draftRevisionId', 'publishedRevisionId']
-                : []) {
+            for (const key of archiveDeferredFields[table] || []) {
               fields[key] = data[key];
               data[key] = null;
             }
@@ -483,7 +425,7 @@ export async function importTournament(
           ids,
         );
         const counts: Record<string, number> = {};
-        for (const table of insertionOrder) {
+        for (const table of archiveInsertionOrder) {
           const rows = await archiveDelegate(tx, table).findMany({
             where: (() => {
               let where: ArchiveRow = { tournamentId };

@@ -92,20 +92,14 @@ directory/featured roots and legacy fallback records; a fresh platform needs no
 editors behind selection. `/admin/tournaments` is the platform chooser. Unscoped
 editors return there; unresolved API context returns 400, not a false resource 404.
 Empty page queries provide safe editor defaults without saving CMS content on read.
-The API guard currently detects an unresolved/none tenant, not necessarily an
-explicit selection: featured/default fallback can satisfy it. Specialized older
-routes also use getActor directly. The explicit-context contract is therefore
-incomplete; see [F13](PLAN.md#f13-explicit-tournament-context-and-redirects).
+Editing guards require an explicit proxy-derived slug independently of public
+featured/default resolution, including specialized upload/export/provider routes.
 
 `src/app/(public)/layout.tsx` owns published profile/identity/tabs outside changing
 page content. Same-tournament links reuse nodes; cross-tournament links deliberately
-replace the document to reset tenant state. Public queries gate publication/archive
-state inconsistently: publication is checked broadly, but only competition and
-qualifier-standings readers also exclude archived tournaments. Directory, CMS,
-pools, teams, matches, media and the shared public layout currently accept a
-published archived tournament. Archiving preserves the published flag. This is a
-known contract discrepancy, not the target visibility policy; see
-[F01](PLAN.md#f01-public-lifecycle-gates).
+replace the document to reset tenant state. Every guest reader uses the shared
+published-and-not-archived predicate. Archiving preserves saved publication flags
+and content while withholding the tournament from guests.
 
 ## API And Mutation Contracts
 
@@ -153,10 +147,9 @@ The primary mutation pipeline:
    and reloads the actor's current memberships/permissions.
 4. Domain services check tenant, capability, lifecycle and expected version/revision/
    configuration witness, then atomically write related rows and audit/events.
-5. Return saved results and refresh resources. Matches, teams, revisions and several
-   bulk workflows compare reviewed witnesses. Settings, individual staff/category
-   edits and staff bulk edits do not have equivalent stale-form checks; stage.save
-   accepts an omitted configuration token. See [F02](PLAN.md#f02-stale-editor-writes).
+5. Return saved results and refresh resources. Mutable editors compare reviewed
+   versions/revisions/configuration witnesses; settings apply narrow versioned
+   patches and stage updates require configuration tokens.
    Root transaction timeout is 15 seconds; avoid network
    work under locks where the existing architecture allows preparation outside.
 
@@ -465,14 +458,10 @@ production. S3 uses scoped server credentials, bounded reads, two SDK attempts a
 
 Same-origin media routes check publication/reference/ownership separately for global
 and tenant assets. Failed saves do not create false catalog success. Referenced
-deletion is refused. Archive imports retain retryable cleanup through
-TournamentTransfer. Ordinary tenant/platform
-media deletion commits the catalog deletion first, then attempts object deletion;
-failure is logged and the object key is not retained in a cleanup job. Upload
-compensation also has no durable journal. Those failures can leave private orphan
-objects; ordinary cleanup is not currently retryable through the application.
-See [F04](PLAN.md#f04-media-reference-and-cleanup-ownership). Back up all saved
-revision references, not only current visible artwork.
+deletion is refused, including hidden and historical references. Archive imports
+retain retryable cleanup through TournamentTransfer; ordinary uploads/deletes use
+the MediaCleanup outbox described in [implementation boundaries](#implementation-boundaries-and-proposed-cleanup).
+Back up every saved revision reference, not only current visible artwork.
 
 ## Tournament Archive Protocol
 
@@ -831,33 +820,24 @@ media-references.ts parses exact URLs and snapshot image IDs, protects hidden an
 historical references in bounded batches, and is shared by ownership/public checks.
 Public inference still applies publication/visibility filters before traversal.
 
-### Current Verified Ownership
+### Current Domain Ownership
 
-Source inspection at `fc41596` found one application with domain services, not
-separate competing backend implementations. The schema has 57 models across seven
-migrations. The counts below describe that revision, not permanent size limits.
-Audit actions, priorities and acceptance gates live only in
-[PLAN](PLAN.md#repository-audit-and-cleanup-phase).
+| Boundary            | Owner and dependency direction                                                                                                                                                                                                                                                       |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Match reads         | match-queries.ts owns authorized options, list/detail and history projections; match-record.ts owns database projections, roster snapshots and draft/lobby helpers; matches-types.ts is client-safe                                                                                  |
+| Match mutations     | matches-service.ts owns state transitions, score/action history and audited corrections using the caller's transaction; match-access.ts owns permission scope/referee eligibility                                                                                                    |
+| Competition         | competition-queries.ts owns projections/options; competition-groups.ts owns reviewed group results/seeds; competition-restoration.ts verifies/rebinds archive witnesses; competition-service.ts owns graph lifecycle/advancement/corrections                                         |
+| Qualifier standings | qualifier-standings-contract.ts owns shared types/snapshot checks; qualifier-standings-sources.ts assembles source cohorts/projections and row locks; qualifier-standings-restoration.ts verifies import equivalence; qualifier-standings-service.ts owns review/finalization/reopen |
+| Settings            | settings-service.ts applies versioned patches; admin-service.ts owns lock, refreshed authorization and audit dispatch                                                                                                                                                                |
+| Scheduling/media    | schedule-availability.ts validates final resource plans; media-cleanup.ts owns ordinary storage journaling; media-references.ts traverses exact current/historical references                                                                                                        |
+| Archives            | tournament-archive-format.ts owns wire allowlists, insertion order and deferred references; archive-identities.ts owns version 1 namespace traversal; domain restoration modules verify competitive witnesses                                                                        |
 
-| Boundary                     | Current owners and dependency direction                                                                                                                                                                                                                          |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| HTTP/context                 | proxy.ts, tournament-paths.ts, tournament-context.ts and auth.ts resolve identity/context; route handlers validate request transport and call services                                                                                                           |
-| Administrative orchestration | validation.ts combines domain action unions; admin-service.ts (836 lines) maps permissions and dispatches one transaction; api/admin/data/route.ts separately dispatches reads                                                                                   |
-| Match operations             | match-engine.ts is pure; matches-service.ts (1,595 lines) combines options/queries, roster and lobby helpers, scheduling, state changes and result revisions; qualifiers, IRC and bulk scheduling reuse its helpers                                              |
-| Competition                  | competition-engine.ts adapts brackets-manager through in-memory storage; competition-service.ts (1,783 lines) owns persisted graph operations, eligibility, correction previews, public reads and archive witness rebinding                                      |
-| Qualifiers                   | qualifier-policy.ts and qualifier-seeding.ts own pure policy/math; qualifiers-service.ts and qualifiers-bulk.ts persist sessions; qualifier-standings-service.ts (927 lines) owns cohort reads, finalization, reopen and archive rebinding                       |
-| Pooling/stages               | mappool-order.ts and stage-pool-validation.ts are pure; stage-workflows.ts and pooling-service.ts persist plans/reviews/release; basic stage/category/pool saves still live in admin-service.ts                                                                  |
-| Teams/CMS/access             | teams-service.ts prepares provider data then writes versioned registrations; page/staff/role/settings writes remain in admin-service.ts; permissions.ts is the access vocabulary                                                                                 |
-| Transfer                     | tournament-archive-format.ts explicitly defines the wire allowlist; tournament-export.ts collects a read-only consistent snapshot; tournament-import.ts remaps/restores with durable storage recovery; competition and standings services verify their witnesses |
-| Browser state                | admin/shared.tsx owns request/resource/polling/task/dialog/unsaved helpers; individual editors own forms and selection state; no shared form-store layer exists                                                                                                  |
-| Providers                    | osu.ts owns official API access; multiplayer adapters validate evidence; storage.ts owns object operations; services/irc is an optional process; discord-result.ts formats strings, with no Discord bot/webhook transport                                        |
-
-The large services are not pure domain libraries: importing one as a runtime
-dependency brings database/context dependencies. MatchParticipants currently lives
-in matches-service.ts and is imported with `import type` by view/adapter modules.
-The resulting static type backedges are not evidence of a runtime circular import.
-Actual runtime component coupling exists where referee-panel.tsx and
-qualifiers-workspace.tsx import status labels from matches-dashboard.tsx.
+Read modules do not import mutation services. Archive entrypoints import restoration
+owners directly. Removed service reexports prevent new callers rebuilding that
+coupling. Referee/provider/import adapters share record/access helpers rather than
+importing the whole match mutation service. The superseded calm pilot harness and
+rejected media.delete action were removed; current DELETE routes retain audit events.
+Active profile CSS and historical adapters remain required.
 
 ### Transactions And Policy Duplication
 
@@ -874,33 +854,27 @@ consistency protocols, not interchangeable transaction wrappers.
 caller's transaction and permission refresh for part of the mutation contract.
 Some recheck capabilities or take the shared lock themselves; others rely on the
 dispatcher. An extraction must preserve the complete caller/callee contract.
-There is no measured throughput or lock-wait baseline yet.
-
-Policy duplication has observable differences. Match creation and single-match
-scheduling use validateAssignments plus same-opponent-pair checks; bulk scheduling
-also compares shared players/teams against other matches and qualifier sessions.
-Qualifier scheduling uses assertQualifierAvailability. Match creation repeats
-pool-capacity rules rather than calling stagePoolProblems, which release and bulk
-stage reassignment use. Keep head-to-head and qualifier semantics explicit while
-consolidating genuinely shared predicates; do not collapse their state machines.
+The two-connection isolated lock probe records controlled wait evidence in ignored
+.data. It establishes serialization across callers, not a throughput limit. Keep
+the global lock until a reviewed narrower protocol passes concurrency protection.
+Single/bulk/qualifier scheduling share final-plan validation; state machines and
+qualifier uniqueness remain domain-specific.
 
 ### Database And Wire Boundaries
 
 Prisma is not the entire persistence contract. SQL adds scoring/run/graph CHECKs,
-partial IRC uniqueness and match-number triggers. Page and pool pointer foreign
-keys verify the tournament, but do not verify that the chosen revision belongs to
-that particular page/pool. MatchMapResult independently references Match and
-MatchMapAction, without a constraint equating the action's matchId to the result's.
-Application lookups and archive validation supply those stronger checks today.
-This is a defense-in-depth gap, not a demonstrated reachable cross-tenant exploit.
+partial IRC uniqueness, immutable match numbers/revision owners, owner-specific
+page/pool pointer triggers and same-match action foreign keys. Additive migrations
+scan and refuse mismatches rather than relink historical records.
 
-scopedDb maintains manual direct/parent/nested-relation maps. Unclassified delegates
-pass through as global. Raw SQL is not rewritten. ownedData handles create/update
-and createMany on listed nested relations, but not all Prisma nested operations
-(connect, connectOrCreate, nested upsert/updateMany/deleteMany and others). Parent-
-owned creates do not automatically validate every related ID. The wrapper retains
-the Prisma client type, so TypeScript does not restrict callers to the supported
-subset. Explicit domain predicates and composite foreign keys remain necessary.
+scopedDb explicitly classifies models and validates parent references. Unsupported
+nested operations and unclassified models fail closed. Raw SQL remains a service
+responsibility; the full Prisma type does not imply all nested APIs are supported.
+Archive contract tests compare every generated model/scalar with its reviewed wire
+allowlist or explicit exclusion. Local edit counters, object keys and server/global
+credentials remain excluded. Imported edit counters start at one. Version 1 opaque
+history retains its established identity-field convention; competitive configurations
+and standings additionally require domain witness equivalence before hash rebinding.
 
 These repeated values have different ownership and must not be deduplicated blindly:
 
@@ -916,28 +890,12 @@ These repeated values have different ownership and must not be deduplicated blin
 Tenant/time filters lack matching leading indexes on several hot collections
 (for example AuditLog has createdAt alone and Match has status/scheduledAt).
 This is a query-plan investigation candidate, not a measured performance failure.
-Public matches/teams and team exports cap at 500, admin media at 200 and user lookup
-at 100 without continuation contracts. Conversely, matches, pooling candidates,
-qualifier sessions and competition reads can load whole collections and children.
-Archive byte/record bounds do not measure peak RSS across parsing, remapping and
-ZIP buffers. See [F07](PLAN.md#f07-read-size-and-index-budget).
-
-### Target Boundaries - Not Yet Implemented
-
-Keep the existing monolith and its domain vocabulary. Extract cohesive reads,
-scheduling predicates, correction workflows and archive witness functions from
-the largest services, retaining one orchestration point for each transaction.
-Client-shared types, labels and normalization belong beside pure domain modules.
-Split large editor dialogs/selection/form sections around their actual workflows,
-using the existing controls, resource hooks and semantic tokens.
-
-Make ownership checks, reviewed witnesses and public projections explicit at every
-entrypoint. Extend supported-operation tests before tightening scopedDb; add
-relational constraints only after isolated scans and reviewed repairs. Preserve
-the archive allowlist independently and verify its schema coverage automatically.
-Keep current locks until concurrent-writer tests justify a narrower protocol.
-No module moves, schema migrations, service changes or UI redesign have been made
-as part of this audit. The execution sequence and migration gates are in PLAN.
+Public team/match and organizer team/media lists expose continuation; exports remain
+complete. User lookup is a bounded search response. Some authorized competition,
+pooling and qualifier workflows intentionally load complete cohorts. Archive bounds
+do not measure peak RSS across parsing/remapping/ZIP buffers. Representative
+restored-data plans, memory measurements and tenant-leading index choices remain
+operator-dependent work; synthetic correctness tests do not justify index changes.
 
 ## Development And Tests
 

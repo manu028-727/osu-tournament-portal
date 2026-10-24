@@ -193,7 +193,6 @@ export const actionSchema = z.discriminatedUnion('type', [
     baseVersion: z.number().int().positive(),
     scoringReview: z.boolean().optional(),
   }),
-  base.extend({ type: z.literal('media.delete'), id }),
 ]);
 export type AdminAction = z.infer<typeof actionSchema>;
 export type Block = z.infer<typeof blockSchema>;

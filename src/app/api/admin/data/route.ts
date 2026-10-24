@@ -1,20 +1,21 @@
 import { requireTournamentActor } from '@/lib/auth';
+import { competitionData } from '@/lib/competition-queries';
+import { previewCompetitionCorrection } from '@/lib/competition-service';
 import { db as rootDb } from '@/lib/db';
-import { scopedDb } from '@/lib/scoped-db';
-import { AppError, assertPermission, can, PERMISSIONS } from '@/lib/permissions';
-import { getTournament, revisionInclude, poolRevisionInclude } from '@/lib/queries';
-import { errorResponse } from '@/lib/security';
-import { canAccessSection } from '@/lib/workspace';
-import { teamInclude } from '@/lib/teams-service';
-import { matchData, matchOptions } from '@/lib/matches-service';
-import { qualifierData } from '@/lib/qualifiers-service';
 import { scoringImpact } from '@/lib/gameplay-scoring-service';
-import { competitionData, previewCompetitionCorrection } from '@/lib/competition-service';
-import { qualifierStandingsData } from '@/lib/qualifier-standings-service';
-import { stageReconciliationPreview } from '@/lib/stage-reconciliation-service';
-import { poolingData } from '@/lib/pooling-service';
-import { stageWorkflowData } from '@/lib/stage-workflows';
 import { listPageSchema, pageWindow } from '@/lib/list-pagination';
+import { matchData, matchOptions } from '@/lib/match-queries';
+import { AppError, assertPermission, can, PERMISSIONS } from '@/lib/permissions';
+import { poolingData } from '@/lib/pooling-service';
+import { qualifierStandingsData } from '@/lib/qualifier-standings-sources';
+import { qualifierData } from '@/lib/qualifiers-service';
+import { getTournament, poolRevisionInclude, revisionInclude } from '@/lib/queries';
+import { scopedDb } from '@/lib/scoped-db';
+import { errorResponse } from '@/lib/security';
+import { stageReconciliationPreview } from '@/lib/stage-reconciliation-service';
+import { stageWorkflowData } from '@/lib/stage-workflows';
+import { teamInclude } from '@/lib/teams-service';
+import { canAccessSection } from '@/lib/workspace';
 import { z } from 'zod';
 const auditSummary = {
   id: true,

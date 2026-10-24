@@ -1,7 +1,7 @@
-import { getTournament } from '@/lib/queries';
-import { db } from '@/lib/db';
-import { publishedQualifierStandings } from '@/lib/qualifier-standings-service';
 import { QualifierStandings } from '@/components/qualifier-standings';
+import { db } from '@/lib/db';
+import { publishedQualifierStandings } from '@/lib/qualifier-standings-sources';
+import { getTournament } from '@/lib/queries';
 export const metadata = { title: 'Qualifier results' };
 export default async function QualifierResultsPage() {
   const tournament = await getTournament();

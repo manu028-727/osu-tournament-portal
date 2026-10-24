@@ -3,7 +3,7 @@ import { db as rootDb } from './db';
 import { scopedDb } from './scoped-db';
 import { actorForTournament } from './auth';
 import { AppError, assertPermission, can, type Actor } from './permissions';
-import { matchInclude, rosterSnapshot, lobbyInfo } from './matches-service';
+import { matchInclude, rosterSnapshot, lobbyInfo } from './match-record';
 import { teamInclude } from './teams-service';
 import { validateSheetRecord } from './referee-workbook-state';
 import { inheritedRules, tournamentScoring } from './gameplay-scoring';

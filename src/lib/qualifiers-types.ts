@@ -1,5 +1,5 @@
 import type { MatchRules } from './match-rules';
-import type { MatchParticipants } from './matches-service';
+import type { MatchParticipants } from './matches-types';
 import type { MatchOptions, MatchStatus, MatchView } from './matches-types';
 import type { MatchAccess } from './match-access';
 export type QualifierView = {

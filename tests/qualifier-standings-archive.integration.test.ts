@@ -1,31 +1,33 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { db } from '../src/lib/db';
-import { assertTestDatabase } from '../src/lib/instance';
-import { ALL_PERMISSIONS, type Actor } from '../src/lib/permissions';
-import { inheritedRules } from '../src/lib/gameplay-scoring';
-import { DEFAULT_COPY } from '../src/lib/copy';
-import { rosterSnapshot } from '../src/lib/matches-service';
-import { teamInclude } from '../src/lib/teams-service';
-import { qualifierPolicySchema } from '../src/lib/qualifier-policy';
-import { competitionActionSchema } from '../src/lib/competition-validation';
 import {
   applyCompetitionAction,
   assertCompetitionMatchStart,
 } from '../src/lib/competition-service';
-import { applyQualifierAction } from '../src/lib/qualifiers-service';
-import { qualifierActionSchema } from '../src/lib/qualifiers-validation';
-import { exportTournament } from '../src/lib/tournament-export';
-import { importTournament, inspectArchive } from '../src/lib/tournament-import';
+import { competitionActionSchema } from '../src/lib/competition-validation';
+import { DEFAULT_COPY } from '../src/lib/copy';
+import { db } from '../src/lib/db';
+import { inheritedRules } from '../src/lib/gameplay-scoring';
+import { assertTestDatabase } from '../src/lib/instance';
+import { rosterSnapshot } from '../src/lib/match-record';
+import { ALL_PERMISSIONS, type Actor } from '../src/lib/permissions';
+import { qualifierPolicySchema } from '../src/lib/qualifier-policy';
+import { canonicalQualifierJson, qualifierSourceHash } from '../src/lib/qualifier-seeding';
+import { qualifierStandingSnapshot } from '../src/lib/qualifier-standings-contract';
 import {
   applyQualifierStandingsAction,
   assertQualifierMutable,
   finalizedQualifierSeeds,
-  publishedQualifierStandings,
-  qualifierStandingSnapshot,
-  qualifierStandingsData,
 } from '../src/lib/qualifier-standings-service';
-import { canonicalQualifierJson, qualifierSourceHash } from '../src/lib/qualifier-seeding';
+import {
+  publishedQualifierStandings,
+  qualifierStandingsData,
+} from '../src/lib/qualifier-standings-sources';
+import { applyQualifierAction } from '../src/lib/qualifiers-service';
+import { qualifierActionSchema } from '../src/lib/qualifiers-validation';
+import { teamInclude } from '../src/lib/teams-service';
+import { exportTournament } from '../src/lib/tournament-export';
+import { importTournament, inspectArchive } from '../src/lib/tournament-import';
 
 const prefix = `qualifier-transfer-${randomUUID()}`;
 const tournamentIds: string[] = [],

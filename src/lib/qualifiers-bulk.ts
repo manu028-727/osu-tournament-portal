@@ -1,6 +1,7 @@
 import type { Prisma } from '@/generated/prisma/client';
 import { AppError, type Actor } from './permissions';
-import { rosterSnapshot, type MatchParticipants } from './matches-service';
+import { rosterSnapshot } from './match-record';
+import { type MatchParticipants } from './matches-types';
 import { assertScheduleAvailability } from './schedule-availability';
 import { qualifierPolicySchema, type QualifierPolicy } from './qualifier-policy';
 import { teamInclude } from './teams-service';

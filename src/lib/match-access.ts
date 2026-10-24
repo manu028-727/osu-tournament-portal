@@ -1,5 +1,5 @@
 import type { Prisma } from '@/generated/prisma/client';
-import { can, type Actor } from './permissions';
+import { AppError, can, type Actor } from './permissions';
 
 export function matchAccess(actor: Actor, match: { assignments: { userId: string }[] }) {
   const manager = can(actor, 'matches.manage');
@@ -67,4 +67,26 @@ export function eligibleRefereeFor(tournamentId: string): Prisma.UserWhereInput 
       },
     ],
   };
+}
+
+export function matchScope(actor: Actor): Prisma.MatchWhereInput {
+  if (
+    can(actor, 'matches.manage') ||
+    can(actor, 'matches.view_all') ||
+    can(actor, 'matches.manage_all')
+  )
+    return { tournamentId: actor.tournamentId || 'main' };
+  return {
+    tournamentId: actor.tournamentId || 'main',
+    assignments: { some: { userId: actor.id } },
+  };
+}
+export function assertMatchView(actor: Actor) {
+  if (
+    !can(actor, 'matches.view') &&
+    !can(actor, 'matches.manage') &&
+    !can(actor, 'matches.manage_all') &&
+    !can(actor, 'matches.view_all')
+  )
+    throw new AppError('Match access is not permitted.', 403);
 }

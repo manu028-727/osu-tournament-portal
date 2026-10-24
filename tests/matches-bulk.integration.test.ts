@@ -1,17 +1,17 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { db } from '../src/lib/db';
 import type { Prisma } from '../src/generated/prisma/client';
-import { assertTestDatabase } from '../src/lib/instance';
-import { ALL_PERMISSIONS, type Actor } from '../src/lib/permissions';
+import { db } from '../src/lib/db';
 import { inheritedRules } from '../src/lib/gameplay-scoring';
-import { qualifierPolicySchema } from '../src/lib/qualifier-policy';
-import { matchesSchedulingActionSchema } from '../src/lib/matches-bulk-validation';
+import { assertTestDatabase } from '../src/lib/instance';
 import { applyBulkScheduleAction } from '../src/lib/matches-bulk-service';
+import { matchesSchedulingActionSchema } from '../src/lib/matches-bulk-validation';
 import { parseMatchSchedulePaste } from '../src/lib/matches-schedule-paste';
-import type { MatchParticipants } from '../src/lib/matches-service';
 import { applyMatchAction } from '../src/lib/matches-service';
+import type { MatchParticipants } from '../src/lib/matches-types';
 import { matchActionSchema } from '../src/lib/matches-validation';
+import { ALL_PERMISSIONS, type Actor } from '../src/lib/permissions';
+import { qualifierPolicySchema } from '../src/lib/qualifier-policy';
 
 assertTestDatabase(process.env.DATABASE_URL);
 const tournamentId = `match-bulk-${randomUUID()}`,

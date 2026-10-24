@@ -13,11 +13,11 @@ import {
   Undo2,
 } from 'lucide-react';
 import type { Actor } from '@/lib/permissions';
+import type { QualifierStandingsAction } from '@/lib/qualifier-standings-service';
 import type {
-  QualifierStandingsAction,
   QualifierStandingsData,
   QualifierCorrectionImpact,
-} from '@/lib/qualifier-standings-service';
+} from '@/lib/qualifier-standings-contract';
 import { QUALIFIER_METHOD_LABELS } from '@/lib/qualifier-policy';
 import { QualifierStandingsTable } from '@/components/qualifier-standings';
 import { Button } from '@/components/ui/button';

@@ -1,14 +1,14 @@
-import { requireTournamentActor, actorForTournament } from '@/lib/auth';
+import { Prisma } from '@/generated/prisma/client';
+import { actorForTournament, requireTournamentActor } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { scopedDb } from '@/lib/scoped-db';
-import { AppError } from '@/lib/permissions';
-import { matchData } from '@/lib/matches-service';
+import { matchAccess } from '@/lib/match-access';
+import { matchData } from '@/lib/match-queries';
 import type { MatchView } from '@/lib/matches-types';
 import { collectMultiplayerPages, multiplayerEvidence } from '@/lib/multiplayer';
 import { osuGet } from '@/lib/osu';
-import { errorResponse, requireSameOrigin, jsonBody, rateLimit } from '@/lib/security';
-import { matchAccess } from '@/lib/match-access';
-import { Prisma } from '@/generated/prisma/client';
+import { AppError } from '@/lib/permissions';
+import { scopedDb } from '@/lib/scoped-db';
+import { errorResponse, jsonBody, rateLimit, requireSameOrigin } from '@/lib/security';
 import { z } from 'zod';
 export async function POST(request: Request) {
   let authorized: {

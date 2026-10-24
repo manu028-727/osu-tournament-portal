@@ -1,13 +1,13 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
-import { db } from '../src/lib/db';
 import type { Prisma } from '../src/generated/prisma/client';
-import { assertTestDatabase } from '../src/lib/instance';
-import { ALL_PERMISSIONS, type Actor } from '../src/lib/permissions';
-import { exportTournament } from '../src/lib/tournament-export';
-import { importTournament, inspectArchive } from '../src/lib/tournament-import';
-import { DEFAULT_COPY } from '../src/lib/copy';
-import { competitionActionSchema, type CompetitionCreate } from '../src/lib/competition-validation';
+import { groupStandings } from '../src/lib/competition-engine';
+import {
+  rebindImportedCompetition,
+  rebindLocalizedCompetition,
+  validateCompetitionArchive,
+  type CompetitionArchiveWitness,
+} from '../src/lib/competition-restoration';
 import {
   advanceConfirmedCompetitionResult,
   applyCompetitionAction,
@@ -15,15 +15,17 @@ import {
   assertCompetitionMatchStart,
   assertCompetitionResultCorrection,
   competitionEligibility,
-  previewCompetitionCorrection,
   finalizedGroupSeeds,
-  validateCompetitionArchive,
-  rebindImportedCompetition,
-  rebindLocalizedCompetition,
-  type CompetitionArchiveWitness,
+  previewCompetitionCorrection,
 } from '../src/lib/competition-service';
-import { groupStandings } from '../src/lib/competition-engine';
+import { competitionActionSchema, type CompetitionCreate } from '../src/lib/competition-validation';
+import { DEFAULT_COPY } from '../src/lib/copy';
+import { db } from '../src/lib/db';
+import { assertTestDatabase } from '../src/lib/instance';
 import { DEFAULT_MATCH_RULES } from '../src/lib/match-rules';
+import { ALL_PERMISSIONS, type Actor } from '../src/lib/permissions';
+import { exportTournament } from '../src/lib/tournament-export';
+import { importTournament, inspectArchive } from '../src/lib/tournament-import';
 
 assertTestDatabase(process.env.DATABASE_URL);
 const rollback = new Error('competition test rollback');

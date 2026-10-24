@@ -1,6 +1,6 @@
-import { getTournament } from '@/lib/queries';
-import { publicCompetitionData } from '@/lib/competition-service';
 import { PublicCompetition } from '@/components/public-competition';
+import { publicCompetitionData } from '@/lib/competition-queries';
+import { getTournament } from '@/lib/queries';
 export const metadata = { title: 'Brackets' };
 export default async function BracketsPage() {
   const tournament = await getTournament();

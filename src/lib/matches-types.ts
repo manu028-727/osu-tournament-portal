@@ -1,4 +1,20 @@
-import type { MatchParticipants } from './matches-service';
+export type MatchParticipants = Record<
+  Side,
+  {
+    id: string | null;
+    name: string;
+    slug: string;
+    format: string;
+    logoImageId: string | null;
+    members: {
+      osuId: number;
+      username: string;
+      avatarUrl: string;
+      captain: boolean;
+      substitute: boolean;
+    }[];
+  }
+>;
 import type { MatchRules, Side } from './match-rules';
 import type { BeatmapMetadata } from './osu';
 import type { DraftAction } from './match-engine';

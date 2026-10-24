@@ -1,80 +1,43 @@
-import { createHash } from 'node:crypto';
-import { z } from 'zod';
 import { Prisma } from '@/generated/prisma/client';
-import { db as rootDb } from './db';
-import { scopedDb } from './scoped-db';
-import { AppError, assertPermission, can, type Actor, type PermissionKey } from './permissions';
-import { teamInclude } from './teams-service';
-import { matchRulesSchema, firstTo, otherSide, type Side } from './match-rules';
 import {
   advanceConfirmedCompetitionResult,
+  assertCompetitionEligibility,
   assertCompetitionMatchStart,
   assertCompetitionResultCorrection,
   synchronizeCompetitionResults,
-  assertCompetitionEligibility,
-  competitionEligibilityOptions,
 } from './competition-service';
 import {
-  inheritedRules,
-  historicalScoring,
-  tournamentScoring,
   assertScoreRepresentation,
-  gameplayScoringSchema,
+  historicalScoring,
+  inheritedRules,
+  tournamentScoring,
 } from './gameplay-scoring';
 import {
   aggregateScores,
   nextDraftStep,
-  validateDraftAction,
-  matchWorkflow,
-  startingSide,
   replayDraft,
-  type DraftState,
+  startingSide,
+  validateDraftAction,
 } from './match-engine';
-import { matchActionSchema, type MatchAction } from './matches-validation';
-import { matchAccess, eligibleRefereeFor } from './match-access';
-import { assertScheduleAvailability } from './schedule-availability';
-import { stagePoolProblems } from './stage-pool-validation';
-import type { MultiplayerProposal } from './multiplayer';
 import { allocateMatchNumber, numericMatchIdentifier } from './match-numbering';
-
-const profileSelect = { id: true, username: true, osuId: true, avatarUrl: true };
-export const matchInclude = {
-  multiplayerGames: { orderBy: { createdAt: 'desc' as const }, take: 50 },
-  stage: { select: { id: true, name: true, slug: true } },
-  assignments: {
-    include: { user: { select: profileSelect } },
-    orderBy: { primary: 'desc' as const },
-  },
-  poolRevision: { include: { slots: { orderBy: { position: 'asc' as const } } } },
-  actions: {
-    orderBy: { sequence: 'asc' as const },
-    include: { actor: { select: { username: true } } },
-  },
-  results: { include: { playerScores: true }, orderBy: { createdAt: 'asc' as const } },
-};
-type MatchRecord = Prisma.MatchGetPayload<{ include: typeof matchInclude }>;
-export type MatchParticipants = Record<
-  Side,
-  {
-    id: string | null;
-    name: string;
-    slug: string;
-    format: string;
-    logoImageId: string | null;
-    members: {
-      osuId: number;
-      username: string;
-      avatarUrl: string;
-      captain: boolean;
-      substitute: boolean;
-    }[];
-  }
->;
+import {
+  draftState,
+  lobbyInfo,
+  matchInclude,
+  rosterSnapshot,
+  rulesHash,
+  type MatchRecord,
+} from './match-record';
+import { firstTo, matchRulesSchema, otherSide, type Side } from './match-rules';
+import type { MatchParticipants } from './matches-types';
+import { matchActionSchema, type MatchAction } from './matches-validation';
+import type { MultiplayerProposal } from './multiplayer';
+import { AppError, assertPermission, can, type Actor, type PermissionKey } from './permissions';
+import { assertScheduleAvailability } from './schedule-availability';
+import { scopedDb } from './scoped-db';
+import { stagePoolProblems } from './stage-pool-validation';
+import { teamInclude } from './teams-service';
 const json = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value));
-export const rulesHash = (value: unknown) =>
-  createHash('sha256')
-    .update(JSON.stringify(value ?? null))
-    .digest('hex');
 export function matchPermission(a: MatchAction): PermissionKey {
   switch (a.type) {
     case 'match.delete':
@@ -129,378 +92,6 @@ export function assertMatchActionPermission(
     return;
   assertPermission(actor, permission);
 }
-export function matchScope(actor: Actor): Prisma.MatchWhereInput {
-  if (
-    can(actor, 'matches.manage') ||
-    can(actor, 'matches.view_all') ||
-    can(actor, 'matches.manage_all')
-  )
-    return { tournamentId: actor.tournamentId || 'main' };
-  return {
-    tournamentId: actor.tournamentId || 'main',
-    assignments: { some: { userId: actor.id } },
-  };
-}
-function assertMatchView(actor: Actor) {
-  if (
-    !can(actor, 'matches.view') &&
-    !can(actor, 'matches.manage') &&
-    !can(actor, 'matches.manage_all') &&
-    !can(actor, 'matches.view_all')
-  )
-    throw new AppError('Match access is not permitted.', 403);
-}
-export async function matchOptions(actor: Actor) {
-  const tournamentId = actor.tournamentId || 'main',
-    db = scopedDb(rootDb, tournamentId);
-  if (!can(actor, 'matches.manage')) assertPermission(actor, 'matches.assign_referees');
-  const [settings, stages, teams, referees, paths] = await Promise.all([
-    db.tournamentSettings.findUniqueOrThrow({ where: { tournamentId } }),
-    db.tournamentStage.findMany({
-      where: { archivedAt: null },
-      orderBy: { position: 'asc' },
-      include: { mappool: { select: { state: true, publishedRevisionId: true } } },
-    }),
-    db.team.findMany({
-      where: { tournamentId, status: 'APPROVED' },
-      orderBy: { name: 'asc' },
-      include: teamInclude,
-    }),
-    db.user.findMany({
-      where: eligibleRefereeFor(tournamentId),
-      select: profileSelect,
-      orderBy: { username: 'asc' },
-    }),
-    can(actor, 'matches.manage')
-      ? competitionEligibilityOptions({ ...actor, tournamentId })
-      : Promise.resolve([]),
-  ]);
-  const configuredScoring = gameplayScoringSchema.safeParse(settings.gameplayScoring);
-  return {
-    scoringNeedsReview: !configuredScoring.success,
-    defaults: configuredScoring.success
-      ? inheritedRules(settings.matchRules, configuredScoring.data)
-      : matchRulesSchema.parse(settings.matchRules),
-    defaultsHash: rulesHash(settings.matchRules),
-    stages: stages.map((s) => ({
-      id: s.id,
-      name: s.name,
-      kind: s.kind,
-      published: s.mappool?.state === 'PUBLISHED' && !!s.mappool.publishedRevisionId,
-      rules: s.matchRules
-        ? configuredScoring.success
-          ? inheritedRules(s.matchRules, configuredScoring.data)
-          : matchRulesSchema.parse(s.matchRules)
-        : null,
-      rulesHash: rulesHash(s.matchRules),
-    })),
-    teams: can(actor, 'matches.manage') ? teams : [],
-    referees,
-    paths,
-  };
-}
-export async function matchData(actor: Actor, url: URL, section: string) {
-  const tournamentId = actor.tournamentId || 'main',
-    db = scopedDb(rootDb, tournamentId);
-  assertMatchView(actor);
-  if (section === 'multiplayer-history') {
-    const id = z.string().min(1).max(100).parse(url.searchParams.get('id'));
-    const match = await db.match.findFirst({
-      where: { AND: [{ id }, matchScope(actor)] },
-      select: { id: true, multiplayerId: true },
-    });
-    if (!match) throw new AppError('Match not found.', 404);
-    const cursor = url.searchParams.get('cursor'),
-      where = { matchId: id, multiplayerId: match.multiplayerId || 0 };
-    const [games, count] = await Promise.all([
-      db.multiplayerGame.findMany({
-        where,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        take: 101,
-        ...(cursor ? { cursor: { id: z.string().max(100).parse(cursor) }, skip: 1 } : {}),
-      }),
-      db.multiplayerGame.count({ where }),
-    ]);
-    return {
-      games: games.slice(0, 100),
-      count,
-      nextCursor: games.length > 100 ? games[99].id : null,
-    };
-  }
-  if (section === 'match-revision' || section === 'match-events') {
-    if (!can(actor, 'matches.view_history') && !can(actor, 'matches.manage'))
-      throw new AppError('Match history permission is required.', 403);
-    const id = z.string().min(1).max(100).parse(url.searchParams.get('id'));
-    if (
-      !(await db.match.findFirst({
-        where: { AND: [{ id }, matchScope(actor)] },
-        select: { id: true },
-      }))
-    )
-      throw new AppError('Match not found.', 404);
-    if (section === 'match-events')
-      return db.matchEvent.findMany({
-        where: {
-          matchId: id,
-          version: { lt: z.coerce.number().int().positive().parse(url.searchParams.get('before')) },
-        },
-        orderBy: { version: 'desc' },
-        take: 250,
-        include: { actor: { select: { username: true } } },
-      });
-    const revision = await db.matchResultRevision.findFirst({
-      where: {
-        matchId: id,
-        id: z.string().min(1).max(100).parse(url.searchParams.get('revision')),
-      },
-    });
-    if (!revision) throw new AppError('Revision not found.', 404);
-    return revision;
-  }
-  if (section === 'match') {
-    const id = z.string().min(1).max(100).parse(url.searchParams.get('id'));
-    const history = can(actor, 'matches.view_history') || can(actor, 'matches.manage');
-    const match = await db.match.findFirst({
-      where: { AND: [{ id }, matchScope(actor)] },
-      include: {
-        ...matchInclude,
-        ...(history
-          ? {
-              events: {
-                orderBy: { version: 'desc' as const },
-                take: 250,
-                include: { actor: { select: { username: true } } },
-              },
-              revisions: {
-                orderBy: { version: 'desc' as const },
-                select: {
-                  id: true,
-                  version: true,
-                  kind: true,
-                  reason: true,
-                  createdAt: true,
-                  creator: { select: { username: true } },
-                },
-              },
-            }
-          : {}),
-      },
-    });
-    if (!match) throw new AppError('Match not found or not assigned to you.', 404);
-    const imported = await db.matchEvent.findFirst({
-      where: { matchId: match.id, kind: 'sheet.import' },
-      orderBy: { version: 'desc' },
-      select: { data: true, version: true, createdAt: true },
-    });
-    const importedRecord = z
-      .object({ record: z.object({ sheet: z.string(), discord: z.string() }) })
-      .safeParse(imported?.data);
-    const dependencies = [];
-    for (const side of ['A', 'B'] as const) {
-      if (side === 'A' ? match.teamAId : match.teamBId) continue;
-      const label = (match.participants as unknown as MatchParticipants)[side].name;
-      const reference = /^([WL])(.{1,80})$/.exec(label);
-      if (!reference) continue;
-      const source = await db.match.findFirst({
-        where: { AND: [{ code: reference[2] }, matchScope(actor)] },
-        select: {
-          id: true,
-          code: true,
-          version: true,
-          status: true,
-          winnerSide: true,
-          participants: true,
-        },
-      });
-      if (source) {
-        const selected =
-          source.status === 'COMPLETED' && source.winnerSide
-            ? reference[1] === 'W'
-              ? source.winnerSide
-              : otherSide(source.winnerSide)
-            : null;
-        dependencies.push({
-          side,
-          label,
-          id: source.id,
-          code: source.code,
-          version: source.version,
-          team: selected
-            ? (source.participants as unknown as MatchParticipants)[selected].name
-            : null,
-        });
-      }
-    }
-    const contacts = await db.teamMember.findMany({
-      where: {
-        osuId: {
-          in: Object.values(match.participants as unknown as MatchParticipants).flatMap((team) =>
-            team.members.map((p) => p.osuId),
-          ),
-        },
-        teamId: { in: [match.teamAId, match.teamBId].filter((id): id is string => !!id) },
-      },
-      select: { discordId: true },
-    });
-    const rules = matchRulesSchema.parse(match.rules);
-    const pending = match.actions.find(
-      (a) =>
-        !a.voided &&
-        a.kind === 'PICK' &&
-        !match.results.some((r) => !r.voided && r.actionId === a.id),
-    );
-    return {
-      match: {
-        ...match,
-        importedHistory:
-          imported && importedRecord.success
-            ? {
-                worksheet: importedRecord.data.record.sheet,
-                discord: importedRecord.data.record.discord,
-                acceptedAt: imported.createdAt.toISOString(),
-                version: imported.version,
-              }
-            : null,
-        multiplayerGames: match.multiplayerGames.filter(
-          (g) => g.multiplayerId === match.multiplayerId,
-        ),
-        rules,
-        workflow: matchWorkflow(
-          rules,
-          draftState(match),
-          match.poolRevision?.slots || [],
-          match.status,
-          pending?.id || null,
-        ),
-      },
-      discordIds: contacts.map((p) => p.discordId).filter(Boolean),
-      dependencies,
-      access: matchAccess(actor, match),
-      serverNow: new Date().toISOString(),
-    };
-  }
-  const filters: Prisma.MatchWhereInput = {};
-  const status = url.searchParams.get('status');
-  if (status)
-    filters.status = z
-      .enum([
-        'SCHEDULED',
-        'IN_PROGRESS',
-        'AWAITING_CONFIRMATION',
-        'COMPLETED',
-        'DISPUTED',
-        'CANCELLED',
-      ])
-      .parse(status);
-  const stageId = url.searchParams.get('stage');
-  if (stageId) filters.stageId = z.string().max(100).parse(stageId);
-  const assigned = url.searchParams.get('assigned');
-  if (assigned === 'unassigned') filters.assignments = { none: {} };
-  else if (assigned)
-    filters.assignments = {
-      some: { userId: assigned === 'me' ? actor.id : z.string().max(100).parse(assigned) },
-    };
-  const q = (url.searchParams.get('q') || '').slice(0, 100);
-  if (q) {
-    const matchNumber = numericMatchIdentifier(q);
-    filters.OR = [
-      { code: { contains: q, mode: 'insensitive' } },
-      ...(matchNumber ? [{ matchNumber }] : []),
-      { teamA: { name: { contains: q, mode: 'insensitive' } } },
-      { teamB: { name: { contains: q, mode: 'insensitive' } } },
-    ];
-  }
-  const from = url.searchParams.get('from'),
-    to = url.searchParams.get('to');
-  if (from || to)
-    filters.scheduledAt = {
-      ...(from ? { gte: new Date(z.iso.datetime().parse(from)) } : {}),
-      ...(to ? { lte: new Date(z.iso.datetime().parse(to)) } : {}),
-    };
-  const where = { AND: [matchScope(actor), filters] };
-  const [matches, counts] = await Promise.all([
-    db.match.findMany({
-      where,
-      orderBy: [{ scheduledAt: { sort: 'asc', nulls: 'last' } }, { code: 'asc' }],
-      select: {
-        id: true,
-        code: true,
-        matchNumber: true,
-        status: true,
-        notes: true,
-        lobbyUrl: true,
-        scheduledAt: true,
-        published: true,
-        bracket: true,
-        resultMode: true,
-        source: true,
-        scoreA: true,
-        scoreB: true,
-        participants: true,
-        version: true,
-        stage: { select: { id: true, name: true } },
-        assignments: { include: { user: { select: profileSelect } } },
-      },
-    }),
-    db.match.groupBy({ by: ['status'], where: matchScope(actor), _count: { _all: true } }),
-  ]);
-  const stages = await db.tournamentStage.findMany({
-    where: { matches: { some: matchScope(actor) } },
-    select: { id: true, name: true },
-    orderBy: { position: 'asc' },
-  });
-  const numbering = can(actor, 'matches.manage')
-    ? await db.tournament.findUniqueOrThrow({
-        where: { id: tournamentId },
-        select: { matchNumberSequence: true },
-      })
-    : null;
-  return {
-    matches,
-    nextCode: can(actor, 'matches.manage') ? String(numbering!.matchNumberSequence + 1) : undefined,
-    counts: Object.fromEntries(counts.map((c) => [c.status, c._count._all])),
-    stages,
-    options:
-      can(actor, 'matches.manage') || can(actor, 'matches.assign_referees')
-        ? await matchOptions(actor)
-        : null,
-    serverNow: new Date().toISOString(),
-  };
-}
-export function rosterSnapshot(
-  team: Prisma.TeamGetPayload<{ include: typeof teamInclude }>,
-): MatchParticipants['A'] {
-  return {
-    id: team.id,
-    name: team.name,
-    slug: team.slug,
-    format: team.format,
-    logoImageId: team.logoImageId,
-    members: team.members.map((m) => ({
-      osuId: m.osuId,
-      username: m.registeredUsername || m.participant.username,
-      avatarUrl: m.participant.avatarUrl,
-      captain: m.captain,
-      substitute: m.substitute,
-    })),
-  };
-}
-function draftState(match: MatchRecord): DraftState {
-  return {
-    firstPickSide: match.firstPickSide,
-    firstBanSide: match.firstBanSide,
-    firstProtectSide: match.firstProtectSide,
-    scoreA: match.scoreA,
-    scoreB: match.scoreB,
-    actions: match.actions,
-    pendingPick: match.actions.some(
-      (a) =>
-        !a.voided &&
-        a.kind === 'PICK' &&
-        !match.results.some((r) => !r.voided && r.actionId === a.id),
-    ),
-  };
-}
 function active(
   match: MatchRecord,
 ): asserts match is MatchRecord & { poolRevision: NonNullable<MatchRecord['poolRevision']> } {
@@ -522,31 +113,6 @@ function pointTotals(results: { winnerSide: Side; voided: boolean }[]) {
     scoreA: results.filter((r) => !r.voided && r.winnerSide === 'A').length,
     scoreB: results.filter((r) => !r.voided && r.winnerSide === 'B').length,
   };
-}
-export function lobbyInfo(url: string, id: number | null) {
-  if (url) {
-    let parsed: URL;
-    try {
-      parsed = new URL(url);
-    } catch {
-      throw new AppError('Use an osu! multiplayer match URL.');
-    }
-    const match = /^\/(?:(?:community\/)?matches|mp)\/(\d+)\/?$/.exec(parsed.pathname);
-    if (
-      parsed.origin !== 'https://osu.ppy.sh' ||
-      !match ||
-      parsed.search ||
-      parsed.hash ||
-      parsed.username ||
-      parsed.password
-    )
-      throw new AppError('Use an osu! multiplayer match URL.');
-    const value = Number(match[1]);
-    if (!Number.isSafeInteger(value) || value < 1 || value > 2147483647 || (id && value !== id))
-      throw new AppError('The multiplayer ID and URL do not match.');
-    id = value;
-  }
-  return { multiplayerId: id, lobbyUrl: id ? `https://osu.ppy.sh/community/matches/${id}` : '' };
 }
 
 export async function applyMatchAction(

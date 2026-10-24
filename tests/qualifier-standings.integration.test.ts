@@ -1,19 +1,21 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../src/lib/db';
+import { inheritedRules } from '../src/lib/gameplay-scoring';
 import { assertTestDatabase } from '../src/lib/instance';
 import type { Actor } from '../src/lib/permissions';
-import { inheritedRules } from '../src/lib/gameplay-scoring';
 import { qualifierPolicySchema, type QualifierPolicy } from '../src/lib/qualifier-policy';
-import type { QualifierStandingsAction } from '../src/lib/qualifier-standings-validation';
+import { qualifierStandingSnapshot } from '../src/lib/qualifier-standings-contract';
 import {
   applyQualifierStandingsAction,
   assertQualifierMutable,
   finalizedQualifierSeeds,
-  publishedQualifierStandings,
-  qualifierStandingSnapshot,
-  qualifierStandingsData,
 } from '../src/lib/qualifier-standings-service';
+import {
+  publishedQualifierStandings,
+  qualifierStandingsData,
+} from '../src/lib/qualifier-standings-sources';
+import type { QualifierStandingsAction } from '../src/lib/qualifier-standings-validation';
 
 const prefix = `qualifier-db-${randomUUID()}`;
 const tournamentIds: string[] = [];

@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
+import { publicCompetitionData } from '../src/lib/competition-queries';
 import { db } from '../src/lib/db';
 import { assertTestDatabase } from '../src/lib/instance';
-import { publicPage, publicPools, publicStaff } from '../src/lib/queries';
+import { isPublicAsset } from '../src/lib/media-access';
 import { publicMatches } from '../src/lib/public-matches';
+import { publicPage, publicPools, publicStaff } from '../src/lib/queries';
 import { publicTeams } from '../src/lib/teams-service';
 import { tournamentList } from '../src/lib/tournaments-service';
-import { isPublicAsset } from '../src/lib/media-access';
-import { publicCompetitionData } from '../src/lib/competition-service';
 
 assertTestDatabase(process.env.DATABASE_URL);
 const id = randomUUID();

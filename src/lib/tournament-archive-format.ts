@@ -307,6 +307,52 @@ export const ARCHIVE_TABLES = {
   ),
 } as const satisfies Record<string, Definition>;
 export type ArchiveTable = keyof typeof ARCHIVE_TABLES;
+export const archiveInsertionOrder: ArchiveTable[] = [
+  'media',
+  'stages',
+  'categories',
+  'poolPlans',
+  'poolSkillsets',
+  'poolWarnings',
+  'poolCandidates',
+  'poolTags',
+  'poolReviews',
+  'pages',
+  'pageRevisions',
+  'blocks',
+  'pools',
+  'poolRevisions',
+  'slots',
+  'staffCategories',
+  'staffMembers',
+  'staffAssignments',
+  'teams',
+  'rosters',
+  'matches',
+  'actions',
+  'mapResults',
+  'playerScores',
+  'events',
+  'resultRevisions',
+  'multiplayerGames',
+  'qualifierLobbies',
+  'qualifierEntries',
+  'qualifierScores',
+  'qualifierEvents',
+  'qualifierStandings',
+  'brackets',
+  'bracketRounds',
+  'bracketNodes',
+  'bracketSlots',
+  'bracketEntries',
+  'audits',
+];
+export const archiveDeferredFields: Partial<Record<ArchiveTable, readonly string[]>> = {
+  stages: ['nextStageId'],
+  pages: ['draftRevisionId', 'publishedRevisionId'],
+  pools: ['draftRevisionId', 'publishedRevisionId'],
+};
+
 export const tableNames = Object.keys(ARCHIVE_TABLES) as ArchiveTable[];
 export const tokens = (table: ArchiveTable) =>
   ARCHIVE_TABLES[table].fields.split(' ').map((token) => {
