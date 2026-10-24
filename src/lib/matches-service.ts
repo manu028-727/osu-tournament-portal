@@ -31,54 +31,13 @@ import {
   type DraftState,
 } from './match-engine';
 import { matchActionSchema, type MatchAction } from './matches-validation';
-import { matchAccess } from './match-access';
+import { matchAccess, eligibleRefereeFor } from './match-access';
+import { assertScheduleAvailability } from './schedule-availability';
+import { stagePoolProblems } from './stage-pool-validation';
 import type { MultiplayerProposal } from './multiplayer';
 import { allocateMatchNumber, numericMatchIdentifier } from './match-numbering';
 
 const profileSelect = { id: true, username: true, osuId: true, avatarUrl: true };
-export function eligibleRefereeFor(tournamentId: string): Prisma.UserWhereInput {
-  return {
-    AND: [
-      {
-        roles: {
-          some: {
-            tournamentId,
-            role: {
-              permissions: {
-                some: {
-                  permissionKey: {
-                    in: [
-                      'matches.view',
-                      'matches.view_all',
-                      'matches.manage',
-                      'matches.manage_all',
-                    ],
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-      {
-        roles: {
-          some: {
-            tournamentId,
-            role: {
-              permissions: {
-                some: {
-                  permissionKey: {
-                    in: ['matches.manage_assigned', 'matches.manage', 'matches.manage_all'],
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    ],
-  };
-}
 export const matchInclude = {
   multiplayerGames: { orderBy: { createdAt: 'desc' as const }, take: 50 },
   stage: { select: { id: true, name: true, slug: true } },
@@ -508,50 +467,6 @@ export async function matchData(actor: Actor, url: URL, section: string) {
     serverNow: new Date().toISOString(),
   };
 }
-async function validateAssignments(
-  tx: Prisma.TransactionClient,
-  ids: string[],
-  date: Date | null,
-  matchId?: string,
-  tournamentId = 'main',
-) {
-  if (ids.length) {
-    const eligible = await tx.user.count({
-      where: {
-        id: { in: ids },
-        AND: [eligibleRefereeFor(tournamentId)],
-      },
-    });
-    if (eligible !== ids.length)
-      throw new AppError(
-        'Every assigned referee must have match access and operational permissions.',
-      );
-    if (
-      date &&
-      (await tx.matchAssignment.findFirst({
-        where: {
-          userId: { in: ids },
-          match: {
-            scheduledAt: date,
-            status: { notIn: ['CANCELLED', 'COMPLETED'] },
-            ...(matchId ? { id: { not: matchId } } : {}),
-          },
-        },
-      }))
-    )
-      throw new AppError('A referee already has another match at this exact time.', 409);
-    if (
-      date &&
-      (await tx.qualifierAssignment.findFirst({
-        where: {
-          userId: { in: ids },
-          lobby: { scheduledAt: date, status: { notIn: ['CANCELLED', 'COMPLETED'] } },
-        },
-      }))
-    )
-      throw new AppError('A referee already has a qualifier lobby at this exact time.', 409);
-  }
-}
 export function rosterSnapshot(
   team: Prisma.TeamGetPayload<{ include: typeof teamInclude }>,
 ): MatchParticipants['A'] {
@@ -723,32 +638,8 @@ export async function applyMatchAction(
       throw new AppError(
         'Approved participants and sufficient starting players are required for this team size.',
       );
-    if (revision.slots.length < rules.bestOf + 2 * rules.bansPerTeam)
-      throw new AppError('The mappool is too small for this best-of and ban count.');
-    if (
-      rules.draftSequence.includes('TB_BAN') &&
-      revision.slots.filter((s) => s.category === rules.tiebreakerCategory).length < 3
-    )
-      throw new AppError('Tiebreaker bans require at least three tiebreaker maps.');
-    const draftable = revision.slots.filter(
-      (slot) =>
-        !(
-          rules.enableTiebreaker &&
-          firstTo(rules) > 1 &&
-          !rules.allowTiebreakerBans &&
-          slot.category === rules.tiebreakerCategory
-        ),
-    );
-    if (draftable.length < 2 * (rules.protectsPerTeam + rules.bansPerTeam))
-      throw new AppError(
-        'The pool has too few available maps for the configured protects and bans.',
-      );
-    if (
-      rules.enableTiebreaker &&
-      firstTo(rules) > 1 &&
-      !revision.slots.some((s) => s.category === rules.tiebreakerCategory)
-    )
-      throw new AppError('This pool has no configured tiebreaker. Adjust the stage rules first.');
+    const poolProblems = stagePoolProblems(stage.kind, rules, revision.slots);
+    if (poolProblems.length) throw new AppError(poolProblems.join(' '));
     const date = a.scheduledAt ? new Date(a.scheduledAt) : null;
     if (
       await tx.match.findFirst({
@@ -764,7 +655,15 @@ export async function applyMatchAction(
       })
     )
       throw new AppError('This match is already scheduled.', 409);
-    await validateAssignments(tx, a.refereeIds, date, undefined, tournamentId);
+    await assertScheduleAvailability(tx, tournamentId, [
+      {
+        label: 'New match',
+        scheduledAt: date,
+        refereeIds: a.refereeIds,
+        participants: teams.map(rosterSnapshot),
+        teamIds: [a.teamAId, a.teamBId],
+      },
+    ]);
     const match = await tx.match.create({
       data: {
         matchNumber: await allocateMatchNumber(tx, tournamentId, numericMatchIdentifier(a.code)),
@@ -1113,31 +1012,6 @@ export async function applyMatchAction(
           (match.scheduledAt?.getTime() ?? null)
       )
         throw new AppError('An active match cannot be rescheduled.');
-      if (
-        a.scheduledAt &&
-        (a.teamAId || match.teamAId) &&
-        (a.teamBId || match.teamBId) &&
-        (await tx.match.findFirst({
-          where: {
-            id: { not: match.id },
-            stageId: match.stageId,
-            scheduledAt: new Date(a.scheduledAt),
-            status: { not: 'CANCELLED' },
-            OR: [
-              { teamAId: a.teamAId || match.teamAId, teamBId: a.teamBId || match.teamBId },
-              { teamAId: a.teamBId || match.teamBId, teamBId: a.teamAId || match.teamAId },
-            ],
-          },
-        }))
-      )
-        throw new AppError('This match is already scheduled.', 409);
-      await validateAssignments(
-        tx,
-        a.refereeIds,
-        a.scheduledAt ? new Date(a.scheduledAt) : null,
-        match.id,
-        tournamentId,
-      );
       await tx.matchAssignment.deleteMany({ where: { matchId: match.id } });
       await tx.matchAssignment.createMany({
         data: a.refereeIds.map((userId, i) => ({ userId, matchId: match.id, primary: i === 0 })),
@@ -1176,6 +1050,20 @@ export async function applyMatchAction(
           rules: json({ ...rules, ...(a.bestOf ? { bestOf: a.bestOf } : {}) }),
         };
       }
+      await assertScheduleAvailability(
+        tx,
+        tournamentId,
+        [
+          {
+            label: `Match ${match.matchNumber}`,
+            scheduledAt: a.scheduledAt ? new Date(a.scheduledAt) : null,
+            refereeIds: a.refereeIds,
+            participants: changes.participants ?? match.participants,
+            teamIds: [a.teamAId || match.teamAId, a.teamBId || match.teamBId],
+          },
+        ],
+        { matchIds: [match.id] },
+      );
       break;
     case 'match.roll':
       active(match);

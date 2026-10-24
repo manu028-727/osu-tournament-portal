@@ -1,6 +1,7 @@
 import { Prisma } from '@/generated/prisma/client';
 import { AppError, assertPermission, type Actor } from './permissions';
-import { eligibleRefereeFor, type MatchParticipants } from './matches-service';
+import type { MatchParticipants } from './matches-service';
+import { assertScheduleAvailability } from './schedule-availability';
 import {
   matchesSchedulingActionSchema,
   type MatchesBulkScheduleAction,
@@ -20,23 +21,6 @@ function sourceObject(value: Prisma.JsonValue) {
     );
   return value as Prisma.JsonObject;
 }
-type Entrants = { teamIds: Set<string>; playerIds: Set<number> };
-function entrants(value: Prisma.JsonValue, teamIds: (string | null)[] = []): Entrants {
-  const sides = (Array.isArray(value)
-    ? value
-    : Object.values(value as unknown as MatchParticipants)) as unknown as MatchParticipants['A'][];
-  return {
-    teamIds: new Set([
-      ...teamIds.filter((id): id is string => !!id),
-      ...sides.flatMap((side) => (side.id ? [side.id] : [])),
-    ]),
-    playerIds: new Set(sides.flatMap((side) => side.members.map((player) => player.osuId))),
-  };
-}
-const intersects = <T>(a: Set<T>, b: Set<T>) => [...a].some((value) => b.has(value));
-const sharesEntrants = (a: Entrants, b: Entrants) =>
-  intersects(a.teamIds, b.teamIds) || intersects(a.playerIds, b.playerIds);
-
 export async function applyBulkScheduleAction(
   tx: Prisma.TransactionClient,
   actor: Actor,
@@ -190,7 +174,6 @@ export async function applyBulkScheduleAction(
       patch,
       scheduledAt,
       refereeIds: patch.refereeIds ?? record.assignments.map((assignment) => assignment.userId),
-      entrants: entrants(record.participants, [record.teamAId, record.teamBId]),
       source:
         action.streamer !== undefined || action.commentators !== undefined
           ? {
@@ -201,103 +184,18 @@ export async function applyBulkScheduleAction(
           : undefined,
     };
   });
-  const refereeIds = [...new Set(plans.flatMap((plan) => plan.refereeIds))];
-  if (
-    refereeIds.length &&
-    (await tx.user.count({
-      where: { id: { in: refereeIds }, AND: [eligibleRefereeFor(tournamentId)] },
-    })) !== refereeIds.length
-  )
-    throw new AppError(
-      'Every assigned referee needs match access and operational permissions in this tournament.',
-    );
-
-  const dates = [
-    ...new Set(plans.flatMap((plan) => (plan.scheduledAt ? [plan.scheduledAt.toISOString()] : []))),
-  ].map((date) => new Date(date));
-  // Fetch candidates once, then correlate every resource against its own planned instant.
-  const outsideMatches = dates.length
-    ? await tx.match.findMany({
-        where: {
-          tournamentId,
-          id: { notIn: ids },
-          scheduledAt: { in: dates },
-          status: { notIn: ['COMPLETED', 'CANCELLED'] },
-        },
-        select: {
-          matchNumber: true,
-          scheduledAt: true,
-          participants: true,
-          teamAId: true,
-          teamBId: true,
-          assignments: { select: { userId: true } },
-        },
-      })
-    : [];
-  const outsideLobbies = dates.length
-    ? await tx.qualifierLobby.findMany({
-        where: {
-          tournamentId,
-          scheduledAt: { in: dates },
-          status: { notIn: ['COMPLETED', 'CANCELLED'] },
-        },
-        select: {
-          code: true,
-          scheduledAt: true,
-          participants: true,
-          assignments: { select: { userId: true } },
-        },
-      })
-    : [];
-  for (const [index, plan] of plans.entries()) {
-    if (!plan.scheduledAt) continue;
-    const instant = plan.scheduledAt.getTime();
-    const refs = new Set(plan.refereeIds);
-    for (const other of plans
-      .slice(0, index)
-      .filter((other) => other.scheduledAt?.getTime() === instant)) {
-      if (other.refereeIds.some((ref) => refs.has(ref)))
-        throw new AppError(
-          `Matches ${plan.record.matchNumber} and ${other.record.matchNumber} assign a referee at the same time.`,
-          409,
-        );
-      if (sharesEntrants(plan.entrants, other.entrants))
-        throw new AppError(
-          `Matches ${plan.record.matchNumber} and ${other.record.matchNumber} assign a participant at the same time.`,
-          409,
-        );
-    }
-    for (const other of outsideMatches.filter(
-      (other) => other.scheduledAt?.getTime() === instant,
-    )) {
-      if (other.assignments.some((ref) => refs.has(ref.userId)))
-        throw new AppError(
-          `Match ${plan.record.matchNumber}: a referee already has Match ${other.matchNumber} at this time.`,
-          409,
-        );
-      if (
-        sharesEntrants(plan.entrants, entrants(other.participants, [other.teamAId, other.teamBId]))
-      )
-        throw new AppError(
-          `Match ${plan.record.matchNumber}: a participant already has Match ${other.matchNumber} at this time.`,
-          409,
-        );
-    }
-    for (const other of outsideLobbies.filter(
-      (other) => other.scheduledAt?.getTime() === instant,
-    )) {
-      if (other.assignments.some((ref) => refs.has(ref.userId)))
-        throw new AppError(
-          `Match ${plan.record.matchNumber}: a referee already has qualifier lobby ${other.code} at this time.`,
-          409,
-        );
-      if (sharesEntrants(plan.entrants, entrants(other.participants)))
-        throw new AppError(
-          `Match ${plan.record.matchNumber}: a participant already has qualifier lobby ${other.code} at this time.`,
-          409,
-        );
-    }
-  }
+  await assertScheduleAvailability(
+    tx,
+    tournamentId,
+    plans.map((plan) => ({
+      label: `Match ${plan.record.matchNumber}`,
+      scheduledAt: plan.scheduledAt,
+      refereeIds: plan.refereeIds,
+      participants: plan.record.participants,
+      teamIds: [plan.record.teamAId, plan.record.teamBId],
+    })),
+    { matchIds: ids },
+  );
 
   for (const plan of plans) {
     const { record } = plan;

@@ -795,6 +795,15 @@ bulk assignment changes advance member versions and stale batches roll back. Sta
 updates require the existing configuration token. Archive inspection validates
 settings fields separately from editor action metadata, preserving old archives.
 
+schedule-availability.ts checks the final replacement plan for shared referees,
+team IDs and all snapshotted players (including substitutes) at exact instants.
+Single match creation/assignment, bulk/pasted matches and qualifier plans share it.
+Excluded record IDs preserve atomic time swaps; completed/cancelled records release
+timed resources. Qualifier stage-entry uniqueness remains a distinct rule, including
+completed sessions. stage-pool-validation.ts is authoritative for match creation
+and stage release/reassignment. Referee eligibility now belongs to match-access.ts.
+Interval overlaps and personal availability remain separate planned features.
+
 ### Current Verified Ownership
 
 Source inspection at `fc41596` found one application with domain services, not

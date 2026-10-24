@@ -602,6 +602,14 @@ this delivery record owns the current implementation/check state.
   It exposed and fixed JSON object-key ordering in patch comparison. Evidence:
   .data/cleanup-20261024/browser-stale-forms-pass. Other four platform browser cases
   passed in the earlier batch. No installation migrations were applied.
+- Scheduling phase (F03): removed the three independent timed resource algorithms
+  in favor of one final-plan validator and reused stage pool checks at match
+  creation. Added differential single/create/bulk cases for teams, substitutes,
+  qualifier entrants, referees and a tiebreaker-heavy pool. 193 integration tests,
+  339 unit tests, lint/types/build pass. Three production organizer browser cases
+  pass bulk/paste/mobile scheduling and stage workflows. No migration; global lock
+  and qualifier uniqueness/capacity semantics are retained. Evidence:
+  .data/cleanup-20261024/browser-scheduling.
 
 Work in this order unless the maintainer explicitly reprioritizes. Items marked
 conditional are extensions, not already approved commitments or release blockers.

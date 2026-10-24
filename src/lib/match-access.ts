@@ -1,3 +1,4 @@
+import type { Prisma } from '@/generated/prisma/client';
 import { can, type Actor } from './permissions';
 
 export function matchAccess(actor: Actor, match: { assignments: { userId: string }[] }) {
@@ -23,3 +24,47 @@ export function matchAccess(actor: Actor, match: { assignments: { userId: string
   };
 }
 export type MatchAccess = ReturnType<typeof matchAccess>;
+
+export function eligibleRefereeFor(tournamentId: string): Prisma.UserWhereInput {
+  return {
+    AND: [
+      {
+        roles: {
+          some: {
+            tournamentId,
+            role: {
+              permissions: {
+                some: {
+                  permissionKey: {
+                    in: [
+                      'matches.view',
+                      'matches.view_all',
+                      'matches.manage',
+                      'matches.manage_all',
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      {
+        roles: {
+          some: {
+            tournamentId,
+            role: {
+              permissions: {
+                some: {
+                  permissionKey: {
+                    in: ['matches.manage_assigned', 'matches.manage', 'matches.manage_all'],
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    ],
+  };
+}

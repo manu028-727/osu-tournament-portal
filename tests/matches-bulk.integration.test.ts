@@ -10,6 +10,8 @@ import { matchesSchedulingActionSchema } from '../src/lib/matches-bulk-validatio
 import { applyBulkScheduleAction } from '../src/lib/matches-bulk-service';
 import { parseMatchSchedulePaste } from '../src/lib/matches-schedule-paste';
 import type { MatchParticipants } from '../src/lib/matches-service';
+import { applyMatchAction } from '../src/lib/matches-service';
+import { matchActionSchema } from '../src/lib/matches-validation';
 
 assertTestDatabase(process.env.DATABASE_URL);
 const tournamentId = `match-bulk-${randomUUID()}`,
@@ -273,6 +275,105 @@ afterAll(async () => {
 });
 
 describe.sequential('atomic match bulk patches and pasted schedules', () => {
+  it.each(['team', 'substitute', 'qualifier', 'referee'])(
+    'rejects the same %s conflict through single, create and bulk scheduling',
+    async (resource) => {
+      const a = resource === 'team' || resource === 'qualifier' ? 0 : 2;
+      const b = 3;
+      const refs = resource === 'referee' ? [users[1]] : [];
+      if (resource === 'qualifier') await qualifier('Conflict', [0], 8);
+      else {
+        const occupied = await create(0, 1, at(8), refs);
+        if (resource === 'substitute')
+          await db.match.update({
+            where: { id: occupied.id },
+            data: {
+              participants: json({
+                A: {
+                  ...teams[0].snapshot,
+                  members: [
+                    ...teams[0].snapshot.members,
+                    { ...teams[2].snapshot.members[0], substitute: true },
+                  ],
+                },
+                B: teams[1].snapshot,
+              }),
+            },
+          });
+      }
+      const candidate = await create(a, b, at(9), refs);
+      const single = (input: unknown) =>
+        db.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(78214321)`;
+          return applyMatchAction(tx, actor, matchActionSchema.parse(input));
+        });
+      await expect(
+        single({
+          type: 'match.schedule',
+          id: candidate.id,
+          baseVersion: candidate.version,
+          scheduledAt: at(8),
+          refereeIds: refs,
+          notes: '',
+        }),
+      ).rejects.toMatchObject({ status: 409 });
+      await expect(apply(patch([candidate], { scheduledAt: at(8) }))).rejects.toMatchObject({
+        status: 409,
+      });
+      await expect(
+        single({
+          type: 'match.create',
+          code: `parity-${++count}`,
+          stageId: stages[0].id,
+          teamAId: teams[a].id,
+          teamBId: teams[b].id,
+          scheduledAt: at(8),
+          refereeIds: refs,
+        }),
+      ).rejects.toMatchObject({ status: 409 });
+      expect((await read(candidate.id)).scheduledAt).toEqual(new Date(at(9)));
+      expect((await read(candidate.id)).version).toBe(candidate.version);
+    },
+  );
+
+  it('rejects tiebreaker-heavy pools consistently when creating a match', async () => {
+    const stage = await db.tournamentStage.findUniqueOrThrow({ where: { id: stages[0].id } });
+    try {
+      await db.tournamentStage.update({
+        where: { id: stage.id },
+        data: { matchRules: json({ ...rules, enableTiebreaker: true }) },
+      });
+      await db.mappoolSlot.updateMany({
+        where: { revisionId: stages[0].revisionId },
+        data: { category: 'TB' },
+      });
+      await expect(
+        db.$transaction((tx) =>
+          applyMatchAction(
+            tx,
+            actor,
+            matchActionSchema.parse({
+              type: 'match.create',
+              code: `pool-${++count}`,
+              stageId: stage.id,
+              teamAId: teams[0].id,
+              teamBId: teams[1].id,
+              refereeIds: [],
+            }),
+          ),
+        ),
+      ).rejects.toThrow('non-tiebreaker');
+    } finally {
+      await db.tournamentStage.update({
+        where: { id: stage.id },
+        data: { matchRules: stage.matchRules! },
+      });
+      await db.mappoolSlot.updateMany({
+        where: { revisionId: stages[0].revisionId },
+        data: { category: 'NM' },
+      });
+    }
+  });
   it('validates explicit patches and rejects duplicates, no-ops, and ambiguous time changes', () => {
     const base = { type: 'matches.bulk.schedule', matches: [{ id: 'one', baseVersion: 1 }] };
     expect(matchesSchedulingActionSchema.safeParse(base).success).toBe(false);
@@ -324,9 +425,9 @@ describe.sequential('atomic match bulk patches and pasted schedules', () => {
     await expect(apply(patch([a, b], { shiftMinutes: 180 }))).resolves.toEqual({ updated: 2 });
     await expect(
       apply(patch([await read(a.id)], { scheduledAt: at(12), refereeIds: [] })),
-    ).rejects.toThrow('participant already has qualifier');
+    ).rejects.toThrow('participant is already scheduled in qualifier');
     await expect(apply(patch([await read(b.id)], { scheduledAt: at(11) }))).rejects.toThrow(
-      'referee already has qualifier',
+      'referee is already scheduled in qualifier',
     );
   });
 

@@ -1,6 +1,7 @@
 import type { Prisma } from '@/generated/prisma/client';
 import { AppError, type Actor } from './permissions';
-import { eligibleRefereeFor, rosterSnapshot, type MatchParticipants } from './matches-service';
+import { rosterSnapshot, type MatchParticipants } from './matches-service';
+import { assertScheduleAvailability } from './schedule-availability';
 import { qualifierPolicySchema, type QualifierPolicy } from './qualifier-policy';
 import { teamInclude } from './teams-service';
 import { matchRulesSchema } from './match-rules';
@@ -56,29 +57,13 @@ export async function assertQualifierAvailability(
   plans: QualifierPlan[],
   excludedLobbyIds: string[] = [],
 ) {
-  const allRefs = [...new Set(plans.flatMap((plan) => plan.refereeIds))];
-  if (
-    allRefs.length &&
-    (await tx.user.count({
-      where: { id: { in: allRefs }, AND: [eligibleRefereeFor(tournamentId)] },
-    })) !== allRefs.length
-  )
-    throw new AppError('Assign users with referee operational permissions in this tournament.');
-
-  // These are candidates only; each conflict below uses one plan's exact time and roster.
+  // Stage uniqueness includes completed sessions; timed resources are checked below.
   const existing = await tx.qualifierLobby.findMany({
     where: {
       tournamentId,
       id: { notIn: excludedLobbyIds },
       status: { not: 'CANCELLED' },
-      OR: [
-        { stageId: { in: [...new Set(plans.map((plan) => plan.stageId))] } },
-        {
-          scheduledAt: {
-            in: plans.flatMap((plan) => (plan.scheduledAt ? [plan.scheduledAt] : [])),
-          },
-        },
-      ],
+      stageId: { in: [...new Set(plans.map((plan) => plan.stageId))] },
     },
     select: {
       id: true,
@@ -116,49 +101,17 @@ export async function assertQualifierAvailability(
           `${plan.code}: a player already has a session in ${other.code} for this stage.`,
           409,
         );
-      if (
-        other.status !== 'COMPLETED' &&
-        plan.scheduledAt &&
-        other.scheduledAt?.getTime() === plan.scheduledAt.getTime()
-      ) {
-        if (plan.refereeIds.some((id) => other.refereeIds.includes(id)))
-          throw new AppError(
-            `${plan.code}: a referee is already scheduled in ${other.code} at this time.`,
-            409,
-          );
-        if (sharedPlayer)
-          throw new AppError(
-            `${plan.code}: a participant is already scheduled in ${other.code} at this time.`,
-            409,
-          );
-      }
-    }
-    if (!plan.scheduledAt) continue;
-    const matches = await tx.match.findMany({
-      where: {
-        tournamentId,
-        scheduledAt: plan.scheduledAt,
-        status: { notIn: ['COMPLETED', 'CANCELLED'] },
-      },
-      select: { code: true, participants: true, assignments: { select: { userId: true } } },
-    });
-    for (const match of matches) {
-      if (match.assignments.some((ref) => plan.refereeIds.includes(ref.userId)))
-        throw new AppError(
-          `${plan.code}: a referee is already scheduled in Match ${match.code} at this time.`,
-          409,
-        );
-      if (
-        playerIds(Object.values(match.participants as unknown as MatchParticipants)).some((id) =>
-          players.has(id),
-        )
-      )
-        throw new AppError(
-          `${plan.code}: a participant is already scheduled in Match ${match.code} at this time.`,
-          409,
-        );
     }
   }
+  await assertScheduleAvailability(
+    tx,
+    tournamentId,
+    plans.map((plan) => ({
+      ...plan,
+      label: plan.code,
+    })),
+    { lobbyIds: excludedLobbyIds },
+  );
 }
 
 export function qualifierNeverStarted(lobby: {
