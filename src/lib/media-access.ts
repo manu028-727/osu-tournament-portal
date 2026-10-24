@@ -1,12 +1,13 @@
 import { db } from './db';
 import { scopedDb } from './scoped-db';
+import { isPublicTournament } from './public-visibility';
 
 export async function isPublicAsset(id: string, tournamentId: string) {
   const t = await db.tournament.findUnique({
     where: { id: tournamentId },
     include: { settings: true },
   });
-  if (!t?.published) return false;
+  if (!t || !isPublicTournament(t)) return false;
   const scoped = scopedDb(db, tournamentId),
     url = `/api/media/${id}`;
   if ([t.settings?.logo, t.settings?.favicon, t.settings?.banner].includes(url)) return true;
@@ -21,7 +22,7 @@ export async function isPublicAsset(id: string, tournamentId: string) {
   if (await scoped.staffMember.count({ where: { visible: true, customImage: url } })) return true;
   const pages = await scoped.page.findMany({
     where: { state: 'PUBLISHED' },
-    select: { publishedRevision: { include: { blocks: true } } },
+    select: { publishedRevision: { include: { blocks: { where: { visible: true } } } } },
   });
   return pages.some((p) => JSON.stringify(p.publishedRevision).includes(url));
 }

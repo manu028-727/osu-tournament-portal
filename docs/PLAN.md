@@ -196,7 +196,8 @@ The technical boundary map and proposed architecture are in
 High means privacy/integrity protection or an important boundary needs prompt work;
 Medium means observable inconsistency, reliability risk or significant maintenance
 cost; Low means bounded cleanup. These are audit priorities, not CVSS scores.
-All fixes below are **Planned**, not performed. "Verified" refers to the stated
+The findings below preserve the audit baseline. Current remediation status and
+checks are in [Cleanup Delivery](#cleanup-delivery). "Verified" refers to the stated
 evidence; suspected performance/exposure consequences are identified separately.
 
 ### F01 Public Lifecycle Gates
@@ -580,6 +581,16 @@ this delivery record owns the current implementation/check state.
 - All migrations in this phase target only the isolated synthetic test database.
   No installation migration, deployment, publication or service restart is authorized
   by these source changes. Remaining findings are still being implemented.
+- Public/context phase: one guest lifecycle predicate, hidden-block/media and
+  private-bracket-entrant projections, explicit editing API context and scoped
+  registration redirects address F01/F12/F13/F14. Fresh pages have no revisions.
+  Four-state synthetic reader matrix and fresh-CMS integration checks pass; full
+  suite: 184 integration tests, 339 unit tests, lint, format, types and production
+  build pass. Four production Chromium tests cover explicit-context errors,
+  archived HTTP/public API/registration paths and authorized archived editing.
+  Persistent profiles pass 1920/1366/768/390/320 in light/dark; desktop and narrow
+  screenshots were inspected. Evidence: .data/cleanup-20261024/browser-context-final
+  and the ignored profile screenshots. No saved publication flags were rewritten.
 
 Work in this order unless the maintainer explicitly reprioritizes. Items marked
 conditional are extensions, not already approved commitments or release blockers.

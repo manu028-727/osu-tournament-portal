@@ -1,13 +1,12 @@
 import { db } from '@/lib/db';
-import { getActor } from '@/lib/auth';
+import { requireTournamentActor } from '@/lib/auth';
 import { AppError, can } from '@/lib/permissions';
 import { exportTeamCsv } from '@/lib/teams-csv';
 import { teamInclude } from '@/lib/teams-service';
 import { errorResponse } from '@/lib/security';
 export async function GET() {
   try {
-    const actor = await getActor();
-    if (!actor) throw new AppError('Sign in to continue.', 401);
+    const actor = await requireTournamentActor();
     if (!can(actor, 'teams.view') && !can(actor, 'teams.import'))
       throw new AppError('Forbidden.', 403);
     const teams = await db.team.findMany({

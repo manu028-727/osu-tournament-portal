@@ -2,7 +2,8 @@
 import NextLink from 'next/link';
 import { createContext, useContext } from 'react';
 import type { ComponentProps } from 'react';
-import { tournamentPath } from '@/lib/tournament-paths';
+import { tournamentPath, scopedHref } from '@/lib/tournament-paths';
+export { scopedHref } from '@/lib/tournament-paths';
 type Scope = {
   tournamentId: string;
   slug: string;
@@ -30,23 +31,6 @@ export function useTournamentTime() {
 }
 export function TournamentScope({ value, children }: { value: Scope; children: React.ReactNode }) {
   return <Context.Provider value={value}>{children}</Context.Provider>;
-}
-export function scopedHref(href: string, scope: Scope) {
-  if (
-    !scope.slug ||
-    !href.startsWith('/') ||
-    href.startsWith('//') ||
-    /^\/(?:api|t|tournaments|admin\/t|admin\/tournaments)(?:\/|$)/.test(href)
-  )
-    return href;
-  if (/^\/admin(?:\/|$)/.test(href)) return href.replace(/^\/admin/, scope.adminBase);
-  if (
-    /^\/(?:mappools|teams|staff|rules|matches|schedule|brackets|register)(?:\/|\?|$)/.test(href) ||
-    href === '/' ||
-    href.startsWith('/?')
-  )
-    return scope.publicBase + (href === '/' ? '' : href);
-  return href;
 }
 export default function Link(props: ComponentProps<typeof NextLink>) {
   const scope = useTournamentScope();

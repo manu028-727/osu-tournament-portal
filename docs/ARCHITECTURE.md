@@ -776,6 +776,15 @@ generated scalar enums to distinguish JSON from relations, validates parent IDs
 and requires callback transactions. SQL/raw-client access remains an explicit
 service responsibility. Dated checks and the remaining cleanup are in PLAN.
 
+public-visibility.ts owns the published-and-not-archived guest predicate across
+content, media, metadata, lists, brackets, standings and featured selection. Archive
+flags and saved revisions are preserved. Public CMS queries select visible blocks;
+media inference uses the same visible blocks, and bracket projections omit private
+entrants. Editing APIs use requireTournamentActor with an explicit proxy-derived
+slug. Public featured-root fallback does not select an editing context. Registration
+redirects reuse the pure scopedHref helper from tournament-paths.ts. New tournament
+page containers have no saved revision until the first successful save.
+
 ### Current Verified Ownership
 
 Source inspection at `fc41596` found one application with domain services, not

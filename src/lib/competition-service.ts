@@ -33,6 +33,7 @@ import type {
   CompetitionRound,
 } from './competition-types';
 import { allocateMatchNumber, reserveBracketMatchNumbers } from './match-numbering';
+import { publicTournamentWhere } from './public-visibility';
 
 const json = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value));
 const matchSelect = {
@@ -687,7 +688,7 @@ export async function publicCompetitionData(
   tournamentId: string,
 ): Promise<CompetitionBracketData[]> {
   const tournament = await db.tournament.findFirst({
-    where: { id: tournamentId, published: true, archivedAt: null },
+    where: { id: tournamentId, ...publicTournamentWhere },
     select: { id: true },
   });
   if (!tournament) return [];
@@ -696,6 +697,16 @@ export async function publicCompetitionData(
     include,
     orderBy: { createdAt: 'asc' },
   });
+  const visibleTeams = new Set(
+    (
+      await db.team.findMany({
+        where: { tournamentId, published: true, status: 'APPROVED' },
+        select: { id: true },
+      })
+    ).map((team) => team.id),
+  );
+  const visibleMatch = (match: (typeof brackets)[number]['nodes'][number]['match']) =>
+    !!match?.published && [match.teamAId, match.teamBId].every((id) => !id || visibleTeams.has(id));
   // Publish only the explicit read model, never configuration, seed provenance, rosters, or audit data.
   return brackets.map((b) => {
     const data = withStandings(b);
@@ -706,8 +717,15 @@ export async function publicCompetitionData(
       version: b.version,
       published: true,
       rounds: b.rounds,
-      entries: b.entries,
-      standings: data.standings,
+      entries: b.entries
+        .filter((entry) => visibleTeams.has(entry.teamId))
+        .map((entry) => ({
+          teamId: entry.teamId,
+          seed: entry.seed,
+          status: entry.status,
+          team: entry.team,
+        })),
+      standings: data.standings?.filter((row) => visibleTeams.has(row.teamId)),
       nodes: b.nodes.map((n) => ({
         id: n.id,
         bracketId: n.bracketId,
@@ -716,16 +734,16 @@ export async function publicCompetitionData(
         position: n.position,
         matchNumber: n.matchNumber,
         state: n.state,
-        matchId: n.match?.published ? n.matchId : null,
+        matchId: visibleMatch(n.match) ? n.matchId : null,
         slots: n.slots.map((s) => ({
           side: s.side,
-          teamId: s.teamId,
-          resolved: s.resolved,
+          teamId: s.teamId && visibleTeams.has(s.teamId) ? s.teamId : null,
+          resolved: s.resolved && (!s.teamId || visibleTeams.has(s.teamId)),
           mode: s.mode,
           sourceNodeId: s.sourceNodeId,
           outcome: s.outcome,
         })),
-        match: n.match?.published ? n.match : null,
+        match: visibleMatch(n.match) ? n.match : null,
       })),
     };
   });

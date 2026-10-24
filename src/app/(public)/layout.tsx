@@ -11,6 +11,7 @@ import { db } from '@/lib/db';
 import { themeStyle } from '@/lib/theme';
 import pilot from '@/components/home-pilot.module.css';
 import { TournamentProfileHeader } from '@/components/home-content';
+import { isPublicTournament } from '@/lib/public-visibility';
 export const dynamic = 'force-dynamic';
 export async function generateMetadata() {
   if (
@@ -20,7 +21,7 @@ export async function generateMetadata() {
     return {};
   if ((await requestScope()).tournamentId === 'none') return {};
   const t = await getTournament();
-  if (!t.published) return { title: 'Tournament unavailable' };
+  if (!isPublicTournament(t)) return { title: 'Tournament unavailable' };
   return {
     title: { default: t.name, template: `%s · ${t.acronym}` },
     description: t.description,
@@ -35,7 +36,7 @@ export default async function PublicLayout({ children }: { children: React.React
   if (directory || (scope.path === '/' && scope.tournamentId === 'none')) return children;
   if (scope.tournamentId === 'none') notFound();
   const [raw, actor] = await Promise.all([getTournament(), getActor()]);
-  if (!raw.published) notFound();
+  if (!isPublicTournament(raw)) notFound();
   const t = raw as unknown as TournamentView;
   const home = await publicPage('home');
   return (

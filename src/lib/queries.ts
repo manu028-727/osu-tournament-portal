@@ -4,6 +4,7 @@ import { requestScope } from './tournament-context';
 import { sortPoolSlots } from './mappool-order';
 import { cleanHtml } from './rich-text';
 import { gameplayScoringSchema } from './gameplay-scoring';
+import { isPublicTournament } from './public-visibility';
 export const revisionInclude = { blocks: { orderBy: { position: 'asc' as const } } };
 export const poolRevisionInclude = { slots: { orderBy: { position: 'asc' as const } } };
 export async function getTournament(tournamentId?: string) {
@@ -25,7 +26,7 @@ export async function getTournament(tournamentId?: string) {
 }
 async function publicDb(tournamentId?: string) {
   const t = await getTournament(tournamentId);
-  if (!t.published) return null;
+  if (!isPublicTournament(t)) return null;
   return scopedDb(rootDb, t.id);
 }
 export async function publicPage(slug: string, tournamentId?: string) {
@@ -33,7 +34,12 @@ export async function publicPage(slug: string, tournamentId?: string) {
   if (!db) return null;
   const page = await db.page.findFirst({
     where: { slug, state: 'PUBLISHED' },
-    select: { title: true, publishedRevision: { include: revisionInclude } },
+    select: {
+      title: true,
+      publishedRevision: {
+        include: { blocks: { where: { visible: true }, orderBy: { position: 'asc' } } },
+      },
+    },
   });
   const revision = page?.publishedRevision;
   if (!revision) return null;
@@ -43,12 +49,16 @@ export async function publicPage(slug: string, tournamentId?: string) {
       : `/t/${(await getTournament(tournamentId)).slug}`
     : (await requestScope()).publicBase;
   return {
-    ...revision,
+    id: revision.id,
+    title: revision.title,
+    createdAt: revision.createdAt,
     html: cleanHtml(revision.html, publicBase),
     blocks: revision.blocks.map((block) => {
       const content = block.content as Record<string, unknown>;
       return {
-        ...block,
+        id: block.id,
+        type: block.type,
+        visible: block.visible,
         content:
           content && typeof content.html === 'string'
             ? { ...content, html: cleanHtml(content.html, publicBase) }

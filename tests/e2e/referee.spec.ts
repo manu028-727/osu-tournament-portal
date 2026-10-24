@@ -406,7 +406,7 @@ test('guided BO9 completes protects, Blue-first ABBA, corrections, refresh and a
   }
   await page.getByRole('button', { name: 'Save stage', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Stage settings saved' })).toBeVisible();
-  const created = await context.request.post('/api/admin/action', {
+  const created = await context.request.post('/api/admin/action?tournament=test-cup', {
     headers: { Origin: 'http://localhost:3001' },
     data: {
       type: 'match.create',
@@ -600,7 +600,7 @@ test('Referees see all matches, observe live updates and cannot edit other assig
     await login(second, 2);
     await login(context, 1);
     const post = async (client: BrowserContext, body: object) =>
-      client.request.post('/api/admin/action', {
+      client.request.post('/api/admin/action?tournament=test-cup', {
         headers: { Origin: 'http://localhost:3001' },
         data: body,
       });
@@ -718,11 +718,19 @@ test('Owner schedules a match; assigned referees collaborate, submit and review 
     await login(refContext, 1);
     await login(refTwo, 2);
     await login(guest, 3);
-    expect((await guest.request.get(`/api/admin/data?section=match&id=${match.id}`)).status()).toBe(
-      403,
-    );
-    expect((await refContext.request.get('/api/admin/data?section=users')).status()).toBe(403);
-    expect((await refContext.request.get('/api/admin/data?section=matches')).status()).toBe(200);
+    expect(
+      (
+        await guest.request.get(`/api/admin/data?section=match&id=${match.id}&tournament=test-cup`)
+      ).status(),
+    ).toBe(403);
+    expect(
+      (await refContext.request.get('/api/admin/data?section=users&tournament=test-cup')).status(),
+    ).toBe(403);
+    expect(
+      (
+        await refContext.request.get('/api/admin/data?section=matches&tournament=test-cup')
+      ).status(),
+    ).toBe(200);
     const ref = await refContext.newPage(),
       observer = await refTwo.newPage();
     ref.on('pageerror', (e) => errors.push(e.message));
@@ -855,7 +863,7 @@ test('qualifier lobby persists scores, commands, observing and a confirmed resul
       draftRevisionId: qualifierRevision.id,
     },
   });
-  const upload = await page.request.post('/api/media', {
+  const upload = await page.request.post('/api/media?tournament=test-cup', {
     headers: { Origin: 'http://localhost:3001' },
     multipart: {
       file: {
@@ -885,7 +893,7 @@ test('qualifier lobby persists scores, commands, observing and a confirmed resul
     where: { tournamentId: 'main', code: `${prefix}-Q1` },
   });
   await db.team.update({ where: { id: teamAId }, data: { logoImageId: null } });
-  const protectedAsset = await page.request.delete(`/api/media/${asset.id}`, {
+  const protectedAsset = await page.request.delete(`/api/media/${asset.id}?tournament=test-cup`, {
     headers: { Origin: 'http://localhost:3001' },
   });
   expect(protectedAsset.status()).toBe(409);
@@ -980,7 +988,7 @@ test('assigned referee records a no-show and an Owner confirms the forfeit', asy
   browser,
 }) => {
   await login(context, 0);
-  const created = await context.request.post('/api/admin/action', {
+  const created = await context.request.post('/api/admin/action?tournament=test-cup', {
     headers: { Origin: 'http://localhost:3001' },
     data: {
       type: 'match.create',

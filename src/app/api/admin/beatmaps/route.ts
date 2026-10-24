@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getActor } from '@/lib/auth';
+import { requireTournamentActor } from '@/lib/auth';
 import { assertPermission } from '@/lib/permissions';
 import { beatmaps } from '@/lib/osu';
 import { getTournament } from '@/lib/queries';
@@ -7,7 +7,7 @@ import { errorResponse, jsonBody, rateLimit, requireSameOrigin } from '@/lib/sec
 export async function POST(request: Request) {
   try {
     requireSameOrigin(request);
-    const actor = await getActor();
+    const actor = await requireTournamentActor();
     assertPermission(actor, 'mappools.edit');
     await rateLimit(`lookup:${actor.id}`, 20);
     const { ids } = z

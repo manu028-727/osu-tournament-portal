@@ -88,6 +88,23 @@ test('the platform chooser hides tournament navigation and unscoped editor URLs 
   await expect(page).toHaveURL('http://localhost:3001/admin/tournaments');
   expect(errors).toEqual([]);
   expect(adminRequests).toEqual([]);
+  for (const path of [
+    '/api/admin/data?section=settings',
+    '/api/admin/players?q=1',
+    '/api/admin/referee-import?id=missing',
+    '/api/admin/teams/export',
+  ])
+    expect((await context.request.get(path)).status(), path).toBe(400);
+  for (const path of ['/api/admin/beatmaps', '/api/admin/multiplayer', '/api/media'])
+    expect(
+      (
+        await context.request.post(path, {
+          headers: { Origin: 'http://localhost:3001' },
+          data: {},
+        })
+      ).status(),
+      path,
+    ).toBe(400);
 });
 test('creates private tournaments, switches scoped CMS contexts and publishes independent websites', async ({
   page,
@@ -249,6 +266,30 @@ test('creates private tournaments, switches scoped CMS contexts and publishes in
       publicPage.getByRole('heading', { name: `${prefix}-a`, exact: true }),
     ).toBeVisible();
     expect((await visitor.request.get('/t/no-such-event')).status()).toBe(404);
+    const active = await db.tournament.findUniqueOrThrow({ where: { slug: `${prefix}-a` } });
+    const registration = await visitor.request.get(`/t/${active.slug}/register`, {
+      maxRedirects: 0,
+    });
+    expect(registration.status()).toBe(307);
+    expect(new URL(registration.headers().location).pathname).toBe(`/t/${active.slug}/rules`);
+    await db.tournament.update({ where: { id: active.id }, data: { archivedAt: new Date() } });
+    for (const path of ['', '/rules', '/register'])
+      expect((await visitor.request.get(`/t/${active.slug}${path}`)).status()).toBe(404);
+    expect((await visitor.request.get(`/api/public/home?tournament=${active.slug}`)).status()).toBe(
+      404,
+    );
+    expect(
+      await (await visitor.request.get(`/api/public/teams?tournament=${active.slug}`)).json(),
+    ).toEqual([]);
+    expect(
+      (
+        await context.request.get(`/api/admin/data?section=homepage&tournament=${active.slug}`)
+      ).status(),
+    ).toBe(200);
+    await publicPage.goto('/tournaments');
+    await expect(publicPage.getByRole('heading', { name: active.name, exact: true })).toHaveCount(
+      0,
+    );
     expect(errors).toEqual([]);
   } finally {
     await visitor.close();
@@ -298,9 +339,13 @@ test('public tournament profile stays mounted across tabs without duplicate navi
     data: { state: 'PUBLISHED', publishedRevisionId: revision.id },
   });
   // Leave an independent, unpublished draft to check that the shared layout never exposes it.
+  const draft = await db.pageRevision.create({
+    data: { tournamentId: tournament.id, pageId: home.id, title: 'Private draft' },
+  });
+  await db.page.update({ where: { id: home.id }, data: { draftRevisionId: draft.id } });
   await db.contentBlock.create({
     data: {
-      revisionId: home.draftRevisionId!,
+      revisionId: draft.id,
       type: 'hero',
       position: 0,
       visible: true,

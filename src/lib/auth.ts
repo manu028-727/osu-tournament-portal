@@ -75,7 +75,7 @@ export const getActor = cache(async (tournamentId?: string): Promise<Actor | nul
 export async function requireTournamentActor() {
   const actor = await getActor();
   if (!actor) throw new AppError('Sign in to continue.', 401);
-  if (!actor.tournamentId || actor.tournamentId === 'none')
+  if (!(await requestScope()).slug || !actor.tournamentId || actor.tournamentId === 'none')
     throw new AppError('Select a tournament in the Organizer Workspace before continuing.', 400);
   return actor;
 }

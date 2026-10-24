@@ -5,6 +5,7 @@ import { matchCredits } from './match-display';
 import type { MatchParticipants } from './matches-service';
 import type { Prisma } from '@/generated/prisma/client';
 import { numericMatchIdentifier } from './match-numbering';
+import { isPublicTournament } from './public-visibility';
 
 export async function publicMatches(
   filters: { code?: string; teamId?: string; stage?: string; status?: string } = {},
@@ -14,9 +15,9 @@ export async function publicMatches(
   const db = scopedDb(rootDb, tournamentId);
   const tournament = await db.tournament.findUnique({
     where: { id: tournamentId },
-    select: { published: true, timezone: true },
+    select: { published: true, archivedAt: true, timezone: true },
   });
-  if (!tournament?.published) return [];
+  if (!tournament || !isPublicTournament(tournament)) return [];
   const where: Prisma.MatchWhereInput = {
     published: true,
     AND: [

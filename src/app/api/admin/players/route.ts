@@ -1,13 +1,12 @@
 import { z } from 'zod';
-import { getActor } from '@/lib/auth';
+import { requireTournamentActor } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { AppError } from '@/lib/permissions';
 import { profileSchema, osuGet } from '@/lib/osu';
 import { errorResponse, rateLimit } from '@/lib/security';
 export async function GET(request: Request) {
   try {
-    const actor = await getActor();
-    if (!actor) throw new AppError('Sign in to continue.', 401);
+    const actor = await requireTournamentActor();
     if (!actor.permissions.some((p) => ['teams.create', 'teams.edit', 'teams.import'].includes(p)))
       throw new AppError('Forbidden.', 403);
     await rateLimit(`profiles:${actor.id}`, 20);

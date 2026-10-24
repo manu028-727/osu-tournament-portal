@@ -18,9 +18,7 @@ export async function TournamentDirectory({
     getActor(),
   ]);
   const tournaments = items.filter(
-    (t) =>
-      (!mode || t.gameMode === mode) &&
-      (!status || (status === 'ARCHIVED' ? !!t.archivedAt : !t.archivedAt && t.status === status)),
+    (t) => (!mode || t.gameMode === mode) && (!status || t.status === status),
   );
   return (
     <main id="main" className="directory wrap py-7">
@@ -57,7 +55,7 @@ export async function TournamentDirectory({
             Status
             <select name="status" defaultValue={status}>
               <option value="">All tournaments</option>
-              {['UPCOMING', 'REGISTRATIONS_OPEN', 'ONGOING', 'COMPLETED', 'ARCHIVED'].map((s) => (
+              {['UPCOMING', 'REGISTRATIONS_OPEN', 'ONGOING', 'COMPLETED'].map((s) => (
                 <option key={s} value={s}>
                   {s.charAt(0) + s.slice(1).toLowerCase().replaceAll('_', ' ')}
                 </option>
@@ -93,9 +91,7 @@ export async function TournamentDirectory({
               <p className="flex flex-wrap items-center gap-2 text-xs text-muted">
                 <span className="font-mono">{t.gameMode}</span>
                 <span aria-hidden="true">/</span>
-                {t.archivedAt
-                  ? 'Archived'
-                  : t.status.charAt(0) + t.status.slice(1).toLowerCase().replaceAll('_', ' ')}
+                {t.status.charAt(0) + t.status.slice(1).toLowerCase().replaceAll('_', ' ')}
               </p>
               <div className="mt-2 flex items-start justify-between gap-3">
                 <h3 className="text-xl font-semibold">{t.name}</h3>

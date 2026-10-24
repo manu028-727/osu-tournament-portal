@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Prisma } from '@/generated/prisma/client';
 import { db as rootDb } from './db';
+import { publicTournamentWhere } from './public-visibility';
 import { scopedDb } from './scoped-db';
 import { AppError, assertPermission, can, type Actor } from './permissions';
 import { historicalScoring, tournamentScoring } from './gameplay-scoring';
@@ -757,7 +758,7 @@ export async function publishedQualifierStandings(
 ): Promise<PublishedQualifierStandings | null> {
   const tx = scopedDb(rootDb, tournamentId);
   const tournament = await tx.tournament.findFirst({
-    where: { id: tournamentId, published: true, archivedAt: null },
+    where: { id: tournamentId, ...publicTournamentWhere },
     select: { id: true },
   });
   if (!tournament) return null;

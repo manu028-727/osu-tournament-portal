@@ -8,6 +8,7 @@ import { osuGet, profileSchema } from './osu';
 import { parseTeamCsv } from './teams-csv';
 import type { TeamAction, TeamFields } from './teams-validation';
 import type { Prisma } from '@/generated/prisma/client';
+import { publicTournamentWhere } from './public-visibility';
 
 export const teamInclude = {
   members: { orderBy: { position: 'asc' as const }, include: { participant: true } },
@@ -268,10 +269,7 @@ export const publicTeamSelect = {
 export async function publicTeams(slug?: string, tournamentId?: string) {
   tournamentId ||= (await requestScope()).tournamentId;
   const db = scopedDb(rootDb, tournamentId);
-  if (
-    !(await db.tournament.findUnique({ where: { id: tournamentId }, select: { published: true } }))
-      ?.published
-  )
+  if (!(await db.tournament.findFirst({ where: { id: tournamentId, ...publicTournamentWhere } })))
     return [];
   return db.team.findMany({
     where: { tournamentId, published: true, status: 'APPROVED', ...(slug ? { slug } : {}) },

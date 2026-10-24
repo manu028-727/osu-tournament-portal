@@ -1,4 +1,4 @@
-import { getActor, actorForTournament } from '@/lib/auth';
+import { requireTournamentActor, actorForTournament } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { scopedDb } from '@/lib/scoped-db';
 import { AppError } from '@/lib/permissions';
@@ -19,8 +19,7 @@ export async function POST(request: Request) {
   } | null = null;
   try {
     requireSameOrigin(request);
-    const actor = await getActor();
-    if (!actor) throw new AppError('Sign in to continue.', 401);
+    const actor = await requireTournamentActor();
     const { id } = z.object({ id: z.string().min(1).max(100) }).parse(await jsonBody(request));
     const view = (await matchData(
       actor,

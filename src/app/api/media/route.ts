@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { getActor } from '@/lib/auth';
+import { requireTournamentActor } from '@/lib/auth';
 import { db as rootDb } from '@/lib/db';
 import { scopedDb } from '@/lib/scoped-db';
 import { assertPermission, AppError } from '@/lib/permissions';
@@ -10,7 +10,7 @@ export const runtime = 'nodejs';
 export async function POST(request: Request) {
   try {
     requireSameOrigin(request);
-    const actor = await getActor();
+    const actor = await requireTournamentActor();
     assertPermission(actor, 'media.upload');
     const db = scopedDb(rootDb, actor.tournamentId || 'main');
     await rateLimit(`media:${actor.id}`, 20);

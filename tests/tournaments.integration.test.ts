@@ -102,6 +102,16 @@ describe('multi-tournament isolation', () => {
   it('creates independent private CMS records, local roles and categories', async () => {
     for (const id of ids) {
       expect(await db.page.count({ where: { tournamentId: id } })).toBe(2);
+      expect(await db.pageRevision.count({ where: { tournamentId: id } })).toBe(0);
+      expect(
+        await db.page.count({
+          where: {
+            tournamentId: id,
+            draftRevisionId: null,
+            publishedRevisionId: null,
+          },
+        }),
+      ).toBe(2);
       expect(await db.role.count({ where: { tournamentId: id } })).toBe(9);
       expect((await db.tournament.findUniqueOrThrow({ where: { id } })).published).toBe(false);
       const settings = await db.tournamentSettings.findUniqueOrThrow({

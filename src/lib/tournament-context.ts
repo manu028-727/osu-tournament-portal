@@ -3,6 +3,7 @@ import { cache } from 'react';
 import { db } from './db';
 import { AppError } from './permissions';
 import { tournamentAdminBase } from './tournament-paths';
+import { publicTournamentWhere } from './public-visibility';
 export const requestScope = cache(async () => {
   let slug: string | null = null,
     path = '';
@@ -35,9 +36,18 @@ export const requestScope = cache(async () => {
     platform.defaultTournamentId !== 'main' &&
     platform.rootMode === 'FEATURED'
   ) {
-    const t = await db.tournament.findUniqueOrThrow({
-      where: { id: platform.defaultTournamentId },
+    const t = await db.tournament.findFirst({
+      where: { id: platform.defaultTournamentId, ...publicTournamentWhere },
     });
+    if (!t)
+      return {
+        tournamentId: 'none',
+        timezone: platform.timezone,
+        slug: '',
+        path,
+        publicBase: '',
+        adminBase: '/admin',
+      };
     return {
       tournamentId: t.id,
       timezone: t.timezone,

@@ -198,6 +198,12 @@ technology. Dated results and evidence paths remain in
 
 ## Verification
 
+The public directory lists published, unarchived tournaments; archived tournaments
+remain in the organizer chooser. The directory status control reflects that rule.
+Fresh page editors start unsaved. Cleanup preserves the approved profile layout,
+tab persistence and both appearances; hidden blocks stay available to authorized
+editing and are withheld from public data and media inference.
+
 Use isolated synthetic fixtures and current E2E/rollout harnesses, following
 [ARCHITECTURE.md](ARCHITECTURE.md#development-and-tests). Inspect actual screenshots;
 DOM width assertions alone are not a visual audit. Evidence stays in ignored .data.

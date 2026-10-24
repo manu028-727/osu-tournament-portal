@@ -1,4 +1,4 @@
-import { getActor } from '@/lib/auth';
+import { requireTournamentActor } from '@/lib/auth';
 import { AppError, assertPermission } from '@/lib/permissions';
 import { errorResponse, jsonBody, requireSameOrigin, rateLimit } from '@/lib/security';
 import { multipartBody } from '@/lib/request-body';
@@ -15,7 +15,7 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 export async function GET(request: Request) {
   try {
-    const actor = await getActor();
+    const actor = await requireTournamentActor();
     assertPermission(actor, 'matches.import');
     if (new URL(request.url).searchParams.get('destinations') === '1')
       return Response.json(await importDestinations(actor), {
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     requireSameOrigin(request);
-    const actor = await getActor();
+    const actor = await requireTournamentActor();
     assertPermission(actor, 'matches.import');
     await rateLimit(`referee-import:${actor.id}`, 10, 60);
     if (request.headers.get('content-type')?.includes('application/json')) {

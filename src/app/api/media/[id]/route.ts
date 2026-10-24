@@ -2,7 +2,7 @@ import { db as rootDb } from '@/lib/db';
 import { scopedDb } from '@/lib/scoped-db';
 import { isPublicAsset } from '@/lib/media-access';
 import { canAccessWorkspace } from '@/lib/workspace';
-import { getActor } from '@/lib/auth';
+import { getActor, requireTournamentActor } from '@/lib/auth';
 import { assertPermission, AppError } from '@/lib/permissions';
 import { errorResponse, requireSameOrigin } from '@/lib/security';
 import { deleteObject, getObject } from '@/lib/storage';
@@ -31,7 +31,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     requireSameOrigin(request);
-    const actor = await getActor();
+    const actor = await requireTournamentActor();
     assertPermission(actor, 'media.upload');
     const db = scopedDb(rootDb, actor.tournamentId || 'main');
     const { id } = await params;

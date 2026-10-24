@@ -9,6 +9,7 @@ import { DEFAULT_COPY } from './copy';
 import { safeUrl, color } from './validation';
 import { appUrl } from './security';
 import { gameplayScoringSchema } from './gameplay-scoring';
+import { publicTournamentWhere } from './public-visibility';
 
 export const tournamentActionSchema = z.discriminatedUnion('type', [
   z.object({
@@ -62,7 +63,7 @@ export const tournamentActionSchema = z.discriminatedUnion('type', [
 export async function tournamentList(actor?: Actor | null, publicOnly = false) {
   const items = await db.tournament.findMany({
     where: publicOnly
-      ? { published: true }
+      ? publicTournamentWhere
       : actor?.platformAdmin
         ? {}
         : {
@@ -176,15 +177,8 @@ export async function tournamentAction(
             await scoped.userRole.create({ data: { userId: actor.id, roleId: role.id } });
         }
         for (const slug of ['home', 'rules']) {
-          const page = await scoped.page.create({
+          await scoped.page.create({
             data: { slug, title: slug === 'home' ? input.name : 'Rules' },
-          });
-          const revision = await scoped.pageRevision.create({
-            data: { pageId: page.id, title: page.title, createdBy: actor.id },
-          });
-          await scoped.page.update({
-            where: { id: page.id },
-            data: { draftRevisionId: revision.id },
           });
         }
         for (const [position, acronym] of ['NM', 'HD', 'HR', 'DT', 'FM', 'TB'].entries())
@@ -214,10 +208,10 @@ export async function tournamentAction(
           input.rootMode === 'FEATURED' &&
           (!input.defaultTournamentId ||
             !(await tx.tournament.findFirst({
-              where: { id: input.defaultTournamentId, published: true },
+              where: { id: input.defaultTournamentId, ...publicTournamentWhere },
             })))
         )
-          throw new AppError('The featured tournament must be published.');
+          throw new AppError('The featured tournament must be published and not archived.');
         if (input.timezone)
           try {
             new Intl.DateTimeFormat('en', { timeZone: input.timezone });
