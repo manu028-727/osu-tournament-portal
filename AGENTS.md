@@ -61,6 +61,35 @@ the specification. Use relative links to these documents and their headings.
 - No fake production login, bot impersonation, fabricated tournament data, secrets
   in logs or automatic retries of uncertain IRC room creation.
 
+## Maintenance And Change Ownership
+
+Every substantial feature implementation or refactor includes autonomous cleanup
+of code made obsolete by that change. Search callers, route conventions, dynamic
+loading, scripts, tests, container entrypoints and archive/migration compatibility
+before removing old implementations, components, endpoints, validation, types,
+dependencies or files. Remove verified obsolete paths and update their references
+in the same change; record unresolved candidates and their evidence in PLAN.
+Do not delete working behavior, historical witnesses or required compatibility
+merely because an import search is empty or a filename says "legacy" or "pilot".
+An explicitly documentation-only audit does not authorize this cleanup.
+
+Keep business rules in their existing domain owners. Single, bulk, import and
+integration entrypoints must use equivalent authorization, lifecycle, tenant and
+validation policies, with tests for intentional differences. Permission dispatch
+must cover new actions explicitly. Put client-shared types/constants in modules
+that do not import database services or entire workspace components.
+
+Serialization under a lock does not detect a stale browser form. For mutable
+editor contracts, compare the reviewed version/revision/configuration witness
+inside the transaction. Preserve the documented lock order during extractions;
+changing lock scope requires concurrent-writer regression evidence first.
+
+For schema changes, inspect both Prisma and applied SQL constraints/triggers,
+scopedDb ownership/nested-operation coverage, public projections, archive allowlists,
+ID remapping, fixtures and recovery paths. Classify saved JSON as configuration,
+cache, history or provenance before proposing consolidation. Do not auto-export
+every new database field or reinterpret an old witness with a newer formula.
+
 ## Implementation And Verification
 
 Use Node 22.12+ with the lockfile (`npm ci`). Read local framework guidance below

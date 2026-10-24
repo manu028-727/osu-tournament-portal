@@ -26,6 +26,7 @@ document when those contracts change. Examples are not proof of live verificatio
   [adoption](#existing-schema-adoption), [backups](#backups-and-recovery),
   [troubleshooting](#troubleshooting).
 - Engineering: [development/tests](#development-and-tests),
+  [boundaries and proposed cleanup](#implementation-boundaries-and-proposed-cleanup),
   [security/contribution/license rules](#security-and-distribution).
 
 | Layer          | Implementation                                                                      |
@@ -34,7 +35,7 @@ document when those contracts change. Examples are not proof of live verificatio
 | UI             | Tailwind CSS, Radix primitives, Lucide, reusable local controls; `src/components`   |
 | Domain         | Pure validation/calculation modules and transactional services; `src/lib`           |
 | Database       | PostgreSQL, Prisma, `@prisma/adapter-pg`; `prisma/schema.prisma`, migrations        |
-| CMS            | TipTap JSON, sanitized rendering, page/revision/block services                      |
+| CMS            | TipTap HTML, sanitized rendering, JSON homepage blocks and revision services        |
 | Media          | Sharp, AWS S3 SDK or filesystem; `image-upload.ts`, `storage.ts`, `media-access.ts` |
 | Competition    | `brackets-manager`/`brackets-model` plus native persisted graph and safeguards      |
 | Interchange    | ExcelJS, PapaParse, bounded validated ZIP archives                                  |
@@ -89,13 +90,22 @@ directory/featured roots and legacy fallback records; a fresh platform needs no
 
 `workspace.ts`, `workspace-server.ts` and client scope helpers keep tournament
 editors behind selection. `/admin/tournaments` is the platform chooser. Unscoped
-editors return there; missing API context returns 400, not a false resource 404.
-Empty page queries provide safe editor defaults without saving fake CMS content.
+editors return there; unresolved API context returns 400, not a false resource 404.
+Empty page queries provide safe editor defaults without saving CMS content on read.
+The API guard currently detects an unresolved/none tenant, not necessarily an
+explicit selection: featured/default fallback can satisfy it. Specialized older
+routes also use getActor directly. The explicit-context contract is therefore
+incomplete; see [F13](PLAN.md#f13-explicit-tournament-context-and-redirects).
 
 `src/app/(public)/layout.tsx` owns published profile/identity/tabs outside changing
 page content. Same-tournament links reuse nodes; cross-tournament links deliberately
 replace the document to reset tenant state. Public queries gate publication/archive
-state before each resource's own public projection.
+state inconsistently: publication is checked broadly, but only competition and
+qualifier-standings readers also exclude archived tournaments. Directory, CMS,
+pools, teams, matches, media and the shared public layout currently accept a
+published archived tournament. Archiving preserves the published flag. This is a
+known contract discrepancy, not the target visibility policy; see
+[F01](PLAN.md#f01-public-lifecycle-gates).
 
 ## API And Mutation Contracts
 
@@ -134,8 +144,11 @@ The primary mutation pipeline:
    and reloads the actor's current memberships/permissions.
 4. Domain services check tenant, capability, lifecycle and expected version/revision/
    configuration witness, then atomically write related rows and audit/events.
-5. Return saved results and refresh resources. Stale writers must reload/review,
-   never silently overwrite. Root transaction timeout is 15 seconds; avoid network
+5. Return saved results and refresh resources. Matches, teams, revisions and several
+   bulk workflows compare reviewed witnesses. Settings, individual staff/category
+   edits and staff bulk edits do not have equivalent stale-form checks; stage.save
+   accepts an omitted configuration token. See [F02](PLAN.md#f02-stale-editor-writes).
+   Root transaction timeout is 15 seconds; avoid network
    work under locks where the existing architecture allows preparation outside.
 
 Specialized media/platform/import/IRC paths own equivalent guards and bounds.
@@ -231,7 +244,17 @@ authorize and explicitly select a revision.
 `rich-text.ts` sanitizes TipTap rendering and imports. Heading navigation derives
 from the document. Shared public profile uses visible published homepage branding
 override, then tournament settings, never the newest draft; preview uses its draft
-explicitly. Empty editor defaults are not saved/published records.
+explicitly. The editor API can synthesize defaults for absent pages; however,
+`tournamentAction(create)` currently creates home/rules pages and one blank saved
+draft revision for each. The setup checklist treats these as saved work. This
+differs from the empty-tournament contract; see [F12](PLAN.md#f12-fresh-cms-state).
+
+RichEditor emits `editor.getHTML()`, not a persisted TipTap document tree.
+`PageRevision.html` and block `content.html` are sanitized on save/import and public
+read. Block envelopes remain JSON. `publicPage` returns all published-revision
+blocks, while HomepageContent filters `visible` during rendering; API serialization
+and media reference inference do not apply that filter. Public projection review
+is tracked in [F14](PLAN.md#f14-public-projections).
 
 ## Pool Planning, Ordering And Release
 
@@ -433,8 +456,14 @@ production. S3 uses scoped server credentials, bounded reads, two SDK attempts a
 
 Same-origin media routes check publication/reference/ownership separately for global
 and tenant assets. Failed saves do not create false catalog success. Referenced
-deletion is refused; failed cleanup remains retryable rather than breaking public
-content. Back up all saved revision references, not only current visible artwork.
+deletion is refused. Archive imports retain retryable cleanup through
+TournamentTransfer. Ordinary tenant/platform
+media deletion commits the catalog deletion first, then attempts object deletion;
+failure is logged and the object key is not retained in a cleanup job. Upload
+compensation also has no durable journal. Those failures can leave private orphan
+objects; ordinary cleanup is not currently retryable through the application.
+See [F04](PLAN.md#f04-media-reference-and-cleanup-ownership). Back up all saved
+revision references, not only current visible artwork.
 
 ## Tournament Archive Protocol
 
@@ -733,6 +762,116 @@ are never automatically deleted; cleanup requires explicit operator approval.
 Safe commands: `./portal status`, `./portal compose config --quiet`,
 `./portal compose logs --since=15m --tail=100 web`, and gateway logs. Do not publish
 resolved env/Compose configuration, credential URLs, cookies or tickets.
+
+## Implementation Boundaries And Proposed Cleanup
+
+### Current Verified Ownership
+
+Source inspection at `fc41596` found one application with domain services, not
+separate competing backend implementations. The schema has 57 models across seven
+migrations. The counts below describe that revision, not permanent size limits.
+Audit actions, priorities and acceptance gates live only in
+[PLAN](PLAN.md#repository-audit-and-cleanup-phase).
+
+| Boundary                     | Current owners and dependency direction                                                                                                                                                                                                                          |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| HTTP/context                 | proxy.ts, tournament-paths.ts, tournament-context.ts and auth.ts resolve identity/context; route handlers validate request transport and call services                                                                                                           |
+| Administrative orchestration | validation.ts combines domain action unions; admin-service.ts (836 lines) maps permissions and dispatches one transaction; api/admin/data/route.ts separately dispatches reads                                                                                   |
+| Match operations             | match-engine.ts is pure; matches-service.ts (1,595 lines) combines options/queries, roster and lobby helpers, scheduling, state changes and result revisions; qualifiers, IRC and bulk scheduling reuse its helpers                                              |
+| Competition                  | competition-engine.ts adapts brackets-manager through in-memory storage; competition-service.ts (1,783 lines) owns persisted graph operations, eligibility, correction previews, public reads and archive witness rebinding                                      |
+| Qualifiers                   | qualifier-policy.ts and qualifier-seeding.ts own pure policy/math; qualifiers-service.ts and qualifiers-bulk.ts persist sessions; qualifier-standings-service.ts (927 lines) owns cohort reads, finalization, reopen and archive rebinding                       |
+| Pooling/stages               | mappool-order.ts and stage-pool-validation.ts are pure; stage-workflows.ts and pooling-service.ts persist plans/reviews/release; basic stage/category/pool saves still live in admin-service.ts                                                                  |
+| Teams/CMS/access             | teams-service.ts prepares provider data then writes versioned registrations; page/staff/role/settings writes remain in admin-service.ts; permissions.ts is the access vocabulary                                                                                 |
+| Transfer                     | tournament-archive-format.ts explicitly defines the wire allowlist; tournament-export.ts collects a read-only consistent snapshot; tournament-import.ts remaps/restores with durable storage recovery; competition and standings services verify their witnesses |
+| Browser state                | admin/shared.tsx owns request/resource/polling/task/dialog/unsaved helpers; individual editors own forms and selection state; no shared form-store layer exists                                                                                                  |
+| Providers                    | osu.ts owns official API access; multiplayer adapters validate evidence; storage.ts owns object operations; services/irc is an optional process; discord-result.ts formats strings, with no Discord bot/webhook transport                                        |
+
+The large services are not pure domain libraries: importing one as a runtime
+dependency brings database/context dependencies. MatchParticipants currently lives
+in matches-service.ts and is imported with `import type` by view/adapter modules.
+The resulting static type backedges are not evidence of a runtime circular import.
+Actual runtime component coupling exists where referee-panel.tsx and
+qualifiers-workspace.tsx import status labels from matches-dashboard.tsx.
+
+### Transactions And Policy Duplication
+
+`executeAction` prepares provider metadata outside the transaction, reloads the
+actor inside it and takes advisory lock `78214321`. Tournament lifecycle, OAuth
+bootstrap, media, workbook application, IRC and domain services also use that
+same database-wide key. Reacquisition inside the same transaction is intentional;
+it does not provide parallelism between tournaments. Standings also takes a
+stage-specific lock after the root lock. Import uses a separate Serializable
+transaction/journal; export uses read-only RepeatableRead. These are distinct
+consistency protocols, not interchangeable transaction wrappers.
+
+`applyMatchAction`, `applyPoolingAction` and similar functions rely on their
+caller's transaction and permission refresh for part of the mutation contract.
+Some recheck capabilities or take the shared lock themselves; others rely on the
+dispatcher. An extraction must preserve the complete caller/callee contract.
+There is no measured throughput or lock-wait baseline yet.
+
+Policy duplication has observable differences. Match creation and single-match
+scheduling use validateAssignments plus same-opponent-pair checks; bulk scheduling
+also compares shared players/teams against other matches and qualifier sessions.
+Qualifier scheduling uses assertQualifierAvailability. Match creation repeats
+pool-capacity rules rather than calling stagePoolProblems, which release and bulk
+stage reassignment use. Keep head-to-head and qualifier semantics explicit while
+consolidating genuinely shared predicates; do not collapse their state machines.
+
+### Database And Wire Boundaries
+
+Prisma is not the entire persistence contract. SQL adds scoring/run/graph CHECKs,
+partial IRC uniqueness and match-number triggers. Page and pool pointer foreign
+keys verify the tournament, but do not verify that the chosen revision belongs to
+that particular page/pool. MatchMapResult independently references Match and
+MatchMapAction, without a constraint equating the action's matchId to the result's.
+Application lookups and archive validation supply those stronger checks today.
+This is a defense-in-depth gap, not a demonstrated reachable cross-tenant exploit.
+
+scopedDb maintains manual direct/parent/nested-relation maps. Unclassified delegates
+pass through as global. Raw SQL is not rewritten. ownedData handles create/update
+and createMany on listed nested relations, but not all Prisma nested operations
+(connect, connectOrCreate, nested upsert/updateMany/deleteMany and others). Parent-
+owned creates do not automatically validate every related ID. The wrapper retains
+the Prisma client type, so TypeScript does not restrict callers to the supported
+subset. Explicit domain predicates and composite foreign keys remain necessary.
+
+These repeated values have different ownership and must not be deduplicated blindly:
+
+| Values              | Authority and intentional copies                                                                                                                                                    |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Gameplay scoring    | TournamentSettings.gameplayScoring controls new records; Match.rules, QualifierLobby.rules/gameplayScoring and score provenance preserve historical interpretation                  |
+| Players and teams   | User/Participant share global numeric identity; Team/TeamMember own current registration; Match/QualifierLobby participants JSON freezes the played roster                          |
+| Beatmaps and pools  | Beatmap is refreshable metadata cache; MappoolSlot and PoolCandidate metadata are saved workflow witnesses; pool revisions preserve publications/history                            |
+| Competition         | Native rows own current nodes/routes; Bracket.config and seedOrder retain generation/source witnesses; legacy W/L labels retain supported historical dependencies                   |
+| Qualifier standings | Source rows and hashes witness the cohort; versioned snapshot owns reviewed statistics/ties/seeds; import rebinding proves equivalence rather than recalculating history            |
+| Portability         | ARCHIVE_TABLES is a security allowlist, not generated Prisma serialization; identity remapping, insertion order and deferred pointers implement its versioned relationship contract |
+
+Tenant/time filters lack matching leading indexes on several hot collections
+(for example AuditLog has createdAt alone and Match has status/scheduledAt).
+This is a query-plan investigation candidate, not a measured performance failure.
+Public matches/teams and team exports cap at 500, admin media at 200 and user lookup
+at 100 without continuation contracts. Conversely, matches, pooling candidates,
+qualifier sessions and competition reads can load whole collections and children.
+Archive byte/record bounds do not measure peak RSS across parsing, remapping and
+ZIP buffers. See [F07](PLAN.md#f07-read-size-and-index-budget).
+
+### Target Boundaries - Not Yet Implemented
+
+Keep the existing monolith and its domain vocabulary. Extract cohesive reads,
+scheduling predicates, correction workflows and archive witness functions from
+the largest services, retaining one orchestration point for each transaction.
+Client-shared types, labels and normalization belong beside pure domain modules.
+Split large editor dialogs/selection/form sections around their actual workflows,
+using the existing controls, resource hooks and semantic tokens.
+
+Make ownership checks, reviewed witnesses and public projections explicit at every
+entrypoint. Extend supported-operation tests before tightening scopedDb; add
+relational constraints only after isolated scans and reviewed repairs. Preserve
+the archive allowlist independently and verify its schema coverage automatically.
+Keep current locks until concurrent-writer tests justify a narrower protocol.
+No module moves, schema migrations, service changes or UI redesign have been made
+as part of this audit. The execution sequence and migration gates are in PLAN.
 
 ## Development And Tests
 

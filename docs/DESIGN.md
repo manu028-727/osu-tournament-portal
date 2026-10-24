@@ -174,6 +174,28 @@ Use compact skeleton/empty rows, real next steps and recoverable visible errors,
 not blank sections or large generic empty-state cards. Notifications must not move
 table geometry or conceal the current match action.
 
+## Implementation Alignment
+
+The approved direction remains unchanged. globals.css remaps several Tailwind
+color names to semantic state/team tokens; those usages are not independent fixed
+light/dark palettes. home-pilot.module.css and workspace-pilot.module.css are active
+styles for the approved profile/workspace, despite their historical names.
+
+Current editing uses shared Radix Modal/ConfirmButton alongside native confirm
+prompts. useUnsaved covers ordinary anchor navigation and unload, with incomplete
+history/programmatic navigation coverage. Public empty states and some control
+labels mix Italian and English outside the editable copy catalog. These are
+alignment candidates, not approval for a new interaction system or automatic
+translation of tournament content. Actionable scope and regression gates belong in
+[F09](PLAN.md#f09-frontend-boundaries-and-editing-consistency); obsolete QA authority
+is covered by [F10](PLAN.md#f10-obsolescence-and-compatibility-inventory).
+
+Dense stage tables use contained horizontal scrolling; verification must include
+access to their final columns by keyboard/touch, not merely absence of page overflow.
+Screenshot sampling does not certify every editor, content state or assistive
+technology. Dated results and evidence paths remain in
+[PLAN](PLAN.md#repository-audit-checks---24-october-2026).
+
 ## Verification
 
 Use isolated synthetic fixtures and current E2E/rollout harnesses, following
