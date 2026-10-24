@@ -1,8 +1,21 @@
-import type { Prisma, PrismaClient } from '@/generated/prisma/client';
+import { Prisma, type PrismaClient } from '@/generated/prisma/client';
 import { AppError } from './permissions';
 
 type Client = PrismaClient | Prisma.TransactionClient;
 type Data = Record<string, unknown>;
+// New models must be classified explicitly; an unknown delegate never becomes global.
+const globalModels = new Set([
+  'user',
+  'session',
+  'oAuthState',
+  'rateLimit',
+  'permission',
+  'platformSettings',
+  'platformAsset',
+  'tournamentTransfer',
+  'participant',
+  'beatmap',
+]);
 const direct = new Set([
   'tournamentSettings',
   'page',
@@ -54,6 +67,7 @@ const parents: Record<string, string[]> = {
   qualifierEvent: ['lobby'],
 };
 const relations: Record<string, Record<string, string>> = {
+  tournament: { settings: 'tournamentSettings' },
   page: {
     revisions: 'pageRevision',
     draftRevision: 'pageRevision',
@@ -91,6 +105,66 @@ const relations: Record<string, Record<string, string>> = {
 const object = (value: unknown): Data =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as Data) : {};
 const contexts = new WeakMap<object, string>();
+const scalarFields = new Map(
+  Object.entries(Prisma.ModelName).map(([name]) => [
+    name[0].toLowerCase() + name.slice(1),
+    new Set(
+      Object.values(
+        (Prisma as unknown as Record<string, Record<string, string>>)[`${name}ScalarFieldEnum`],
+      ),
+    ),
+  ]),
+);
+const parentReferences: Record<string, Record<string, string>> = {
+  pageRevision: { pageId: 'page' },
+  mappoolRevision: { mappoolId: 'mappool' },
+  contentBlock: { revisionId: 'pageRevision' },
+  mappoolSlot: { revisionId: 'mappoolRevision' },
+  rolePermission: { roleId: 'role' },
+  matchAssignment: { matchId: 'match' },
+  matchMapAction: { matchId: 'match' },
+  matchMapResult: { matchId: 'match', actionId: 'matchMapAction' },
+  multiplayerGame: { matchId: 'match', actionId: 'matchMapAction' },
+  matchPlayerScore: { resultId: 'matchMapResult' },
+  matchEvent: { matchId: 'match' },
+  matchResultRevision: { matchId: 'match' },
+  qualifierAssignment: { lobbyId: 'qualifierLobby' },
+  qualifierScore: { lobbyId: 'qualifierLobby' },
+  qualifierEvent: { lobbyId: 'qualifierLobby' },
+};
+async function assertReferences(
+  client: Client,
+  model: string,
+  input: unknown,
+  tournamentId: string,
+): Promise<void> {
+  for (const row of Array.isArray(input) ? input : [input]) {
+    const data = object(row);
+    for (const [field, parent] of Object.entries(parentReferences[model] || {})) {
+      if (data[field] === undefined || data[field] === null) continue;
+      const delegate = (
+        client as unknown as Record<string, { findFirst(args: unknown): Promise<unknown> }>
+      )[parent];
+      if (
+        !(await delegate.findFirst({
+          where: withWhere({ id: data[field] }, ownership(parent, tournamentId)!),
+          select: { id: true },
+        }))
+      )
+        throw new AppError('Cross-tournament references are not permitted.', 403);
+    }
+    for (const [field, child] of Object.entries(relations[model] || {})) {
+      const nested = object(data[field]);
+      if (nested.create) await assertReferences(client, child, nested.create, tournamentId);
+      if (nested.createMany)
+        await assertReferences(client, child, object(nested.createMany).data, tournamentId);
+      if (nested.update) {
+        for (const update of Array.isArray(nested.update) ? nested.update : [nested.update])
+          await assertReferences(client, child, object(update).data || update, tournamentId);
+      }
+    }
+  }
+}
 function ownership(model: string, tournamentId: string): Data | null {
   if (model === 'tournament') return { id: tournamentId };
   if (direct.has(model)) return { tournamentId };
@@ -125,18 +199,43 @@ function ownedData(
     if (creating && !nestedChild) data.tournamentId = tournamentId;
     if (nestedChild) delete data.tournamentId;
   }
+  for (const field of Object.keys(data))
+    if (!scalarFields.get(model)?.has(field) && !(field in (relations[model] || {})))
+      throw new AppError(
+        `Unsupported nested write: ${model}.${field}. Use an explicit domain operation.`,
+        403,
+      );
   for (const [field, child] of Object.entries(relations[model] || {})) {
     if (!data[field]) continue;
     const nested = { ...object(data[field]) };
+    if (
+      Object.keys(nested).some(
+        (operation) => !['create', 'createMany', 'update'].includes(operation),
+      )
+    )
+      throw new AppError(
+        'Unsupported nested operation. Use an explicitly scoped domain operation.',
+        403,
+      );
     for (const operation of ['create', 'update'] as const)
-      if (nested[operation])
-        nested[operation] = ownedData(
-          child,
-          nested[operation],
-          tournamentId,
-          operation === 'create',
-          true,
-        );
+      if (nested[operation]) {
+        const update = nested[operation];
+        if (operation === 'update' && (Array.isArray(update) || object(update).data)) {
+          const transform = (row: unknown) => ({
+            ...object(row),
+            where: withWhere(object(row).where, ownership(child, tournamentId)!),
+            data: ownedData(child, object(row).data, tournamentId, false, true),
+          });
+          nested.update = Array.isArray(update) ? update.map(transform) : transform(update);
+        } else
+          nested[operation] = ownedData(
+            child,
+            nested[operation],
+            tournamentId,
+            operation === 'create',
+            true,
+          );
+      }
     if (nested.createMany)
       nested.createMany = {
         ...object(nested.createMany),
@@ -159,16 +258,25 @@ export function scopedDb<T extends Client>(client: T, tournamentId: string): T {
     get(target, property) {
       const member = Reflect.get(target, property);
       if (property === '$transaction' && typeof member === 'function')
-        return (callback: unknown, ...options: unknown[]) =>
-          typeof callback === 'function'
-            ? member.call(
-                target,
-                (tx: Prisma.TransactionClient) => callback(scopedDb(tx, tournamentId)),
-                ...options,
-              )
-            : member.call(target, callback, ...options);
+        return (callback: unknown, ...options: unknown[]) => {
+          if (typeof callback !== 'function')
+            throw new AppError('Scoped transactions require a callback.', 403);
+          return member.call(
+            target,
+            (tx: Prisma.TransactionClient) => callback(scopedDb(tx, tournamentId)),
+            ...options,
+          );
+        };
       if (typeof member === 'function') return member.bind(target);
-      if (typeof property !== 'string' || !ownership(property, tournamentId)) return member;
+      if (typeof property !== 'string' || !ownership(property, tournamentId)) {
+        if (
+          typeof property === 'string' &&
+          scalarFields.has(property) &&
+          !globalModels.has(property)
+        )
+          throw new AppError(`Unclassified database model: ${property}.`, 403);
+        return member;
+      }
       if (!delegates.has(property))
         delegates.set(
           property,
@@ -201,7 +309,12 @@ export function scopedDb<T extends Client>(client: T, tournamentId: string): T {
                   args.create = ownedData(property, args.create, tournamentId, true);
                   args.update = ownedData(property, args.update, tournamentId, false);
                 }
-                return method.call(delegate, args);
+                return (async () => {
+                  for (const field of ['data', 'create', 'update'])
+                    if (args[field])
+                      await assertReferences(target, property, args[field], tournamentId);
+                  return method.call(delegate, args);
+                })();
               };
             },
           }),

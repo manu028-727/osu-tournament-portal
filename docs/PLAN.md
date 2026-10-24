@@ -562,13 +562,32 @@ No finding is closed solely by shrinking files or keeping existing tests green.
 
 ## Remaining Work
 
+### Cleanup Delivery
+
+The numbered findings above describe the audit baseline. Cleanup has now started;
+this delivery record owns the current implementation/check state.
+
+- Ownership foundation: added failing regressions for wrong-owner page/pool
+  revisions, cross-match result/action IDs and nested writes, then guarded additive
+  SQL and scoped-client validation. A follow-up migration preserves the applied
+  ledger after testing exposed Prisma's optional-composite-pointer nested-create
+  incompatibility. Disposable populated schemas verify preservation and mismatch
+  refusal. Global write locking and historical witnesses are retained.
+- Ownership phase checks: 339 unit tests, 180 integration tests in 22 files,
+  lint, types, Prisma formatting and production build pass. Saved revision owner
+  immutability closes the pointer/reparenting race. The pg concurrent-query warning
+  remains under F11; these synthetic checks are not live-provider verification.
+- All migrations in this phase target only the isolated synthetic test database.
+  No installation migration, deployment, publication or service restart is authorized
+  by these source changes. Remaining findings are still being implemented.
+
 Work in this order unless the maintainer explicitly reprioritizes. Items marked
 conditional are extensions, not already approved commitments or release blockers.
 
 1. **Audit-driven cleanup and regression work (Planned).** Execute the
    [ordered cleanup phase](#cleanup-execution-order-and-gates), starting with the
    uncovered boundary/integrity cases. This audit completed investigation and
-   documentation only; it did not begin the fixes.
+   documentation only; delivery above records subsequent fixes and checks.
 2. **Release and deployment verification.** Review the target branch/release,
    back up and restore-test an isolated copy, build consistent web/tools/gateway
    images, run security/license scans and the current regression commands. Obtain

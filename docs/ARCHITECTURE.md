@@ -765,6 +765,17 @@ resolved env/Compose configuration, credential URLs, cookies or tickets.
 
 ## Implementation Boundaries And Proposed Cleanup
 
+Cleanup delivery starts with the ownership boundary. The additive
+20261024010000 migration scans existing links and refuses mismatches before adding
+same-match action foreign keys. 20261024011000 retains the original Prisma pointer
+relations and adds database constraint triggers for page/pool revision ownership;
+putting an owner's primary key inside an optional Prisma pointer relation broke
+nested pool creation during verification. Neither migration rewrites data.
+scopedDb now rejects unclassified models and unsupported nested write shapes, uses
+generated scalar enums to distinguish JSON from relations, validates parent IDs
+and requires callback transactions. SQL/raw-client access remains an explicit
+service responsibility. Dated checks and the remaining cleanup are in PLAN.
+
 ### Current Verified Ownership
 
 Source inspection at `fc41596` found one application with domain services, not

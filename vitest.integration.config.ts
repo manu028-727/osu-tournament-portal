@@ -8,6 +8,8 @@ export default defineConfig({
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   test: {
     include: [
+      'tests/ownership.integration.test.ts',
+      'tests/migrations.integration.test.ts',
       'tests/tournament-transfer.integration.test.ts',
       'tests/integration.test.ts',
       'tests/teams.integration.test.ts',

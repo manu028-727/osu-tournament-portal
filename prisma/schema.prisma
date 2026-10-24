@@ -883,19 +883,20 @@ model MatchAssignment {
 }
 
 model MultiplayerGame {
-  id            String    @id @default(cuid())
+  id            String          @id @default(cuid())
   matchId       String
-  match         Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  match         Match           @relation(fields: [matchId], references: [id], onDelete: Cascade)
   multiplayerId Int
   gameId        String
   beatmapId     Int
   slotName      String
   actionId      String?
+  action        MatchMapAction? @relation(fields: [actionId, matchId], references: [id, matchId], onDelete: NoAction)
   proposal      Json?
   evidence      Json?
   ignoredAt     DateTime?
   confirmedAt   DateTime?
-  createdAt     DateTime  @default(now())
+  createdAt     DateTime        @default(now())
 
   @@unique([matchId, multiplayerId, gameId])
 }
@@ -916,22 +917,24 @@ model RefereeImport {
 }
 
 model MatchMapAction {
-  id         String          @id @default(cuid())
-  matchId    String
-  match      Match           @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  sequence   Int
-  kind       MapActionKind
-  side       MatchSide
-  slotName   String
-  category   String
-  voided     Boolean         @default(false)
-  createdAt  DateTime        @default(now())
-  actorId    String?
-  actor      User?           @relation(fields: [actorId], references: [id], onDelete: SetNull)
-  provenance Json?
-  result     MatchMapResult?
+  id               String            @id @default(cuid())
+  matchId          String
+  match            Match             @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  sequence         Int
+  kind             MapActionKind
+  side             MatchSide
+  slotName         String
+  category         String
+  voided           Boolean           @default(false)
+  createdAt        DateTime          @default(now())
+  actorId          String?
+  actor            User?             @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  provenance       Json?
+  result           MatchMapResult?
+  multiplayerGames MultiplayerGame[]
 
   @@unique([matchId, sequence])
+  @@unique([id, matchId])
 }
 
 model MatchMapResult {
@@ -940,7 +943,7 @@ model MatchMapResult {
   matchId      String
   match        Match              @relation(fields: [matchId], references: [id], onDelete: Cascade)
   actionId     String             @unique
-  action       MatchMapAction     @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  action       MatchMapAction     @relation(fields: [actionId, matchId], references: [id, matchId], onDelete: Cascade)
   scoreA       Float?
   scoreB       Float?
   winnerSide   MatchSide
@@ -950,6 +953,7 @@ model MatchMapResult {
   updatedAt    DateTime           @updatedAt
   playerScores MatchPlayerScore[]
 
+  @@unique([actionId, matchId])
   @@index([matchId])
 }
 

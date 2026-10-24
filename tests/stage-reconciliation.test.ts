@@ -205,6 +205,10 @@ function fixture() {
       })),
     },
     match: {
+      findFirst: vi.fn(async ({ where }: { where: { id: string; AND: unknown[] } }) => {
+        expect(where.AND).toContainEqual({ tournamentId: 'tenant-a' });
+        return where.id === match.id ? { id: match.id } : null;
+      }),
       findMany: vi.fn(async () => [match]),
       findUnique: vi.fn(async (args: { where: { id: string; AND: unknown[] } }) => {
         expect(args.where.AND).toContainEqual({ tournamentId: 'tenant-a' });
@@ -465,6 +469,10 @@ function workbookFixture(
     match: { ...state.tx.match, findUniqueOrThrow: vi.fn(async () => state.match) },
     matchEvent: { ...state.tx.matchEvent, findMany: vi.fn(async () => []) },
     matchMapAction: {
+      findFirst: vi.fn(async ({ where }: { where: { id: string; AND: unknown[] } }) => {
+        expect(where.AND).toContainEqual({ match: { tournamentId: 'tenant-a' } });
+        return /^action-\d+$/.test(where.id) ? { id: where.id } : null;
+      }),
       updateMany: vi.fn(async () => ({ count: 0 })),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
         id: `action-${data.sequence}`,
