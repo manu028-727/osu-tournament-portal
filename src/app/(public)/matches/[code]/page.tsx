@@ -29,7 +29,6 @@ export default async function Match({ params }: { params: Promise<{ code: string
         <div className="flex flex-wrap items-center justify-between gap-4">
           <p className="text-muted">
             {tr('Incontro')} {m.matchNumber} · {m.stage.name} · {m.bracket}
-            {m.code !== String(m.matchNumber) ? tr(' · Ref {0}', m.code) : ''}
           </p>
           <MatchStatusBadge status={m.status}>{tr(PUBLIC_MATCH_STATUS[m.status])}</MatchStatusBadge>
         </div>
@@ -85,10 +84,69 @@ export default async function Match({ params }: { params: Promise<{ code: string
           <ExternalLink size={18} />
         </a>
       )}
-      {m.resultMode === 'SUMMARY' && (
+      {m.resultSource === 'MANUAL' && (
         <p className="mt-5 text-sm text-muted">
-          {tr('Risultato storico importato. I punteggi delle singole mappe non sono disponibili.')}
+          {tr('Overall result entered by the organizer. Earlier map history is preserved.')}
         </p>
+      )}
+      {m.resultMode === 'SUMMARY' &&
+        !m.resultSource &&
+        !m.history.length &&
+        !m.importedGames.length && (
+          <p className="mt-5 text-sm text-muted">
+            {tr(
+              'Risultato storico importato. I punteggi delle singole mappe non sono disponibili.',
+            )}
+          </p>
+        )}
+      {!!m.importedGames.length && (
+        <section aria-label={tr('Imported multiplayer history')} className="mt-8 border-y py-6">
+          <h2 className="mb-4 text-xl font-semibold">{tr('Multiplayer games')}</h2>
+          <div className="overflow-x-auto">
+            <table className="history-table w-full text-left text-sm">
+              <thead>
+                <tr>
+                  <th className="p-2">#</th>
+                  <th className="p-2">{tr('Map')}</th>
+                  <th className="p-2">{tr('Winner')}</th>
+                  <th className="p-2">{tr('Score')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {m.importedGames.map((game, i) => (
+                  <tr key={game.gameId}>
+                    <td className="p-2">{i + 1}</td>
+                    <td className="p-2">
+                      {game.beatmapId ? (
+                        <a
+                          className="text-primary"
+                          href={`https://osu.ppy.sh/beatmaps/${game.beatmapId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {game.slotName || tr('Map {0}', game.beatmapId)}
+                        </a>
+                      ) : (
+                        <span>{game.slotName || tr('Game {0}', game.gameId)}</span>
+                      )}
+                    </td>
+                    <td className="p-2">
+                      {m.participants[game.winnerSide].name}
+                      {game.corrected && (
+                        <span className="ml-2 text-xs text-muted">{tr('Reviewed correction')}</span>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap p-2">
+                      {game.scoreA !== null && game.scoreB !== null
+                        ? `${game.scoreA} : ${game.scoreB}`
+                        : tr('Winner only')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
       {m.bracket === 'Reset' && (
         <p className="mt-5 text-sm text-muted">

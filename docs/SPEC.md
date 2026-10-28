@@ -163,6 +163,27 @@ unsafe batches. Bracket round stage assignment preserves started history.
 Each match has an immutable positive tournament-local number distinct from database
 ID and source code. Numbers are unique, never recycled, and reserved in bracket
 round order before lazy match creation. Public numeric links resolve those numbers.
+Generated database/source identifiers are not displayed. Organizer and public
+match labels, bracket controls, lobby commands and deletion confirmation use match
+numbers. Numeric referee URLs resolve the same record; existing internal URLs and
+source-code references remain compatible. Existing assigned numbers are preserved.
+
+The organizer list defaults to numeric order with 50-row pages, complete filtered
+counts and search across all pages, frozen/current participant names, referees,
+source credits, stages and notes. Filters, sort and page remain in the URL. Inline
+time/referee changes and existing bulk/pasted scheduling retain version/conflict
+checks; hidden page selections are cleared.
+
+Organizers with `matches.manage` can enter or correct scores, winners, forfeits and
+external referee credits directly in Matches or from a bracket position. An
+overall result requires a reason and a valid configured win target. Saving may
+submit or explicitly confirm; only confirmation advances the bracket. Corrections
+preview affected match numbers, require approval for unstarted downstream changes
+and reject stale impact or protected gameplay/frozen standings. Existing referee
+actions, player/map scores, events and revisions remain preserved independently of
+the organizer's overall result. An explicit external referee credit takes precedence
+in public results without changing assignments or permissions. Referee Mode keeps
+its operational workflow.
 
 Native single elimination, double elimination/reset and groups support deterministic
 seeding, byes, previews, configurable round/stage assignments, manual/locked slots,
@@ -231,6 +252,21 @@ not implemented. Lazer cannot use legacy Bancho setup/capture. Qualifier workboo
 layouts are detected/reported but not imported as invented performances.
 
 ## Interoperability And Portability
+
+**Current.** Matches imports an osu! multiplayer link through the official API,
+including available lobby metadata, games and player-score evidence. Review the
+red/blue mapping, exclude warmups/replays and explain manual winner corrections.
+Automatic proposals validate frozen rosters, pool, mode and scoring; unsupported
+evidence requires explicit manual winner review and never invented conversion.
+Load earlier history before applying a complete review. Incomplete sources cannot
+be silently confirmed. Partial results may be saved without confirmation.
+
+Import creates an audited overall result and separately retained game evidence;
+it does not invent rolls or pick/ban ownership. Re-import uses unique lobby/game
+identities, preserves previous evidence in correction history and leaves unchanged
+reviews unchanged. Public completed matches show only accepted game projections,
+without private reasons, review tokens or audit payloads. Expired/unavailable osu!
+history is reported honestly; manual result entry remains available.
 
 **Current.** Numbered referee workbook tabs import into a selected authorized
 tournament through preview/mapping/conflict review. Reconstruct action types from

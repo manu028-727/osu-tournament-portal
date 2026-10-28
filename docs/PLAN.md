@@ -42,8 +42,9 @@ append another guide. SPEC's capability labels do not override discrepancies her
 | 20    | Paginate long lists and stream complete roster exports                                                                                                                        | Verified completed; representative load tuning Blocked | `4a9d953`                                  |
 | 21    | Separate domain reads/restoration and enforce archive/schema coverage; remove verified obsolete code                                                                          | Verified completed                                     | `a6c93f6`                                  |
 | 22    | Patch dependency advisories, reproduce adapter warning and gate releases on checks                                                                                            | Verified completed; upstream warning Blocked           | `14acd73`                                  |
-| 23    | Add complete English/Italian built-in interfaces and shared dirty-navigation/dialog ownership                                                                                 | Verified within recorded frontend scope                | This change; checks below                  |
-| 24    | Separate editable homepage Heroes, polish all block types and widen shared responsive containers                                                                              | Verified within recorded Chromium scope                | Working tree after `4c74c4c`; checks below |
+| 23    | Add complete English/Italian built-in interfaces and shared dirty-navigation/dialog ownership                                                                                 | Verified within recorded frontend scope                | `4c74c4c`                                  |
+| 24    | Separate editable homepage Heroes, polish all block types and widen shared responsive containers                                                                              | Verified within recorded Chromium scope                | `09a9fc2`                                  |
+| 25    | Improve numeric match navigation, direct organizer results, reviewed multiplayer imports and Matches scheduling/search                                                        | Verified within recorded Chromium and PostgreSQL scope | Working tree after `09a9fc2`; checks below |
 
 Rejected calm/earlier redesign pilots are not design authority. Their useful
 usability lessons and verification procedures are incorporated in DESIGN and
@@ -815,6 +816,74 @@ No database migration or authored-content conversion is required. No deployment,
 service restart or installation-data changes were performed. Provider behavior
 and additional browser engines remain outside this UI verification scope; the
 previously recorded upstream pg warning is unchanged.
+
+## Matches Management - 28 October 2026
+
+Source scope: working tree after `09a9fc2`. The maintainer requested readable
+bracket match IDs, direct organizer results, official osu! imports and a faster
+Matches workspace, while preserving Referee Mode.
+
+- Bracket reservations/immutable tournament numbers remain authoritative. New
+  source codes are numeric; old codes remain internal compatibility witnesses.
+  List/bracket/public/referee labels, room names, dependency/correction warnings,
+  scoring warnings and deletion confirmation use readable numbers. Numeric
+  referee URL aliases resolve the original record.
+- Added one organizer result editor shared by Matches and bracket positions:
+  overall scores/winner, FF, external credit, submit/confirm and reviewed reason.
+  Explicit external credit appears publicly before assignments without changing
+  assignment permissions, and survives multiplayer re-import.
+  Existing actions, player/map scores and revisions stay intact. Corrections use
+  existing downstream protection, approval, reviewed hash and transaction locks.
+  Referee composition and gameplay state transitions were not redesigned.
+- Added official multiplayer preview with metadata, player/game evidence,
+  red/blue mapping, warmup exclusion, reasoned winner corrections, signed
+  continuation and bounded expiring review tokens. Apply retains game provenance
+  and a separate overall decision, without fabricated picks/bans or conversion.
+  Re-import uses existing unique game identities and no-ops unchanged reviews.
+  Public projections omit internal review/audit data and unpublished pool links.
+- Organizer matches use 50-row pagination, full filtered search/counts, numeric
+  default order and alternate sorts. URL state survives refresh/view changes;
+  changing pages/filters clears selection. Inline time/referee edits reuse the
+  existing scheduling service. Editors pause polling, guard dirty transitions and
+  manage keyboard focus; provider errors remain recoverable. Opening a result
+  scrolls to its heading, including on narrow screens with long names.
+- Removed replaced scheduling trigger markup and generated-code display suffixes.
+  Checked bracket position, import-report and reconciliation links for numeric
+  destinations. Retained internal/source IDs and the active referee summary action
+  for historical records, workbook compatibility and existing callers.
+- **Verified completed within the recorded scope.** Node 22.23.3 `npm ci`, format,
+  lint, types, 360 unit tests, 215 PostgreSQL integration tests, source audit and
+  standalone production build passed. All 54 production browser cases completed
+  with exit 0 and Playwright `status: passed`. After final numeric-link/focus
+  corrections, six affected integration cases and 17 affected production browser
+  cases completed successfully; these reruns are not additional unique tests.
+  Eight development Matches cases and a final narrow-screen focus case also
+  completed with exit 0. Earlier failed attempts are superseded by completed
+  reruns rather than counted as successful checks.
+- New coverage includes reserved match numbers; audited manual/FF results;
+  preserved referee records; advancement and protected/stale/foreign corrections;
+  manager-only source previews; pinned API score representation and signed
+  continuation; unavailable or mismatched providers; corrected/duplicate-safe
+  re-import; public credit/history privacy; pagination, cross-page search,
+  selection clearing, inline and bulk saves, dirty guards and keyboard focus.
+  Existing referee, qualifier and bracket browser workflows passed unchanged in
+  operational scope, with numeric labels/links updated.
+- Matches screenshots cover light/dark, English/Italian with retained edits,
+  long names, 320/375/390/768/1024/1366/1920px, 844px landscape and 683px reflow.
+  The full suite also covers system appearance, saved accents, empty/populated
+  collections and existing shared/public layouts. Actual screenshots were
+  inspected, including the viewport view of the opened editor at 320px.
+  Evidence remains ignored under `.data/matches-20261028/`, with final runs in
+  `production-complete/`, `production-links/`, `development-complete/`,
+  `development-focus/` and logs in `checks/`.
+
+No migration or installation-data conversion is required. No deployment or live
+service restart was performed. Live osu! availability/credentials were
+not exercised: provider payloads were mocked, browser sessions were synthetic and
+IRC coverage used the existing mock Bancho harness. Additional browser engines
+and a live osu! import smoke test remain unverified. The existing upstream pg
+concurrent-query warning is unchanged; synthetic empty-avatar warnings were also
+observed without browser-test failures.
 
 ## Completion Rules
 

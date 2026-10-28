@@ -9,6 +9,7 @@ export async function scoringImpact(tx: Prisma.TransactionClient, tournamentId: 
     select: {
       id: true,
       code: true,
+      matchNumber: true,
       status: true,
       rules: true,
       actions: { select: { id: true }, take: 1 },
@@ -34,6 +35,7 @@ export async function scoringImpact(tx: Prisma.TransactionClient, tournamentId: 
       .map((m) => ({
         id: m.id,
         code: m.code,
+        matchNumber: m.matchNumber,
         kind: 'match',
         scoring: historicalScoring(matchRulesSchema.parse(m.rules)),
       })),

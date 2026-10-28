@@ -80,7 +80,7 @@ async function publicToken() {
     throw e;
   }
 }
-export async function osuGet(path: string, accessToken?: string) {
+export async function osuGet(path: string, accessToken?: string, apiVersion?: string) {
   await rateLimit('osu:global', 55, 60);
   let response: Response;
   try {
@@ -88,6 +88,7 @@ export async function osuGet(path: string, accessToken?: string) {
       headers: {
         Authorization: `Bearer ${accessToken || (await publicToken())}`,
         Accept: 'application/json',
+        ...(apiVersion ? { 'x-api-version': apiVersion } : {}),
       },
       cache: 'no-store',
       signal: AbortSignal.timeout(15000),

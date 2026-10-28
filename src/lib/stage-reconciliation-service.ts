@@ -119,6 +119,7 @@ export async function stageReconciliationPreview(actor: Actor) {
         {
           matchId: match.id,
           code: match.code,
+          matchNumber: match.matchNumber,
           baseVersion: match.version,
           status: match.status,
           currentStage: { id: match.stageId, name: match.stage.name },
@@ -145,7 +146,7 @@ export async function stageReconciliationPreview(actor: Actor) {
               : null;
           })(),
           snapshotProblems: problems,
-          refereeUrl: `/t/${tournament.slug}/admin/referee/${match.id}`,
+          refereeUrl: `/t/${tournament.slug}/admin/referee/${match.matchNumber}`,
         },
       ];
     }),

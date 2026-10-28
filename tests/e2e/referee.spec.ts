@@ -604,7 +604,7 @@ test('Referees see all matches, observe live updates and cannot edit other assig
         headers: { Origin: 'http://localhost:3001' },
         data: body,
       });
-    const created = [] as { id: string; code: string }[];
+    const created = [] as { id: string; code: string; matchNumber: number }[];
     for (const [i, refereeIds] of [
       [0, [accounts[1].id]],
       [1, [accounts[2].id]],
@@ -628,20 +628,22 @@ test('Referees see all matches, observe live updates and cannot edit other assig
     await expect(page.getByLabel('Assigned referee', { exact: true })).toHaveValue('');
     for (const m of created)
       await expect(
-        page.getByRole('link', { name: 'Open match ' + m.code, exact: true }),
+        page.getByRole('link', { name: 'Open match ' + m.matchNumber, exact: true }),
       ).toBeVisible();
     await expect(
-      page.getByRole('button', { name: 'Assign ' + created[0].code, exact: true }),
+      page.getByRole('button', { name: 'Assign ' + created[0].matchNumber, exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole('button', { name: 'Assign ' + created[1].code, exact: true }),
+      page.getByRole('button', { name: 'Assign ' + created[1].matchNumber, exact: true }),
     ).toHaveCount(0);
     await page.getByLabel('Assigned referee', { exact: true }).selectOption('me');
     await expect(
-      page.getByRole('link', { name: 'Open match ' + created[1].code, exact: true }),
+      page.getByRole('link', { name: 'Open match ' + created[1].matchNumber, exact: true }),
     ).toHaveCount(0);
     await page.getByLabel('Assigned referee', { exact: true }).selectOption('');
-    await page.getByRole('link', { name: 'Open match ' + created[1].code, exact: true }).click();
+    await page
+      .getByRole('link', { name: 'Open match ' + created[1].matchNumber, exact: true })
+      .click();
     await expect(page.getByText('Viewing match · Read only', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Start match', exact: true })).toHaveCount(0);
     expect(
@@ -743,7 +745,7 @@ test('Owner schedules a match; assigned referees collaborate, submit and review 
         .getByRole('navigation', { name: 'Administration' })
         .getByRole('link', { name: 'Users', exact: true }),
     ).toHaveCount(0);
-    await ref.getByRole('link', { name: `Open match ${prefix}`, exact: true }).click();
+    await ref.getByRole('link', { name: `Open match ${match.matchNumber}`, exact: true }).click();
     await observer.goto(`/t/test-cup/admin/referee/${match.id}`);
     await ref.getByRole('button', { name: 'Start match', exact: true }).click();
     await expect(ref.getByRole('status')).toContainText('Match started');
@@ -1057,7 +1059,7 @@ test('organizer adds and replaces the visible MP link and permanently deletes a 
       data: { type: 'match.create', code, stageId, teamAId, teamBId, refereeIds: [] },
     });
     expect(response.ok()).toBe(true);
-    return response.json() as Promise<{ id: string }>;
+    return response.json() as Promise<{ id: string; matchNumber: number }>;
   };
   const code = `${prefix}-removable`,
     created = await create(code);
@@ -1118,12 +1120,14 @@ test('organizer adds and replaces the visible MP link and permanently deletes a 
   }
   await page.getByText('Match administration', { exact: true }).click();
   await page.getByRole('button', { name: 'Delete match', exact: true }).click();
-  await page.getByLabel('Match code confirmation', { exact: true }).fill('wrong code');
+  await page.getByLabel('Match number confirmation', { exact: true }).fill('wrong number');
   await page.getByLabel('Deletion reason', { exact: true }).fill('Remove test fixture');
   await expect(
     page.getByRole('button', { name: 'Permanently delete match', exact: true }),
   ).toBeDisabled();
-  await page.getByLabel('Match code confirmation', { exact: true }).fill(code);
+  await page
+    .getByLabel('Match number confirmation', { exact: true })
+    .fill(String(created.matchNumber));
   await page.getByRole('button', { name: 'Permanently delete match', exact: true }).click();
   await expect(page).toHaveURL('http://localhost:3001/t/test-cup/admin/matches');
   expect(await db.match.findUnique({ where: { id: created.id } })).toBeNull();
@@ -1133,14 +1137,18 @@ test('organizer adds and replaces the visible MP link and permanently deletes a 
   const secondCode = `${prefix}-remove-from-list`,
     second = await create(secondCode);
   await page.reload();
-  await page.getByRole('button', { name: `Delete match ${secondCode}`, exact: true }).click();
-  await page.getByLabel('Match code confirmation', { exact: true }).fill(secondCode);
+  await page
+    .getByRole('button', { name: `Delete match ${second.matchNumber}`, exact: true })
+    .click();
+  await page
+    .getByLabel('Match number confirmation', { exact: true })
+    .fill(String(second.matchNumber));
   await page.getByLabel('Deletion reason', { exact: true }).fill('Remove unused schedule entry');
   await page.getByRole('button', { name: 'Permanently delete match', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Match permanently deleted.');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(
-    page.getByRole('link', { name: `Open match ${secondCode}`, exact: true }),
+    page.getByRole('link', { name: `Open match ${second.matchNumber}`, exact: true }),
   ).toHaveCount(0);
   expect(await db.match.findUnique({ where: { id: second.id } })).toBeNull();
 });

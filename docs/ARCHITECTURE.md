@@ -316,6 +316,30 @@ Positive matchNumber is tenant-unique, immutable and never recycled. Requested
 numeric source codes must exceed the allocated high-water mark; nonnumeric codes
 retain spelling with a new number. Migration preserves unambiguous numeric codes
 and allocates remaining records safely. Numeric public URLs resolve numbers only.
+New bracket source codes use their reserved number. Existing generated codes remain
+as compatibility witnesses, with numeric labels and referee URL aliases hiding
+those identifiers from the interface. The underlying referee record ID is unchanged.
+
+`match-queries.ts` paginates organizer matches at 50 rows, with full filtered totals
+and deterministic number/schedule/stage/update ordering. Search includes frozen
+participant names, live names, referee assignments, external credit, stage and notes.
+`matches-dashboard.tsx` retains query state in the URL, debounces search, clears
+page/filter selections and suspends polling during inline/result editing. Inline
+schedule cells reuse the existing `match.schedule` authorization/version/conflict
+path. No separate mutable scheduling implementation exists.
+
+`match-results-contract.ts` owns client-safe organizer result actions. The existing
+mutation dispatcher explicitly routes both actions to `matches.manage` and
+`match-results-service.ts` under the established global advisory lock. An overall
+decision uses SUMMARY mode, retains all referee actions/results, appends an event
+and result revision, and advances only after confirmation. Existing winner-based
+correction previews/locks protect downstream gameplay and frozen standings; the
+reviewed hash is compared again inside the transaction. No schema migration or
+automatic renumbering/content conversion is required.
+An explicitly saved `source.organizerResult.externalReferee` controls public
+result credit before assignments, without granting access or changing assignments.
+Multiplayer re-import preserves that credit; legacy sheet credit keeps its existing
+fallback behavior.
 
 Native brackets use the established engine for SE/DE/groups construction and native
 rows for lifecycle/routes/eligibility/lazy matches. Playable nodes reserve numbers
@@ -438,6 +462,32 @@ native sessions and archives are separate supported routes.
 
 `multiplayer.ts`/`qualifier-multiplayer.ts` preview official game evidence and capture
 provenance; evidence is not automatically an official result or duplicate run.
+Organizer imports use `POST /api/admin/match-results` for impact/source preview and
+`match.result.import` for application. They use the official
+[Get Match API](https://osu.ppy.sh/docs/#get-match), with legacy score representation
+pinned through the API version header, server credentials and existing timeouts.
+The historical/red-side proposal options are explicit; referee synchronization
+keeps its existing start-time and state-machine checks.
+
+`match-result-review.ts` signs bounded, actor/tenant/match/version-bound evidence
+for 15 minutes using domain-separated HMAC and the existing private osu! client
+secret. Tokens contain no credentials, stay in the authorized editor,
+are not persisted in audit, and are invalidated by credential rotation. The server
+verifies the signature and reviewed version before accepting decisions. This
+stateless preview works across processes sharing the installation credentials.
+History loads in six-page batches with signed continuation checkpoints; previews
+are bounded to 120 games and the existing request-size limit. Incomplete history
+cannot be applied, and source failures leave the saved match unchanged.
+
+Accepted and excluded games persist in MultiplayerGame under the existing unique
+match/lobby/game key. Its evidence is source provenance; proposal.organizerReview
+is a separately attributed decision, never a fabricated pick/ban or score
+conversion. Corrections retain prior game rows in the event witness; games missing
+from the replacement review remain retained but are excluded from current public
+history. Identical re-import is a no-op. Completed public projections select only
+approved current-lobby games and omit review reasons, tokens, actors and raw
+payloads; unpublished pool beatmap links remain withheld. These JSON additions
+use existing archive fields, without adding tables or exporting server authority.
 `discord-result.ts` is independently tested: spreadsheet function retains CHAR(13),
 Markdown/emojis/flags and asymmetric forfeit markers. The website wrapper additionally
 requires COMPLETED confirmation, uses matchNumber and can omit MP for explicitly

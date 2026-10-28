@@ -1,12 +1,13 @@
 import { db as rootDb } from './db';
 import { scopedDb } from './scoped-db';
 import { requestScope } from './tournament-context';
-import { matchCredits } from './match-display';
+import { matchCredits, organizerRefereeCredit } from './match-display';
 import type { MatchParticipants } from './matches-types';
 import type { Prisma } from '@/generated/prisma/client';
 import { numericMatchIdentifier } from './match-numbering';
 import { isPublicTournament, publicTournamentWhere } from './public-visibility';
 import { pageWindow } from './list-pagination';
+import { z } from 'zod';
 
 type PublicMatchFilters = { code?: string; teamId?: string; stage?: string; status?: string };
 function publicMatchWhere(filters: PublicMatchFilters) {
@@ -69,6 +70,7 @@ export async function publicMatches(
       forfeitSide: true,
       resultMode: true,
       lobbyUrl: true,
+      multiplayerId: true,
       participants: true,
       source: true,
       assignments: { select: { user: { select: { username: true } } } },
@@ -78,9 +80,16 @@ export async function publicMatches(
     ...row,
     timezone: tournament.timezone,
     participants: participants as unknown as MatchParticipants,
+    resultSource:
+      z
+        .object({ organizerResult: z.object({ origin: z.enum(['MANUAL', 'MULTIPLAYER']) }) })
+        .safeParse(source).data?.organizerResult.origin || null,
     credits: {
       ...matchCredits(source),
-      referee: assignments.map((a) => a.user.username).join(', ') || matchCredits(source).referee,
+      referee:
+        organizerRefereeCredit(source) ||
+        assignments.map((a) => a.user.username).join(', ') ||
+        matchCredits(source).referee,
     },
   }));
 }
@@ -135,12 +144,60 @@ export async function publicMatchHistory(code: string, tournamentId?: string) {
       },
       poolRevision: { select: { slots: { select: { name: true, beatmapId: true } } } },
       stage: { select: { mappool: { select: { state: true } } } },
+      multiplayerGames: {
+        where: {
+          multiplayerId: match.multiplayerId || 0,
+          confirmedAt: { not: null },
+          ignoredAt: null,
+          proposal: { path: ['organizerReview', 'included'], equals: true },
+        },
+        orderBy: { gameId: 'asc' },
+        select: { gameId: true, beatmapId: true, slotName: true, evidence: true, proposal: true },
+      },
     },
   });
   let pointsA = 0,
     pointsB = 0;
   return {
     ...match,
+    importedGames:
+      match.status === 'COMPLETED'
+        ? data.multiplayerGames
+            .flatMap((game) => {
+              const proposal = z
+                .object({
+                  scoreA: z.number().nullable().optional(),
+                  scoreB: z.number().nullable().optional(),
+                  winnerSide: z.enum(['A', 'B']).optional(),
+                  organizerReview: z.object({
+                    winnerSide: z.enum(['A', 'B']),
+                    included: z.literal(true),
+                  }),
+                })
+                .safeParse(game.proposal);
+              const evidence = z
+                .object({
+                  eventId: z.number(),
+                  startTime: z.string(),
+                  endTime: z.string().nullable(),
+                })
+                .safeParse(game.evidence);
+              if (!proposal.success || !evidence.success) return [];
+              return [
+                {
+                  gameId: game.gameId,
+                  beatmapId: data.stage.mappool?.state === 'PUBLISHED' ? game.beatmapId : null,
+                  slotName: game.slotName,
+                  ...evidence.data,
+                  scoreA: proposal.data.scoreA ?? null,
+                  scoreB: proposal.data.scoreB ?? null,
+                  winnerSide: proposal.data.organizerReview.winnerSide,
+                  corrected: proposal.data.winnerSide !== proposal.data.organizerReview.winnerSide,
+                },
+              ];
+            })
+            .sort((a, b) => a.eventId - b.eventId)
+        : [],
     history: data.actions.map(({ id, ...action }) => {
       const result = data.results.find((r) => r.actionId === id);
       if (result) result.winnerSide === 'A' ? pointsA++ : pointsB++;

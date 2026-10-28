@@ -186,6 +186,29 @@ secondary filters. Rows retain readable time, stable number, teams, assignment,
 state and actions without horizontal page scroll. Referee/View labels reflect
 actual capabilities, not just assignment text.
 
+Use match numbers throughout visible and accessible labels; keep internal/source
+IDs out of rows, brackets and scoreboards. List defaults to numeric order, has
+50-row pagination and keeps filters/sort/page in its URL. Search remains visible
+on mobile. Page changes clear selection; polling pauses while an editor is open.
+Time and referee assignments expand in their row rather than opening the full
+match dialog. The full form remains available for participant changes and less
+common settings.
+
+An organizer Result action opens one embedded editor above the list/bracket,
+with the selected number, opponents, score, winner/FF and source/reason in context.
+Keep the Referee link explicit and preserve the referee screen's composition and
+state machine. Bracket position clicks open the same organizer editor; position
+editing remains a separate action. View changes must respect unsaved edits.
+Focus enters the embedded editor and returns to its opener on close. Long entrant
+and referee names wrap within narrow layouts; assignment controls remain usable.
+
+Multiplayer review shows source metadata and an ordered, bounded game list. Make
+warmup exclusion, red/blue mapping, proposed totals/winners, player-score details
+and reasoned manual corrections explicit. Load earlier pages before reviewing an
+incomplete source. Confirming is separate from retaining unconfirmed history;
+show downstream impact and the necessary approval before changing earlier results.
+Completed public history contains only accepted game data and a clear source label.
+
 Referee desktop uses match/score/current action, compact central pool/pick-ban board,
 and commands/history/rules. Sticky scoreboard and bounded scroll panes are functional,
 not decorative. Responsive layout keeps current action/maps reachable. Show clearly

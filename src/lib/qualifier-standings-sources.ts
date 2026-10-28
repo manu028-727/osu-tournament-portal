@@ -67,6 +67,7 @@ export async function qualifierCorrectionImpact(
             select: {
               id: true,
               code: true,
+              matchNumber: true,
               status: true,
               version: true,
               startedAt: true,
@@ -140,13 +141,25 @@ export async function qualifierCorrectionImpact(
       if (!m) return [];
       if (m.resultCount || m.multiplayerGameCount || m.scoreA || m.scoreB || m.winnerSide)
         return [
-          { id: m.id, code: m.code, reason: 'Recorded competitive results or gameplay exist.' },
+          {
+            id: m.id,
+            code: m.code,
+            matchNumber: m.matchNumber,
+            reason: 'Recorded competitive results or gameplay exist.',
+          },
         ];
       return m.startedAt ||
         m.submittedAt ||
         m.completedAt ||
         !['SCHEDULED', 'CANCELLED'].includes(m.status)
-        ? [{ id: m.id, code: m.code, reason: 'The downstream match has started or progressed.' }]
+        ? [
+            {
+              id: m.id,
+              code: m.code,
+              matchNumber: m.matchNumber,
+              reason: 'The downstream match has started or progressed.',
+            },
+          ]
         : [];
     }),
   );

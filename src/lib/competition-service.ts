@@ -293,7 +293,7 @@ async function persistRecalculation(
         data: {
           tournamentId,
           matchNumber,
-          code: `B-${node.id}`,
+          code: String(matchNumber),
           stageId: round.stageId,
           teamAId: a.teamId,
           teamBId: b.teamId,

@@ -56,6 +56,7 @@ export type QualifierCorrectionImpact = {
       match: {
         id: string;
         code: string;
+        matchNumber: number;
         status: string;
         version: number;
         startedAt: string | null;
@@ -69,7 +70,7 @@ export type QualifierCorrectionImpact = {
       } | null;
     }[];
   }[];
-  blockingMatches: { id: string; code: string; reason: string }[];
+  blockingMatches: { id: string; code: string; matchNumber: number; reason: string }[];
   impactHash: string;
   canReopen: boolean;
 };

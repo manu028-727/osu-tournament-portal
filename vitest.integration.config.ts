@@ -18,6 +18,7 @@ export default defineConfig({
       'tests/integration.test.ts',
       'tests/teams.integration.test.ts',
       'tests/matches.integration.test.ts',
+      'tests/match-results-route.integration.test.ts',
       'tests/tournaments.integration.test.ts',
       'tests/referee-import.integration.test.ts',
       'tests/irc.integration.test.ts',

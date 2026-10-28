@@ -415,7 +415,7 @@ export function IrcPanel({
                     onClick={() => setDialog({ kind: 'link', command: proposal.url })}
                   >
                     <Link2 size={16} />
-                    {tr('Link to match')} {match.code}
+                    {tr('Link to match')} {match.matchNumber}
                   </Button>
                   <Button
                     size="sm"

@@ -104,7 +104,7 @@ export function StageReconciliation({
                       <td>
                         <input
                           type="checkbox"
-                          aria-label={tr('Review match {0}', match.code)}
+                          aria-label={tr('Review match {0}', match.matchNumber)}
                           checked={!!selected}
                           disabled={busy || !stageId}
                           onChange={(event) => {
@@ -120,7 +120,7 @@ export function StageReconciliation({
                       </td>
                       <td className="min-w-48 whitespace-normal break-words">
                         <a href={match.refereeUrl} className="text-primary">
-                          #{match.code}
+                          #{match.matchNumber}
                         </a>
                         <p className="text-xs">
                           {match.currentStage.name} / {match.status}
@@ -137,7 +137,7 @@ export function StageReconciliation({
                       </td>
                       <td className="min-w-48">
                         <select
-                          aria-label={tr('Target stage for match {0}', match.code)}
+                          aria-label={tr('Target stage for match {0}', match.matchNumber)}
                           value={stageId}
                           disabled={busy}
                           onChange={(event) =>

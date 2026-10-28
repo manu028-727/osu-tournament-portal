@@ -227,7 +227,12 @@ test('blocks qualifier correction for started downstream matches on mobile', asy
 }, testInfo) => {
   qualifierUi.payload.correctionImpact!.canReopen = false;
   qualifierUi.payload.correctionImpact!.blockingMatches = [
-    { id: 'match', code: 'Finals 1', reason: 'The downstream match has started or progressed.' },
+    {
+      id: 'match',
+      code: 'Finals 1',
+      matchNumber: 1,
+      reason: 'The downstream match has started or progressed.',
+    },
   ];
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${qualifierUi.root}/admin/qualifier-results`);

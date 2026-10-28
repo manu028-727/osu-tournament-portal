@@ -82,7 +82,7 @@ export function GuidedMatch({
     ? lobbyCommands(
         m.rules,
         acronym,
-        { code: m.code, teamA: m.participants.A.name, teamB: m.participants.B.name },
+        { code: String(m.matchNumber), teamA: m.participants.A.name, teamB: m.participants.B.name },
         current,
       )
     : null;

@@ -18,7 +18,7 @@ export function MatchList({ matches }: { matches: PublicMatch[] }) {
             href={`/matches/${m.matchNumber}`}
             className="block border-b py-4"
             data-match-status={m.status}
-            aria-label={tr('Apri incontro {0}', m.code)}
+            aria-label={tr('Apri incontro {0}', m.matchNumber)}
           >
             <div className="mb-3 flex items-start justify-between gap-3">
               <p className="min-w-0 text-xs text-muted">
@@ -26,11 +26,6 @@ export function MatchList({ matches }: { matches: PublicMatch[] }) {
                   {tr('Match')} {m.matchNumber}
                 </span>{' '}
                 · {m.stage.name}
-                {m.code !== String(m.matchNumber) && (
-                  <span className="ml-1">
-                    {tr('· Ref')} {m.code}
-                  </span>
-                )}
                 <span className="mt-1 block">{m.bracket}</span>
               </p>
               <MatchStatusBadge status={m.status}>
@@ -84,11 +79,6 @@ export function MatchList({ matches }: { matches: PublicMatch[] }) {
                 <td className="min-w-32">
                   <Link className="font-semibold text-primary" href={`/matches/${m.matchNumber}`}>
                     {tr('Match')} {m.matchNumber}
-                    {m.code !== String(m.matchNumber) && (
-                      <span className="ml-2 text-xs text-muted">
-                        {tr('Ref')} {m.code}
-                      </span>
-                    )}
                   </Link>
                   <p className="mt-1 text-xs text-muted">
                     {m.stage.name} · {m.bracket}
@@ -115,7 +105,7 @@ export function MatchList({ matches }: { matches: PublicMatch[] }) {
                   <Link
                     className="inline-flex size-10 items-center justify-center rounded-md hover:bg-[var(--surface-hover)]"
                     href={`/matches/${m.matchNumber}`}
-                    aria-label={tr('Apri incontro {0}', m.code)}
+                    aria-label={tr('Apri incontro {0}', m.matchNumber)}
                     title={tr('Dettagli incontro')}
                   >
                     <ArrowUpRight size={20} />

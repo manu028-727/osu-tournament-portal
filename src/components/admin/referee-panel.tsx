@@ -85,6 +85,7 @@ export function RefereePanel({
       label: string;
       id: string;
       code: string;
+      matchNumber: number;
       version: number;
       team: string | null;
     }[];
@@ -103,7 +104,7 @@ export function RefereePanel({
     [decision, setDecision] = useState<Decision | null>(null),
     [reason, setReason] = useState('');
   const [progressionImpact, setProgressionImpact] = useState<{
-      affected: { code: string | null }[];
+      affected: { code: string | null; matchNumber: number | null }[];
       blocked: boolean;
       hash: string;
     } | null>(null),
@@ -153,7 +154,7 @@ export function RefereePanel({
   const commands = lobbyCommands(
     m.rules,
     acronym,
-    { code: m.code, teamA: m.participants.A.name, teamB: m.participants.B.name },
+    { code: String(m.matchNumber), teamA: m.participants.A.name, teamB: m.participants.B.name },
     pending ? slots.find((s) => s.name === pending.slotName) : undefined,
   );
   const post = async (body: object, message: string) =>
@@ -213,7 +214,6 @@ export function RefereePanel({
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
           <p>
             {tournamentName} / {m.stage.name} / {tr('Match')} {m.matchNumber}
-            {m.code !== String(m.matchNumber) ? tr(' · Ref {0}', m.code) : ''}
           </p>
           <MatchStatusBadge status={m.status}>{tr(MATCH_STATUS_LABELS[m.status])}</MatchStatusBadge>
           <span>
@@ -346,7 +346,9 @@ export function RefereePanel({
             {can(actor, 'matches.delete') && (
               <Button
                 variant="outline"
-                onClick={() => setDeleting({ id: m.id, code: m.code, version: m.version })}
+                onClick={() =>
+                  setDeleting({ id: m.id, code: String(m.matchNumber), version: m.version })
+                }
               >
                 <Trash2 size={17} className="text-red-200" />
                 {tr('Delete match')}
@@ -411,9 +413,13 @@ export function RefereePanel({
               key={dependency.side}
               className="flex flex-wrap items-center justify-between gap-2 text-sm"
             >
-              <Link href={`/admin/referee/${dependency.id}`} className="text-primary">
-                {tr('Team')} {dependency.side}: {dependency.label} ·{' '}
-                {dependency.team || tr('Awaiting confirmed result')}
+              <Link href={`/admin/referee/${dependency.matchNumber}`} className="text-primary">
+                {tr('Team')} {dependency.side}:{' '}
+                {tr(
+                  dependency.label.startsWith('W') ? 'Winner of match {0}' : 'Loser of match {0}',
+                  dependency.matchNumber,
+                )}{' '}
+                · {dependency.team || tr('Awaiting confirmed result')}
               </Link>
               {manager && dependency.team && m.status === 'SCHEDULED' && (
                 <Button
@@ -422,7 +428,13 @@ export function RefereePanel({
                   disabled={busy}
                   onClick={() => {
                     if (
-                      window.confirm(tr('Resolve {0} to {1}?', dependency.label, dependency.team))
+                      window.confirm(
+                        tr(
+                          'Resolve {0} to {1}?',
+                          tr('Match {0}', dependency.matchNumber),
+                          dependency.team,
+                        ),
+                      )
                     )
                       void post(
                         {
@@ -1247,7 +1259,11 @@ export function RefereePanel({
               <h3 className="font-semibold">{tr('Affected downstream fixtures')}</h3>
               <ul>
                 {progressionImpact.affected.map((change, i) => (
-                  <li key={i}>{change.code || tr('Pending bracket position')}</li>
+                  <li key={i}>
+                    {change.matchNumber
+                      ? tr('Match {0}', change.matchNumber)
+                      : tr('Pending bracket position')}
+                  </li>
                 ))}
               </ul>
               {progressionImpact.blocked ? (

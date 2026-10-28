@@ -872,27 +872,40 @@ test('SE8 preview, native List/Bracket identity, confirmed advancement and publi
     const toggle = page.getByRole('group', { name: 'Match view' });
     await toggle.getByRole('button', { name: 'List', exact: true }).click();
     const listLink = page.getByRole('link', { name: `Open match ${match.code}`, exact: true });
-    await expect(listLink).toHaveAttribute('href', `${f.root}/admin/referee/${match.id}`);
+    await expect(listLink).toHaveAttribute('href', `${f.root}/admin/referee/${match.matchNumber}`);
     await screenshotLayouts(page, context, testInfo, 'admin-match-list', page.getByRole('main'));
     await listLink.click();
-    await expect(page).toHaveURL(new RegExp(`/admin/referee/${match.id}$`));
+    await expect(page).toHaveURL(new RegExp(`/admin/referee/${match.matchNumber}$`));
     await openBracket(page, f, initial.id);
     await page
       .getByLabel('Bracket canvas', { exact: true })
-      .getByRole('button', { name: `${node.key} ${match.code}`, exact: true })
+      .getByRole('button', { name: `Match ${match.matchNumber}`, exact: true })
       .click();
-    await expect(page).toHaveURL(new RegExp(`/admin/referee/${match.id}$`));
+    await expect(
+      page.getByRole('region', {
+        name: `Result editor for match ${match.matchNumber}`,
+        exact: true,
+      }),
+    ).toBeVisible();
+    await page
+      .getByRole('region', { name: `Result editor for match ${match.matchNumber}`, exact: true })
+      .getByRole('link', { name: 'Referee', exact: true })
+      .click();
+    await expect(page).toHaveURL(new RegExp(`/admin/referee/${match.matchNumber}$`));
     await openBracket(page, f, initial.id);
     await page.getByRole('button', { name: 'Edit bracket positions', exact: true }).click();
     await page
       .getByLabel('Bracket canvas', { exact: true })
-      .getByRole('button', { name: `${node.key} ${match.code}`, exact: true })
+      .getByRole('button', { name: `Match ${match.matchNumber}`, exact: true })
       .click();
     const editor = page.getByRole('dialog', { name: `Match ${match.matchNumber}`, exact: true });
     const nativeLink = editor.getByRole('link', { name: 'Open match', exact: true });
-    await expect(nativeLink).toHaveAttribute('href', `${f.root}/admin/referee/${match.id}`);
+    await expect(nativeLink).toHaveAttribute(
+      'href',
+      `${f.root}/admin/referee/${match.matchNumber}`,
+    );
     await nativeLink.click();
-    await expect(page).toHaveURL(new RegExp(`/admin/referee/${match.id}$`));
+    await expect(page).toHaveURL(new RegExp(`/admin/referee/${match.matchNumber}$`));
     await expect(page.getByTestId('current-phase')).toBeVisible();
 
     const submitted = await playToSubmission(f, match.id);
@@ -1040,7 +1053,7 @@ test('SE8 preview, native List/Bracket identity, confirmed advancement and publi
     await screenshotLayouts(publicPage, guests, testInfo, 'public-bracket', publicRegion);
     await publicPage
       .getByLabel('Bracket canvas', { exact: true })
-      .getByRole('button', { name: `${node.key} ${match.code}`, exact: true })
+      .getByRole('button', { name: `Match ${match.matchNumber}`, exact: true })
       .click();
     await expect(publicPage).toHaveURL(
       `${new URL(page.url()).origin}${f.root}/matches/${match.matchNumber}`,

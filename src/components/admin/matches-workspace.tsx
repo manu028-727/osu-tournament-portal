@@ -1,7 +1,8 @@
 'use client';
 import { useT } from '@/components/locale';
 
-import { useState } from 'react';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { useGuardedRouter } from '../unsaved-navigation';
 import Link from '@/components/tournament-scope';
 import { Users, ListChecks } from 'lucide-react';
 import type { Actor } from '@/lib/permissions';
@@ -11,7 +12,16 @@ import { MatchesDashboard } from './matches-dashboard';
 import { Button } from '../ui/button';
 export function MatchesWorkspace({ actor }: { actor: Actor }) {
   const tr = useT();
-  const [view, setView] = useState<'list' | 'bracket'>('list');
+  const params = useSearchParams(),
+    pathname = usePathname(),
+    router = useGuardedRouter();
+  const view = params.get('view') === 'bracket' ? 'bracket' : 'list';
+  const setView = (next: 'list' | 'bracket') => {
+    const query = new URLSearchParams(params);
+    if (next === 'bracket') query.set('view', next);
+    else query.delete('view');
+    router.replace(`${pathname}?${query}`);
+  };
   return (
     <>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b pb-4">

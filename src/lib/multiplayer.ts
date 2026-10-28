@@ -61,6 +61,7 @@ const checkpointSchema = z.object({
     .default(null),
 });
 export type MultiplayerCheckpoint = z.infer<typeof checkpointSchema>;
+type ReviewOptions = { historical?: boolean; redSide?: 'A' | 'B' };
 export async function collectMultiplayerPages(
   id: number,
   load: (path: string) => Promise<unknown>,
@@ -73,10 +74,21 @@ export async function collectMultiplayerPages(
     upper = cp.pending?.upper || 0,
     finished = false;
   const events = new Map<number, unknown>();
+  let metadata: {
+    id: number;
+    name?: string;
+    start_time?: string | null;
+    end_time?: string | null;
+  } = { id };
   for (let page = 0; page < maxPages; page++) {
     const response = z
       .object({
-        match: z.object({ id: z.number() }),
+        match: z.object({
+          id: z.number(),
+          name: z.string().max(500).optional(),
+          start_time: z.string().nullable().optional(),
+          end_time: z.string().nullable().optional(),
+        }),
         first_event_id: z.number().optional(),
         events: z.array(
           z.object({ id: z.number().int().positive(), game: z.unknown().optional() }).passthrough(),
@@ -84,6 +96,7 @@ export async function collectMultiplayerPages(
       })
       .parse(await load(`matches/${id}?limit=100${before ? `&before=${before}` : ''}`));
     if (response.match.id !== id) throw Error('osu! returned a different lobby.');
+    metadata = response.match;
     const entries = response.events;
     if (!entries.length) {
       finished = true;
@@ -101,6 +114,7 @@ export async function collectMultiplayerPages(
     before = min;
   }
   return {
+    metadata,
     events: [...events.values()],
     checkpoint: {
       latest: finished ? upper : cp.latest,
@@ -109,7 +123,11 @@ export async function collectMultiplayerPages(
     complete: finished,
   };
 }
-export function multiplayerEvidence(events: unknown[], match: MatchView) {
+export function multiplayerEvidence(
+  events: unknown[],
+  match: MatchView,
+  options: ReviewOptions = {},
+) {
   const games: { evidence: MultiplayerEvidence; proposal: MultiplayerProposal | null }[] = [];
   for (const input of events) {
     const event = z.object({ id: z.number(), game: z.unknown().optional() }).safeParse(input);
@@ -123,6 +141,7 @@ export function multiplayerEvidence(events: unknown[], match: MatchView) {
     const result = multiplayerProposals(
       { match: { id: match.multiplayerId }, events: [{ game: event.data.game }] },
       match,
+      options,
     );
     games.push({
       evidence: {
@@ -144,7 +163,11 @@ export function multiplayerEvidence(events: unknown[], match: MatchView) {
   }
   return games;
 }
-export function multiplayerProposals(input: unknown, match: MatchView) {
+export function multiplayerProposals(
+  input: unknown,
+  match: MatchView,
+  options: ReviewOptions = {},
+) {
   const response = z
     .object({
       match: z.object({ id: z.number() }),
@@ -166,7 +189,10 @@ export function multiplayerProposals(input: unknown, match: MatchView) {
       if (!g.end_time) continue;
       const slots = match.poolRevision?.slots.filter((s) => s.beatmapId === g.beatmap_id) || [];
       if (slots.length !== 1) throw Error('Map is not uniquely identified in the frozen pool.');
-      if (!match.startedAt || new Date(g.start_time) < new Date(match.startedAt))
+      if (
+        !options.historical &&
+        (!match.startedAt || new Date(g.start_time) < new Date(match.startedAt))
+      )
         throw Error('Game predates this match.');
       if (
         g.mode !== match.rules.gameMode ||
@@ -190,7 +216,7 @@ export function multiplayerProposals(input: unknown, match: MatchView) {
         if (
           !side ||
           (match.rules.teamMode === 'TEAM_VS' &&
-            score.match.team !== (side === 'A' ? 'red' : 'blue'))
+            score.match.team !== (side === (options.redSide || 'A') ? 'red' : 'blue'))
         )
           throw Error('Player roster or lobby team does not match.');
         const mods = [...new Set([...g.mods, ...score.mods])];

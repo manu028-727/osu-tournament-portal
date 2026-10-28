@@ -29,6 +29,7 @@ import type {
 } from '@/lib/competition-types';
 import { action, Field, LoadingState, Modal, usePolling, useResource, useTask } from './shared';
 import { BracketRoundTools } from './bracket-rounds';
+import { OrganizerMatchResult } from './organizer-match-result';
 
 export function CompetitionWorkspace({ actor }: { actor: Actor }) {
   const tr = useT();
@@ -38,10 +39,11 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
     [creating, setCreating] = useState(false),
     [editing, setEditing] = useState<string | null>(null);
   const [approve, setApprove] = useState(false);
+  const [resultId, setResultId] = useState<string | null>(null);
   const [editPositions, setEditPositions] = useState(false);
   const [reviewingTies, setReviewingTies] = useState(false);
   const { run, busy } = useTask();
-  usePolling(reload, 10000, !creating && !editing && !reviewingTies);
+  usePolling(reload, 10000, !creating && !editing && !reviewingTies && !resultId);
   if (!data) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
   const bracket = data.brackets.find((b) => b.id === selected) || data.brackets[0];
   const editable = can(actor, 'matches.manage');
@@ -167,25 +169,35 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
           {tr('Approve corrections to unstarted downstream fixtures')}
         </label>
       )}
+      {resultId && (
+        <OrganizerMatchResult
+          key={resultId}
+          id={resultId}
+          onClose={() => setResultId(null)}
+          onSaved={reload}
+        />
+      )}
       {bracket ? (
         <CompetitionBracket
           bracket={bracket}
           onSelectNode={
-            editable
+            editable && !resultId
               ? (id) => {
                   const node = bracket.nodes.find((n) => n.id === id);
-                  if (node?.matchId && !editPositions)
-                    window.location.href = scopedHref(
-                      `/admin/referee/${encodeURIComponent(node.matchId)}`,
-                      scope,
-                    );
+                  if (node?.matchId && !editPositions) setResultId(node.matchId);
                   else setEditing(id);
                 }
               : undefined
           }
-          onOpenMatch={(id) => {
-            window.location.href = scopedHref(`/admin/referee/${encodeURIComponent(id)}`, scope);
-          }}
+          onOpenMatch={
+            resultId
+              ? undefined
+              : (id) => {
+                  const number = bracket.nodes.find((node) => node.matchId === id)?.matchNumber;
+                  if (!number) return;
+                  window.location.href = scopedHref(`/admin/referee/${number}`, scope);
+                }
+          }
         />
       ) : (
         <div className="flex min-h-48 items-center justify-center gap-3 text-sm text-muted">
@@ -717,7 +729,7 @@ function EditCompetitionNode({
       <div className="space-y-4">
         {node.matchId && (
           <Button asChild variant="outline">
-            <Link href={`/admin/referee/${node.matchId}`}>
+            <Link href={`/admin/referee/${node.match?.matchNumber || node.matchNumber}`}>
               <ExternalLink size={16} />
               {tr('Open match')}
             </Link>

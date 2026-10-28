@@ -49,3 +49,11 @@ export function matchCredits(value: unknown) {
       : [],
   };
 }
+
+export function organizerRefereeCredit(value: unknown) {
+  if (!value || typeof value !== 'object') return '';
+  const result = (value as Record<string, unknown>).organizerResult;
+  if (!result || typeof result !== 'object') return '';
+  const credit = (result as Record<string, unknown>).externalReferee;
+  return typeof credit === 'string' ? credit.trim().slice(0, 120) : '';
+}

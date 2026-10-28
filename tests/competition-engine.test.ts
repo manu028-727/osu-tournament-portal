@@ -333,7 +333,13 @@ describe('native competition generation and progression', () => {
     const changed = structuredClone(before);
     changed[0].match!.winnerSide = 'B';
     expect(competitionChanges(before, recalculateCompetition(changed))).toEqual([
-      { nodeId: final.id, matchId: final.id, code: final.id, protected: false },
+      {
+        nodeId: final.id,
+        matchId: final.id,
+        code: final.id,
+        matchNumber: final.match!.matchNumber,
+        protected: false,
+      },
     ]);
     final.match!.startedAt = new Date();
     expect(competitionChanges(before, recalculateCompetition(changed))[0].protected).toBe(true);

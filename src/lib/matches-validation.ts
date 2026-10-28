@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { matchRulesSchema, MODS, SIDES } from './match-rules';
+import { organizerResultOptions } from './match-results-contract';
 const id = z.string().min(1).max(100);
 const version = z.number().int().positive();
 const side = z.enum(SIDES);
@@ -25,6 +26,7 @@ export const playerScoreSchema = z.object({
     .refine((mods) => new Set(mods).size === mods.length, 'Duplicate mods.'),
 });
 export const matchActionOptions = [
+  ...organizerResultOptions,
   z.object({
     type: z.literal('match.create'),
     bracketId: id.optional(),

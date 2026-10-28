@@ -33,7 +33,10 @@ import {
 type SettingsData = TournamentView & {
   version: number;
   settings: TournamentView['settings'] & { favicon: string };
-  scoringImpact?: { locked: boolean; affected: { id: string; code: string; kind: string }[] };
+  scoringImpact?: {
+    locked: boolean;
+    affected: { id: string; code: string; matchNumber?: number; kind: string }[];
+  };
 };
 type Form = Omit<SettingsData, 'settings'> & SettingsData['settings'];
 export type SettingsArea = 'info' | 'branding' | 'navigation' | 'advanced';
@@ -500,7 +503,9 @@ export function SettingsEditor({
                     <ul>
                       {data.scoringImpact.affected.map((record) => (
                         <li key={record.id}>
-                          {record.kind}: {record.code}
+                          {record.kind === 'match'
+                            ? tr('Match {0}', record.matchNumber || '-')
+                            : `${record.kind}: ${record.code}`}
                         </li>
                       ))}
                     </ul>

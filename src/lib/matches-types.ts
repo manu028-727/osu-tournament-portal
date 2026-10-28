@@ -38,9 +38,16 @@ export type MatchSummary = {
     commentators?: string[];
     red?: string;
     blue?: string;
+    organizerResult?: {
+      origin: 'MANUAL' | 'MULTIPLAYER';
+      redSide?: Side;
+      externalReferee?: string;
+    };
   } | null;
   scoreA: number;
   scoreB: number;
+  winnerSide?: Side | null;
+  forfeitSide?: Side | null;
   version: number;
   participants: MatchParticipants;
   stage: { id: string; name: string };
@@ -162,6 +169,7 @@ export type MatchOptions = {
   referees: RefereeProfile[];
 };
 export type MatchListData = {
+  pagination?: { page: number; pageSize: number; total: number };
   nextCode?: string;
   matches: MatchSummary[];
   counts: Partial<Record<MatchStatus, number>>;

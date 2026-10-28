@@ -13,6 +13,7 @@ import { teamInclude } from './teams-service';
 
 import { assertMatchView, matchScope } from './match-access';
 import { draftState, matchInclude, profileSelect, rulesHash } from './match-record';
+import { listPageSchema, pageWindow } from './list-pagination';
 import type { MatchParticipants } from './matches-types';
 export async function matchOptions(actor: Actor) {
   const tournamentId = actor.tournamentId || 'main',
@@ -123,9 +124,10 @@ export async function matchData(actor: Actor, url: URL, section: string) {
   }
   if (section === 'match') {
     const id = z.string().min(1).max(100).parse(url.searchParams.get('id'));
+    const number = numericMatchIdentifier(id);
     const history = can(actor, 'matches.view_history') || can(actor, 'matches.manage');
     const match = await db.match.findFirst({
-      where: { AND: [{ id }, matchScope(actor)] },
+      where: { AND: [number ? { matchNumber: number } : { id }, matchScope(actor)] },
       include: {
         ...matchInclude,
         ...(history
@@ -170,6 +172,7 @@ export async function matchData(actor: Actor, url: URL, section: string) {
         select: {
           id: true,
           code: true,
+          matchNumber: true,
           version: true,
           status: true,
           winnerSide: true,
@@ -188,6 +191,7 @@ export async function matchData(actor: Actor, url: URL, section: string) {
           label,
           id: source.id,
           code: source.code,
+          matchNumber: source.matchNumber,
           version: source.version,
           team: selected
             ? (source.participants as unknown as MatchParticipants)[selected].name
@@ -266,12 +270,18 @@ export async function matchData(actor: Actor, url: URL, section: string) {
     };
   const q = (url.searchParams.get('q') || '').slice(0, 100);
   if (q) {
-    const matchNumber = numericMatchIdentifier(q);
+    const matchNumber = numericMatchIdentifier(q.replace(/^(?:#|match\s+)/i, ''));
     filters.OR = [
       { code: { contains: q, mode: 'insensitive' } },
       ...(matchNumber ? [{ matchNumber }] : []),
       { teamA: { name: { contains: q, mode: 'insensitive' } } },
       { teamB: { name: { contains: q, mode: 'insensitive' } } },
+      { participants: { path: ['A', 'name'], string_contains: q, mode: 'insensitive' } },
+      { participants: { path: ['B', 'name'], string_contains: q, mode: 'insensitive' } },
+      { source: { path: ['referee'], string_contains: q, mode: 'insensitive' } },
+      { assignments: { some: { user: { username: { contains: q, mode: 'insensitive' } } } } },
+      { stage: { name: { contains: q, mode: 'insensitive' } } },
+      { notes: { contains: q, mode: 'insensitive' } },
     ];
   }
   const from = url.searchParams.get('from'),
@@ -282,10 +292,29 @@ export async function matchData(actor: Actor, url: URL, section: string) {
       ...(to ? { lte: new Date(z.iso.datetime().parse(to)) } : {}),
     };
   const where = { AND: [matchScope(actor), filters] };
+  const pagination = pageWindow(
+    listPageSchema.parse(url.searchParams.get('page') || undefined),
+    await db.match.count({ where }),
+    50,
+  );
+  const sort = z
+    .enum(['number', 'schedule', 'stage', 'updated'])
+    .catch('number')
+    .parse(url.searchParams.get('sort'));
+  const orderBy: Prisma.MatchOrderByWithRelationInput[] =
+    sort === 'schedule'
+      ? [{ scheduledAt: { sort: 'asc', nulls: 'last' } }, { matchNumber: 'asc' }]
+      : sort === 'stage'
+        ? [{ stage: { position: 'asc' } }, { matchNumber: 'asc' }]
+        : sort === 'updated'
+          ? [{ updatedAt: 'desc' }, { matchNumber: 'asc' }]
+          : [{ matchNumber: 'asc' }];
   const [matches, counts] = await Promise.all([
     db.match.findMany({
       where,
-      orderBy: [{ scheduledAt: { sort: 'asc', nulls: 'last' } }, { code: 'asc' }],
+      orderBy,
+      skip: pagination.skip,
+      take: pagination.take,
       select: {
         id: true,
         code: true,
@@ -300,6 +329,8 @@ export async function matchData(actor: Actor, url: URL, section: string) {
         source: true,
         scoreA: true,
         scoreB: true,
+        winnerSide: true,
+        forfeitSide: true,
         participants: true,
         version: true,
         stage: { select: { id: true, name: true } },
@@ -321,6 +352,7 @@ export async function matchData(actor: Actor, url: URL, section: string) {
     : null;
   return {
     matches,
+    pagination: { page: pagination.page, pageSize: pagination.pageSize, total: pagination.total },
     nextCode: can(actor, 'matches.manage') ? String(numbering!.matchNumberSequence + 1) : undefined,
     counts: Object.fromEntries(counts.map((c) => [c.status, c._count._all])),
     stages,

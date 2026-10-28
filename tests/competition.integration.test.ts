@@ -26,6 +26,10 @@ import { DEFAULT_MATCH_RULES } from '../src/lib/match-rules';
 import { ALL_PERMISSIONS, type Actor } from '../src/lib/permissions';
 import { exportTournament } from '../src/lib/tournament-export';
 import { importTournament, inspectArchive } from '../src/lib/tournament-import';
+import { applyMatchAction } from '../src/lib/matches-service';
+import { matchActionSchema } from '../src/lib/matches-validation';
+import { signMatchResultReview } from '../src/lib/match-result-review';
+import type { MultiplayerImportGame } from '../src/lib/match-results-contract';
 
 assertTestDatabase(process.env.DATABASE_URL);
 const rollback = new Error('competition test rollback');
@@ -169,6 +173,293 @@ async function finish(f: Fixture, id: string, lowerWinsFinal = false) {
 }
 afterAll(() => db.$disconnect());
 describe('native competition PostgreSQL persistence', () => {
+  it('records organizer results and forfeits, preserves referee records and advances reserved numeric bracket positions', () =>
+    isolated(async (f) => {
+      const created = await apply(f, create(f, 4)),
+        initial = await bracket(f, created.id);
+      expect(
+        initial.nodes
+          .flatMap((node) => (node.matchNumber ? [node.matchNumber] : []))
+          .sort((a, b) => a - b),
+      ).toEqual([1, 2, 3]);
+      const ready = initial.nodes.filter((node) => node.matchId);
+      const first = ready[0].match!;
+      expect(first.code).toBe(String(first.matchNumber));
+      const action = await f.tx.matchMapAction.create({
+        data: {
+          matchId: first.id,
+          sequence: 1,
+          side: 'A',
+          kind: 'PICK',
+          slotName: 'NM1',
+          category: 'NM',
+          actorId: f.actor.id,
+        },
+      });
+      await f.tx.matchMapResult.create({
+        data: { matchId: first.id, actionId: action.id, winnerSide: 'B', scoreA: 100, scoreB: 200 },
+      });
+      await applyMatchAction(
+        f.tx,
+        f.actor,
+        matchActionSchema.parse({
+          type: 'match.result.set',
+          id: first.id,
+          baseVersion: first.version,
+          scoreA: 2,
+          scoreB: 1,
+          winnerSide: 'A',
+          forfeitSide: null,
+          externalReferee: 'External referee',
+          reason: 'Reviewed external result',
+        }),
+      );
+      expect(await f.tx.matchMapAction.count({ where: { matchId: first.id, voided: false } })).toBe(
+        1,
+      );
+      expect(
+        await f.tx.matchMapResult.findUniqueOrThrow({ where: { actionId: action.id } }),
+      ).toMatchObject({ winnerSide: 'B', scoreA: 100, scoreB: 200 });
+      expect(await f.tx.matchResultRevision.count({ where: { matchId: first.id } })).toBe(1);
+      const second = ready[1].match!;
+      await applyMatchAction(
+        f.tx,
+        f.actor,
+        matchActionSchema.parse({
+          type: 'match.result.set',
+          id: second.id,
+          baseVersion: second.version,
+          scoreA: 0,
+          scoreB: 2,
+          winnerSide: 'B',
+          forfeitSide: 'A',
+          reason: 'Opponent forfeited externally',
+        }),
+      );
+      const next = await bracket(f, created.id),
+        final = next.nodes.find((node) => node.matchNumber === 3)!;
+      expect(final.match).toMatchObject({
+        matchNumber: 3,
+        code: '3',
+        status: 'SCHEDULED',
+        teamAId: first.teamAId,
+        teamBId: second.teamBId,
+      });
+    }));
+  it('requires a reviewed downstream witness and blocks corrections after downstream play starts', () =>
+    isolated(async (f) => {
+      const created = await apply(f, create(f, 4)),
+        initial = await bracket(f, created.id),
+        ready = initial.nodes.filter((node) => node.matchId);
+      await confirm(f, ready[0].matchId!);
+      await confirm(f, ready[1].matchId!);
+      const m = await f.tx.match.findUniqueOrThrow({ where: { id: ready[0].matchId! } });
+      const input = {
+        type: 'match.result.set',
+        id: m.id,
+        baseVersion: m.version,
+        scoreA: 1,
+        scoreB: 2,
+        winnerSide: 'B',
+        forfeitSide: null,
+        reason: 'Corrected reviewed result',
+      };
+      await expect(applyMatchAction(f.tx, f.actor, matchActionSchema.parse(input))).rejects.toThrow(
+        /approve/,
+      );
+      await expect(
+        applyMatchAction(
+          f.tx,
+          f.actor,
+          matchActionSchema.parse({
+            ...input,
+            approveProgression: true,
+            correctionHash: '0'.repeat(64),
+          }),
+        ),
+      ).rejects.toThrow(/changed since/);
+      const impact = await previewCompetitionCorrection(f.tx, f.tournamentId, m.id, 'B');
+      await applyMatchAction(
+        f.tx,
+        f.actor,
+        matchActionSchema.parse({
+          ...input,
+          approveProgression: true,
+          correctionHash: impact.hash,
+        }),
+      );
+      const current = await bracket(f, created.id),
+        final = current.nodes.find((node) => node.matchNumber === 3)!;
+      await f.tx.match.update({
+        where: { id: final.matchId! },
+        data: { status: 'IN_PROGRESS', startedAt: new Date() },
+      });
+      await expect(
+        applyMatchAction(
+          f.tx,
+          f.actor,
+          matchActionSchema.parse({
+            ...input,
+            baseVersion: m.version + 1,
+            scoreA: 2,
+            scoreB: 1,
+            winnerSide: 'A',
+            approveProgression: true,
+          }),
+        ),
+      ).rejects.toThrow(/started/);
+    }));
+  it('denies referee-only, stale and cross-tournament result mutations and invalid outcomes', () =>
+    isolated(async (f) => {
+      const created = await apply(f, create(f, 2)),
+        initial = await bracket(f, created.id),
+        m = initial.nodes.find((node) => node.match)!.match!;
+      const input = {
+        type: 'match.result.set',
+        id: m.id,
+        baseVersion: m.version,
+        scoreA: 2,
+        scoreB: 1,
+        winnerSide: 'A',
+        forfeitSide: null,
+        reason: 'Reviewed result',
+      };
+      await expect(
+        applyMatchAction(
+          f.tx,
+          { ...f.actor, permissions: ['matches.manage_all', 'matches.update_scores'] },
+          matchActionSchema.parse(input),
+        ),
+      ).rejects.toThrow(/permission/i);
+      await expect(
+        applyMatchAction(
+          f.tx,
+          f.actor,
+          matchActionSchema.parse({ ...input, baseVersion: m.version + 1 }),
+        ),
+      ).rejects.toThrow(/updated/);
+      await expect(
+        applyMatchAction(
+          f.tx,
+          { ...f.actor, tournamentId: 'another-tournament' },
+          matchActionSchema.parse(input),
+        ),
+      ).rejects.toThrow();
+      for (const patch of [{ scoreB: 2 }, { winnerSide: 'B' }, { forfeitSide: 'A' }])
+        await expect(
+          applyMatchAction(f.tx, f.actor, matchActionSchema.parse({ ...input, ...patch })),
+        ).rejects.toThrow(/exactly one/);
+      expect((await f.tx.match.findUniqueOrThrow({ where: { id: m.id } })).version).toBe(m.version);
+    }));
+  it('imports reviewed map evidence without fabricating picks and re-imports without duplicate games or revisions', () =>
+    isolated(async (f) => {
+      const oldSecret = process.env.OSU_CLIENT_SECRET;
+      process.env.OSU_CLIENT_SECRET = 'synthetic-import-signing-secret';
+      try {
+        const created = await apply(f, create(f, 2)),
+          initial = await bracket(f, created.id),
+          m = initial.nodes.find((node) => node.match)!.match!;
+        await f.tx.match.update({
+          where: { id: m.id },
+          data: {
+            source: {
+              referee: 'External referee',
+              organizerResult: { origin: 'MANUAL', externalReferee: 'External referee' },
+            },
+          },
+        });
+        const games: MultiplayerImportGame[] = [1, 2, 3].map((n) => ({
+          evidence: {
+            eventId: n,
+            gameId: String(n),
+            beatmapId: n,
+            slotName: `NM${n}`,
+            startTime: `2026-10-01T12:0${n}:00Z`,
+            endTime: `2026-10-01T12:0${n}:30Z`,
+            mode: 'osu',
+            scoringType: 'scorev2',
+            teamType: 'team-vs',
+            mods: [],
+            scores: [],
+            issue: 'Manual review required',
+          },
+          proposal: null,
+        }));
+        const decisions = games.map((game, i) => ({
+          gameId: game.evidence.gameId,
+          included: true,
+          winnerSide: i === 1 ? 'B' : 'A',
+          reason: 'Verified from external referee records',
+        }));
+        const review = (version: number) =>
+          signMatchResultReview({
+            actorId: f.actor.id,
+            tournamentId: f.tournamentId,
+            matchId: m.id,
+            version,
+            complete: true,
+            metadata: { id: 123, name: 'External tournament lobby' },
+            games,
+          });
+        const input = {
+          type: 'match.result.import',
+          id: m.id,
+          baseVersion: m.version,
+          token: review(m.version),
+          decisions,
+          reason: 'Reviewed external lobby',
+        };
+        const first = await applyMatchAction(f.tx, f.actor, matchActionSchema.parse(input));
+        expect(await f.tx.multiplayerGame.count({ where: { matchId: m.id } })).toBe(3);
+        expect(await f.tx.matchMapAction.count({ where: { matchId: m.id } })).toBe(0);
+        expect(await f.tx.matchMapResult.count({ where: { matchId: m.id } })).toBe(0);
+        expect(await f.tx.match.findUniqueOrThrow({ where: { id: m.id } })).toMatchObject({
+          status: 'COMPLETED',
+          scoreA: 2,
+          scoreB: 1,
+          winnerSide: 'A',
+          resultMode: 'SUMMARY',
+          source: { organizerResult: { externalReferee: 'External referee' } },
+        });
+        const second = await applyMatchAction(
+          f.tx,
+          f.actor,
+          matchActionSchema.parse({
+            ...input,
+            baseVersion: first.version,
+            token: review(first.version!),
+            decisions: [...decisions].reverse(),
+          }),
+        );
+        expect(second.version).toBe(first.version);
+        expect(await f.tx.matchResultRevision.count({ where: { matchId: m.id } })).toBe(1);
+        expect(await f.tx.multiplayerGame.count({ where: { matchId: m.id } })).toBe(3);
+        await applyMatchAction(
+          f.tx,
+          f.actor,
+          matchActionSchema.parse({
+            ...input,
+            baseVersion: second.version,
+            token: review(second.version!),
+            decisions: decisions.map((row, i) =>
+              i === 2
+                ? { ...row, winnerSide: 'B', reason: 'Reviewed correction to last game' }
+                : row,
+            ),
+          }),
+        );
+        expect(await f.tx.match.findUniqueOrThrow({ where: { id: m.id } })).toMatchObject({
+          scoreA: 1,
+          scoreB: 2,
+          winnerSide: 'B',
+        });
+        expect(await f.tx.multiplayerGame.count({ where: { matchId: m.id } })).toBe(3);
+        expect(await f.tx.matchResultRevision.count({ where: { matchId: m.id } })).toBe(2);
+      } finally {
+        if (oldSecret === undefined) delete process.env.OSU_CLIENT_SECRET;
+        else process.env.OSU_CLIENT_SECRET = oldSecret;
+      }
+    }));
   it('changes gameplay stage for a complete unstarted round and protects operational history', () =>
     isolated(async (f) => {
       const created = await apply(f, create(f, 4));

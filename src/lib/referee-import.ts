@@ -374,6 +374,7 @@ export async function applyWorkbook(original: Actor, input: z.infer<typeof impor
       )
         return {
           id: match.id,
+          matchNumber: match.matchNumber,
           alreadyApplied: true,
           actionsImported: 0,
           resultsImported: 0,
@@ -697,6 +698,7 @@ export async function applyWorkbookBatch(actor: Actor, input: z.infer<typeof imp
   const results: {
     sheet: string;
     id?: string;
+    matchNumber?: number;
     status: string;
     actions: number;
     mapResults: number;
@@ -717,6 +719,7 @@ export async function applyWorkbookBatch(actor: Actor, input: z.infer<typeof imp
       results.push({
         sheet: row.sheet,
         id: result.id,
+        matchNumber: result.matchNumber,
         status: result.alreadyApplied ? 'ALREADY_IMPORTED' : result.status,
         actions: result.actionsImported,
         mapResults: result.resultsImported,

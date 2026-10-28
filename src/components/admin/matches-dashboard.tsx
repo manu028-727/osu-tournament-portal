@@ -14,8 +14,8 @@ import {
   RefreshCw,
   Trash2,
   Link2,
-  CalendarClock,
   ClipboardPaste,
+  Trophy,
 } from 'lucide-react';
 import { DeleteMatchDialog, type DeleteMatchSelection } from './delete-match-dialog';
 import { Button } from '../ui/button';
@@ -24,11 +24,14 @@ import { can, type Actor } from '@/lib/permissions';
 import { matchAccess } from '@/lib/match-access';
 import type { MatchListData, MatchSummary } from '@/lib/matches-types';
 import { type MatchRules } from '@/lib/match-rules';
-import { matchCredits, MATCH_STATUS_LABELS } from '@/lib/match-display';
+import { matchCredits, MATCH_STATUS_LABELS, organizerRefereeCredit } from '@/lib/match-display';
 import { useTournamentTime, useTournamentScope } from '@/components/tournament-scope';
 import { MatchRulesFields } from './match-rules-fields';
 import { RefereeSheetImporter } from './referee-sheet-importer';
 import { StageReconciliation } from './stage-reconciliation';
+import { OrganizerMatchResult } from './organizer-match-result';
+import { MatchInlineSchedule, type InlineMatchEdit } from './match-inline-schedule';
+import { ListPagination } from '../list-pagination';
 import {
   matchesBulkScheduleSchema,
   matchesBatchScheduleSchema,
@@ -50,15 +53,37 @@ type BulkField =
   'referees' | 'time' | 'stage' | 'streamer' | 'commentators' | 'notes' | 'published';
 export function MatchesDashboard({ actor }: { actor: Actor }) {
   const tr = useT();
-  const [filters, setFilters] = useState({
-    stage: '',
-    status: '',
-    assigned: '',
-    date: '',
-    time: '',
-    q: '',
-  });
+  const search = useSearchParams();
+  const [filters, storeFilters] = useState(() => ({
+    stage: search.get('stage') || '',
+    status: search.get('status') || '',
+    assigned: search.get('assigned') || '',
+    date: search.get('date') || '',
+    time: search.get('time') || '',
+    q: search.get('q') || '',
+    sort: search.get('sort') || 'number',
+    page: search.get('page') || '1',
+  }));
+  const setFilters = (next: Omit<typeof filters, 'page'> & { page?: string }) =>
+    storeFilters({ ...next, page: '1' });
+  const [searchText, setSearchText] = useState(filters.q);
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchText(filters.q), 250);
+    return () => clearTimeout(timer);
+  }, [filters.q]);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    for (const [key, value] of Object.entries(filters)) {
+      const defaultValue =
+        (key === 'sort' && value === 'number') || (key === 'page' && value === '1');
+      if (value && !defaultValue) url.searchParams.set(key, value);
+      else url.searchParams.delete(key);
+    }
+    window.history.replaceState(null, '', `${url.pathname}${url.search}`);
+  }, [filters]);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [resultId, setResultId] = useState<string | null>(null);
+  const [inline, setInline] = useState<InlineMatchEdit | null>(null);
   const activeFilters = [
     filters.stage,
     filters.status,
@@ -88,8 +113,9 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
     typeof parseMatchSchedulePaste
   > | null>(null);
   const params = new URLSearchParams();
-  for (const key of ['stage', 'status', 'assigned', 'q'] as const)
-    if (filters[key]) params.set(key, filters[key]);
+  for (const key of ['stage', 'status', 'assigned', 'q', 'sort', 'page'] as const)
+    if (key === 'q' ? searchText : filters[key])
+      params.set(key, key === 'q' ? searchText : filters[key]);
   if (filters.date) {
     const from = new Date(`${filters.date}T${filters.time || '00:00'}:00`),
       to = filters.time
@@ -101,7 +127,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
   const filterKey = params.toString();
   const matchTime = useTournamentTime();
   const { timezone } = useTournamentScope();
-  const { data, error, reload } = useResource<MatchListData>(`matches&${filterKey}`, true);
+  const { data, error, reload, loading } = useResource<MatchListData>(`matches&${filterKey}`, true);
   const { run, busy } = useTask();
   const [lobby, setLobby] = useState<{
     id: string;
@@ -130,8 +156,12 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
     [rules, setRules] = useState<MatchRules | null>(null),
     [baseHash, setBaseHash] = useState(''),
     [dirty, setDirty] = useState(false);
-  useUnsaved(dirty || (bulkOpen && bulkDirty) || (pasteOpen && !!pasteText.trim()));
-  usePolling(reload, 10000, !create && !ruleEditor && !edit && !lobby && !bulkOpen && !pasteOpen);
+  useUnsaved(dirty || !!inline || (bulkOpen && bulkDirty) || (pasteOpen && !!pasteText.trim()));
+  usePolling(
+    reload,
+    10000,
+    !create && !ruleEditor && !edit && !lobby && !bulkOpen && !pasteOpen && !resultId && !inline,
+  );
   const options = data?.options;
   useEffect(() => {
     setSelectedMatches(new Set());
@@ -233,12 +263,65 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
     ['AWAITING_CONFIRMATION', 'To confirm'],
     ['COMPLETED', 'Completed'],
   ] as const;
+  const inlineSchedule = (m: MatchSummary, kind: InlineMatchEdit['kind']) => (
+    <MatchInlineSchedule
+      match={m}
+      kind={kind}
+      edit={inline}
+      referees={options?.referees || []}
+      busy={busy}
+      onStart={() =>
+        setInline({
+          id: m.id,
+          version: m.version,
+          kind,
+          time: localDateTimeInput(m.scheduledAt),
+          referees: m.assignments.map((row) => row.userId),
+        })
+      }
+      onChange={setInline}
+      onCancel={() => setInline(null)}
+      onSave={() =>
+        void run(async () => {
+          if (!inline) return;
+          await action({
+            type: 'match.schedule',
+            id: m.id,
+            baseVersion: inline.version,
+            scheduledAt:
+              inline.kind === 'time'
+                ? inline.time
+                  ? new Date(inline.time).toISOString()
+                  : null
+                : m.scheduledAt,
+            refereeIds:
+              inline.kind === 'referees' ? inline.referees : m.assignments.map((row) => row.userId),
+            notes: m.notes,
+          });
+          setInline(null);
+          await reload();
+        }, tr('Schedule updated.'))
+      }
+    />
+  );
   const matchActions = (m: MatchSummary) => (
-    <div className="flex gap-1">
+    <div className="flex flex-wrap gap-1">
+      {can(actor, 'matches.manage') && m.status !== 'CANCELLED' && (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!!inline || (!!resultId && resultId !== m.id)}
+          aria-label={tr('Edit result for match {0}', m.matchNumber)}
+          onClick={() => setResultId(m.id)}
+        >
+          <Trophy size={16} />
+          {tr('Result')}
+        </Button>
+      )}
       <Button asChild size="sm" variant="outline">
         <Link
-          href={`/admin/referee/${m.id}`}
-          aria-label={tr('Open match {0}', m.code)}
+          href={`/admin/referee/${m.matchNumber}`}
+          aria-label={tr('Open match {0}', m.matchNumber)}
           title={
             matchAccess(actor, m).editable
               ? tr('Referee this match')
@@ -254,9 +337,14 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
           size="icon"
           variant="ghost"
           title={tr('Multiplayer link')}
-          aria-label={tr('Multiplayer link for {0}', m.code)}
+          aria-label={tr('Multiplayer link for {0}', m.matchNumber)}
           onClick={() =>
-            setLobby({ id: m.id, code: m.code, version: m.version, url: m.lobbyUrl || '' })
+            setLobby({
+              id: m.id,
+              code: String(m.matchNumber),
+              version: m.version,
+              url: m.lobbyUrl || '',
+            })
           }
         >
           <Link2 size={17} />
@@ -266,7 +354,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
         <Button
           size="icon"
           variant="ghost"
-          aria-label={tr('Assign {0}', m.code)}
+          aria-label={tr('Assign {0}', m.matchNumber)}
           title={tr('Schedule and referee assignments')}
           onClick={() => begin(m)}
         >
@@ -277,9 +365,9 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
         <Button
           size="icon"
           variant="ghost"
-          aria-label={tr('Delete match {0}', m.code)}
+          aria-label={tr('Delete match {0}', m.matchNumber)}
           title={tr('Permanently delete match')}
-          onClick={() => setDeleting({ id: m.id, code: m.code, version: m.version })}
+          onClick={() => setDeleting({ id: m.id, code: String(m.matchNumber), version: m.version })}
         >
           <Trash2 size={17} className="text-red-200" />
         </Button>
@@ -311,7 +399,11 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
           </Button>
           {can(actor, 'matches.manage') && (
             <>
-              <Button size="sm" disabled={options?.scoringNeedsReview} onClick={() => begin()}>
+              <Button
+                size="sm"
+                disabled={options?.scoringNeedsReview || !!resultId || !!inline}
+                onClick={() => begin()}
+              >
                 <Plus size={17} />
                 {tr('New match')}
               </Button>
@@ -319,6 +411,14 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
           )}
         </div>
       </SectionTitle>
+      {resultId && (
+        <OrganizerMatchResult
+          key={resultId}
+          id={resultId}
+          onClose={() => setResultId(null)}
+          onSaved={reload}
+        />
+      )}
       {options?.scoringNeedsReview && (
         <p className="mb-4 text-sm text-muted">
           {tr('Historical matches remain accessible.')}{' '}
@@ -356,125 +456,157 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
         {Object.values(data.counts).reduce((sum, n) => sum + (n || 0), 0)} {tr('matches ·')}{' '}
         {data.counts.IN_PROGRESS || 0} {tr('in progress ·')} {data.matches.length} {tr('shown')}
       </p>
-      <div
-        role="group"
-        aria-label={tr('Match views')}
-        className="mb-5 flex flex-wrap gap-2 border-b pb-4"
-      >
-        <Button
-          variant="outline"
-          size="sm"
-          aria-pressed={!filters.status && !filters.assigned}
-          className="aria-pressed:border-primary/40 aria-pressed:bg-primary/10 aria-pressed:text-primary"
-          onClick={() => setFilters({ ...filters, status: '', assigned: '' })}
+      <fieldset disabled={!!inline || !!resultId} className="min-w-0 border-0 p-0">
+        <div
+          role="group"
+          aria-label={tr('Match views')}
+          className="mb-5 flex flex-wrap gap-2 border-b pb-4"
         >
-          {tr('All Matches')}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          aria-pressed={filters.assigned === 'me'}
-          className="aria-pressed:border-primary/40 aria-pressed:bg-primary/10 aria-pressed:text-primary"
-          onClick={() => setFilters({ ...filters, status: '', assigned: 'me' })}
-        >
-          {tr('My Matches')}
-        </Button>
-        {stats.map(([status, label]) => (
           <Button
-            key={status}
             variant="outline"
             size="sm"
-            aria-pressed={filters.status === status}
+            aria-pressed={!filters.status && !filters.assigned}
             className="aria-pressed:border-primary/40 aria-pressed:bg-primary/10 aria-pressed:text-primary"
-            onClick={() => setFilters({ ...filters, status, assigned: '' })}
+            onClick={() => setFilters({ ...filters, status: '', assigned: '' })}
           >
-            {tr(label)} · {data.counts[status] || 0}
+            {tr('All Matches')}
           </Button>
-        ))}
-      </div>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="mb-3 sm:hidden"
-        aria-expanded={filtersOpen}
-        aria-controls="match-filters"
-        onClick={() => setFiltersOpen(!filtersOpen)}
-      >
-        <SlidersHorizontal size={16} />
-        {filtersOpen ? tr('Hide filters') : tr('Filters')}
-        {activeFilters ? ` (${activeFilters})` : ''}
-      </Button>
-      <div
-        id="match-filters"
-        className={`match-filters mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5 ${filtersOpen ? 'filters-open' : ''}`}
-      >
-        <Field label={tr('Search matches')}>
-          <input
-            type="search"
-            value={filters.q}
-            onChange={(e) => setFilters({ ...filters, q: e.target.value })}
-          />
-        </Field>
-        <Field label={tr('Stage')}>
-          <select
-            value={filters.stage}
-            onChange={(e) => setFilters({ ...filters, stage: e.target.value })}
+          <Button
+            variant="outline"
+            size="sm"
+            aria-pressed={filters.assigned === 'me'}
+            className="aria-pressed:border-primary/40 aria-pressed:bg-primary/10 aria-pressed:text-primary"
+            onClick={() => setFilters({ ...filters, status: '', assigned: 'me' })}
           >
-            <option value="">{tr('All stages')}</option>
-            {data.stages.map((s) => (
-              <option value={s.id} key={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label={tr('Match status')}>
-          <select
-            value={filters.status}
-            onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-          >
-            <option value="">{tr('All statuses')}</option>
-            {Object.entries(MATCH_STATUS_LABELS).map(([key, label]) => (
-              <option key={key} value={key}>
-                {tr(label)}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label={tr('Match date')}>
-          <input
-            type="date"
-            value={filters.date}
-            onChange={(e) => setFilters({ ...filters, date: e.target.value })}
-          />
-        </Field>
-        <Field label={tr('Match time')}>
-          <input
-            type="time"
-            disabled={!filters.date}
-            value={filters.time}
-            onChange={(e) => setFilters({ ...filters, time: e.target.value })}
-          />
-        </Field>
-        <Field label={tr('Assigned referee')}>
-          <select
-            value={filters.assigned}
-            onChange={(e) => setFilters({ ...filters, assigned: e.target.value })}
-          >
-            <option value="">{tr('All Matches')}</option>
-            <option value="me">{tr('My Assigned Matches')}</option>
-            <option value="unassigned">{tr('Unassigned Matches')}</option>
-            {options?.referees
-              .filter((r) => r.id !== actor.id)
-              .map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.username}
+            {tr('My Matches')}
+          </Button>
+          {stats.map(([status, label]) => (
+            <Button
+              key={status}
+              variant="outline"
+              size="sm"
+              aria-pressed={filters.status === status}
+              className="aria-pressed:border-primary/40 aria-pressed:bg-primary/10 aria-pressed:text-primary"
+              onClick={() => setFilters({ ...filters, status, assigned: '' })}
+            >
+              {tr(label)} · {data.counts[status] || 0}
+            </Button>
+          ))}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mb-3 sm:hidden"
+          aria-expanded={filtersOpen}
+          aria-controls="match-filters"
+          onClick={() => setFiltersOpen(!filtersOpen)}
+        >
+          <SlidersHorizontal size={16} />
+          {filtersOpen ? tr('Hide filters') : tr('Filters')}
+          {activeFilters ? ` (${activeFilters})` : ''}
+        </Button>
+        <div
+          id="match-filters"
+          className={`match-filters mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5 ${filtersOpen ? 'filters-open' : ''}`}
+        >
+          <Field label={tr('Search matches')}>
+            <input
+              type="search"
+              value={filters.q}
+              onChange={(e) => setFilters({ ...filters, q: e.target.value })}
+            />
+          </Field>
+          <Field label={tr('Stage')}>
+            <select
+              value={filters.stage}
+              onChange={(e) => setFilters({ ...filters, stage: e.target.value })}
+            >
+              <option value="">{tr('All stages')}</option>
+              {data.stages.map((s) => (
+                <option value={s.id} key={s.id}>
+                  {s.name}
                 </option>
               ))}
-          </select>
-        </Field>
-      </div>
+            </select>
+          </Field>
+          <Field label={tr('Match status')}>
+            <select
+              value={filters.status}
+              onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+            >
+              <option value="">{tr('All statuses')}</option>
+              {Object.entries(MATCH_STATUS_LABELS).map(([key, label]) => (
+                <option key={key} value={key}>
+                  {tr(label)}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label={tr('Match date')}>
+            <input
+              type="date"
+              value={filters.date}
+              onChange={(e) => setFilters({ ...filters, date: e.target.value })}
+            />
+          </Field>
+          <Field label={tr('Match time')}>
+            <input
+              type="time"
+              disabled={!filters.date}
+              value={filters.time}
+              onChange={(e) => setFilters({ ...filters, time: e.target.value })}
+            />
+          </Field>
+          <Field label={tr('Assigned referee')}>
+            <select
+              value={filters.assigned}
+              onChange={(e) => setFilters({ ...filters, assigned: e.target.value })}
+            >
+              <option value="">{tr('All Matches')}</option>
+              <option value="me">{tr('My Assigned Matches')}</option>
+              <option value="unassigned">{tr('Unassigned Matches')}</option>
+              {options?.referees
+                .filter((r) => r.id !== actor.id)
+                .map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.username}
+                  </option>
+                ))}
+            </select>
+          </Field>
+          <Field label={tr('Sort matches')}>
+            <select
+              value={filters.sort}
+              onChange={(e) => setFilters({ ...filters, sort: e.target.value })}
+            >
+              <option value="number">{tr('Match number')}</option>
+              <option value="schedule">{tr('Schedule')}</option>
+              <option value="stage">{tr('Stage')}</option>
+              <option value="updated">{tr('Recently updated')}</option>
+            </select>
+          </Field>
+          {(activeFilters > 0 || filters.q) && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() =>
+                setFilters({
+                  stage: '',
+                  status: '',
+                  assigned: '',
+                  date: '',
+                  time: '',
+                  q: '',
+                  sort: filters.sort,
+                })
+              }
+            >
+              {tr('Clear filters')}
+            </Button>
+          )}
+        </div>
+      </fieldset>
       {can(actor, 'matches.manage') && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border bg-card px-3 py-2">
           <Button
@@ -496,7 +628,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                 eligibleBulkRows.length > 0 &&
                 eligibleBulkRows.every((match) => selectedMatches.has(match.id))
               }
-              disabled={!eligibleBulkRows.length}
+              disabled={!eligibleBulkRows.length || loading || !!inline || !!resultId}
               onChange={(event) =>
                 setSelectedMatches(
                   event.target.checked
@@ -560,18 +692,29 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
           )}
         </div>
       )}
+      {data.pagination && (
+        <ListPagination
+          {...data.pagination}
+          busy={loading || busy || !!inline || !!resultId}
+          onPage={(page) => storeFilters({ ...filters, page: String(page) })}
+        />
+      )}
       {data.matches.length ? (
         <>
           <div className="border-t md:hidden">
             {data.matches.map((m) => (
-              <article key={m.id} className="border-b py-4" aria-label={tr('Match {0}', m.code)}>
+              <article
+                key={m.id}
+                className="border-b py-4"
+                aria-label={tr('Match {0}', m.matchNumber)}
+              >
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
                   {can(actor, 'matches.manage') && (
                     <label className="flex min-h-11 items-center gap-2 pr-2">
                       <input
                         type="checkbox"
                         aria-label={tr('Select match {0}', m.matchNumber)}
-                        disabled={m.status !== 'SCHEDULED'}
+                        disabled={m.status !== 'SCHEDULED' || loading || !!inline || !!resultId}
                         checked={selectedMatches.has(m.id)}
                         onChange={(event) =>
                           selectMatch(
@@ -585,37 +728,46 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                     </label>
                   )}
                   <Link
-                    href={`/admin/referee/${m.id}`}
+                    href={`/admin/referee/${m.matchNumber}`}
                     className="min-w-0 max-w-full break-words font-mono text-primary"
                   >
                     {tr('Match')} {m.matchNumber} · {m.stage.name}
-                    {m.code !== String(m.matchNumber) ? tr(' · Ref {0}', m.code) : ''}
                   </Link>
                   <MatchStatusBadge status={m.status}>
                     {tr(MATCH_STATUS_LABELS[m.status])}
                   </MatchStatusBadge>
                 </div>
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-                  <Link href={`/admin/referee/${m.id}`} className="min-w-0 space-y-1 font-semibold">
+                  <Link
+                    href={`/admin/referee/${m.matchNumber}`}
+                    className="min-w-0 space-y-1 font-semibold"
+                  >
                     <p className="text-red-200">{m.participants.A.name}</p>
                     <p className="text-sky-200">{m.participants.B.name}</p>
                   </Link>
                   <p className="whitespace-nowrap font-mono text-xl tabular-nums">
-                    {m.scoreA} : {m.scoreB}
+                    {m.forfeitSide === 'A' ? tr('FF') : m.scoreA} :{' '}
+                    {m.forfeitSide === 'B' ? tr('FF') : m.scoreB}
                   </p>
                 </div>
-                <p className="mt-2 text-xs text-muted">
-                  {matchTime(m.scheduledAt)}
+                <div className="mt-2 text-xs text-muted">
+                  {matchAccess(actor, m).schedule && m.status === 'SCHEDULED'
+                    ? inlineSchedule(m, 'time')
+                    : matchTime(m.scheduledAt)}
                   {m.bracket ? ' · ' + m.bracket : ''}
-                </p>
+                </div>
                 <div className="mt-3 flex flex-col items-start gap-3">
                   <p className="min-w-0 break-words text-xs text-muted">
-                    {m.assignments.map((r) => r.user.username).join(', ') ||
+                    {organizerRefereeCredit(m.source) ||
+                      m.assignments.map((r) => r.user.username).join(', ') ||
                       matchCredits(m.source).referee ||
                       tr('Unassigned')}
                     <span className="mt-1 block">{m.published ? tr('Public') : tr('Private')}</span>
                   </p>
                   {matchActions(m)}
+                  {matchAccess(actor, m).schedule &&
+                    m.status === 'SCHEDULED' &&
+                    inlineSchedule(m, 'referees')}
                 </div>
               </article>
             ))}
@@ -642,7 +794,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                         <input
                           type="checkbox"
                           aria-label={tr('Select match {0}', m.matchNumber)}
-                          disabled={m.status !== 'SCHEDULED'}
+                          disabled={m.status !== 'SCHEDULED' || loading || !!inline || !!resultId}
                           checked={selectedMatches.has(m.id)}
                           onChange={(event) =>
                             selectMatch(
@@ -656,11 +808,6 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                     )}
                     <td className="font-semibold">
                       {tr('Match')} {m.matchNumber}
-                      {m.code !== String(m.matchNumber) && (
-                        <span className="ml-2 text-xs text-muted">
-                          {tr('Ref')} {m.code}
-                        </span>
-                      )}
                     </td>
                     <td>
                       <p>
@@ -668,16 +815,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                         {m.bracket ? ` · ${m.bracket}` : ''}
                       </p>
                       {matchAccess(actor, m).schedule && m.status === 'SCHEDULED' ? (
-                        <button
-                          type="button"
-                          className="mt-1 inline-flex min-h-8 items-center gap-1.5 rounded-md text-xs text-primary hover:underline"
-                          title={tr('Edit scheduled time')}
-                          aria-label={tr('Edit time for match {0}', m.matchNumber)}
-                          onClick={() => begin(m)}
-                        >
-                          <CalendarClock size={14} />
-                          {matchTime(m.scheduledAt)}
-                        </button>
+                        inlineSchedule(m, 'time')
                       ) : (
                         <p className="whitespace-nowrap text-xs text-muted">
                           {matchTime(m.scheduledAt)}
@@ -699,24 +837,17 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                       <p className="text-sky-200">{m.participants.B.name}</p>
                     </td>
                     <td className="whitespace-nowrap font-semibold">
-                      {m.scoreA} : {m.scoreB}
+                      {m.forfeitSide === 'A' ? tr('FF') : m.scoreA} :{' '}
+                      {m.forfeitSide === 'B' ? tr('FF') : m.scoreB}
                     </td>
                     <td>
-                      {matchAccess(actor, m).schedule && m.status === 'SCHEDULED' && (
-                        <button
-                          type="button"
-                          className="mb-1 inline-flex min-h-8 items-center gap-1 rounded-md text-xs text-primary hover:underline"
-                          title={tr('Edit referee assignments')}
-                          aria-label={tr('Edit referees for match {0}', m.matchNumber)}
-                          onClick={() => begin(m)}
-                        >
-                          <Users size={14} />
-                          {tr('Assign')}
-                        </button>
-                      )}
+                      {matchAccess(actor, m).schedule &&
+                        m.status === 'SCHEDULED' &&
+                        inlineSchedule(m, 'referees')}
                       {matchCredits(m.source).referee && (
                         <p className="text-xs">
-                          {matchCredits(m.source).referee} {tr('· Sheet')}
+                          {matchCredits(m.source).referee}{' '}
+                          {tr(organizerRefereeCredit(m.source) ? '· External' : '· Sheet')}
                         </p>
                       )}
                       {m.assignments.map((r) => (

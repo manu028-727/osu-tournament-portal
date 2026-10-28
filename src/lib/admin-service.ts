@@ -228,7 +228,9 @@ export async function executeAction(
         case 'match.detected_pick':
         case 'match.forfeit':
         case 'match.visibility':
-        case 'match.summary': {
+        case 'match.summary':
+        case 'match.result.set':
+        case 'match.result.import': {
           result = await applyMatchAction(tx, actor, a);
           entityId = (result as { id: string }).id;
           break;

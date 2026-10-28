@@ -350,10 +350,10 @@ export function RefereeSheetImporter({ onChanged }: { onChanged: () => Promise<u
                       <li key={r.sheet}>
                         #{r.sheet}: {r.status}
                         {r.error ? ` - ${r.error}` : ''}
-                        {r.id && (
+                        {r.matchNumber && (
                           <a
                             className="ml-2 text-primary"
-                            href={`/t/${report.tournament.slug}/admin/referee/${r.id}`}
+                            href={`/t/${report.tournament.slug}/admin/referee/${r.matchNumber}`}
                           >
                             {tr('Open history')}
                           </a>

@@ -107,9 +107,6 @@ export function CompetitionBracket({
             : node.matchNumber
               ? tr('Match {0}', node.matchNumber)
               : node.key}
-          {node.match && node.match.code !== String(node.match.matchNumber)
-            ? ` · ${node.match.code}`
-            : ''}
         </span>
         <span className="shrink-0">
           {node.state === 'BYE'
@@ -338,7 +335,11 @@ export function CompetitionBracket({
                 <button
                   key={node.id}
                   type="button"
-                  aria-label={`${node.key}${node.match ? ` ${node.match.code}` : ''}`}
+                  aria-label={
+                    node.matchNumber || node.match?.matchNumber
+                      ? tr('Match {0}', node.match?.matchNumber || node.matchNumber)
+                      : node.key
+                  }
                   className="absolute h-[90px] w-[248px] overflow-hidden rounded-lg border border-border bg-card text-left shadow-sm enabled:hover:border-primary disabled:cursor-default"
                   style={{ left: position.x, top: position.y }}
                   onClick={() => select(node)}

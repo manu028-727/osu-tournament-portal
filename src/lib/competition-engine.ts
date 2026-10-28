@@ -347,7 +347,13 @@ export function competitionChanges(before: CompetitionNode[], after: Competition
     if (!changed || !old.match) return [];
     const protectedMatch = old.match.status !== 'SCHEDULED' || !!old.match.startedAt;
     return [
-      { nodeId: node.id, matchId: old.match.id, code: old.match.code, protected: protectedMatch },
+      {
+        nodeId: node.id,
+        matchId: old.match.id,
+        code: old.match.code,
+        matchNumber: old.match.matchNumber || null,
+        protected: protectedMatch,
+      },
     ];
   });
 }

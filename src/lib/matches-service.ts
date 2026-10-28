@@ -36,6 +36,7 @@ import { AppError, assertPermission, can, type Actor, type PermissionKey } from 
 import { assertScheduleAvailability } from './schedule-availability';
 import { scopedDb } from './scoped-db';
 import { stagePoolProblems } from './stage-pool-validation';
+import { applyOrganizerResult } from './match-results-service';
 import { teamInclude } from './teams-service';
 const json = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value));
 export function matchPermission(a: MatchAction): PermissionKey {
@@ -48,6 +49,8 @@ export function matchPermission(a: MatchAction): PermissionKey {
     case 'match.reopen':
     case 'match.cancel':
     case 'match.summary':
+    case 'match.result.set':
+    case 'match.result.import':
     case 'match.visibility':
     case 'match.resolve':
       return 'matches.manage';
@@ -270,8 +273,8 @@ export async function applyMatchAction(
       );
     if (match.version !== a.baseVersion)
       throw new AppError('The match changed. Reload and review it before deleting.', 409);
-    if (a.confirmCode !== match.code)
-      throw new AppError('Type the exact match code to confirm permanent deletion.');
+    if (a.confirmCode !== match.code && a.confirmCode !== String(match.matchNumber))
+      throw new AppError('Type the exact match number to confirm permanent deletion.');
     const dependency = await tx.match.findFirst({
       where: {
         id: { not: match.id },
@@ -311,6 +314,8 @@ export async function applyMatchAction(
       'Another referee updated this match. Reload and review the latest state.',
       409,
     );
+  if (a.type === 'match.result.set' || a.type === 'match.result.import')
+    return applyOrganizerResult(tx, actor, match, a);
   const rules = matchRulesSchema.parse(match.rules),
     participants = match.participants as unknown as MatchParticipants;
   if (a.type === 'match.reopen' || a.type === 'match.cancel' || a.type === 'match.dispute') {

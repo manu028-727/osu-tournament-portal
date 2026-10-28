@@ -21,6 +21,7 @@ export default defineConfig({
       'tests/match-engine.test.ts',
       'tests/discord-result.test.ts',
       'tests/multiplayer.test.ts',
+      'tests/match-result-review.test.ts',
       'tests/referee-workbook.test.ts',
       'tests/storage.test.ts',
       'tests/irc.test.ts',

@@ -54,7 +54,7 @@ export function DeleteMatchDialog({
               ', its picks, scores, lobby imports and referee history will be permanently removed. This cannot be undone. Teams and mappools are kept; an audit entry records the deletion.',
             )}
           </p>
-          <Field label={tr('Match code confirmation')}>
+          <Field label={tr('Match number confirmation')}>
             <input
               autoComplete="off"
               required

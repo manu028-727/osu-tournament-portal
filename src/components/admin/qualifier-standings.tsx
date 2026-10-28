@@ -500,7 +500,7 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
                 <ul className="mt-2 space-y-1">
                   {correction.impact.blockingMatches.map((match) => (
                     <li key={match.id}>
-                      {match.code}: {match.reason}
+                      {tr('Match {0}', match.matchNumber)}: <Feedback message={match.reason} />
                     </li>
                   ))}
                 </ul>
