@@ -324,6 +324,11 @@ export async function applyWorkbook(original: Actor, input: z.infer<typeof impor
         ? await tx.match.findUnique({ where: { id: input.matchId }, include: matchInclude })
         : null;
       if (input.matchId && !match) throw new AppError('Target match not found.', 404);
+      if (match?.deletedAt)
+        throw new AppError(
+          'This generated match was deleted. Reopen it before making changes.',
+          409,
+        );
       if (match && match.code !== record.code)
         throw new AppError('The match identifier does not match this worksheet.');
       const sourceRecord = structuredClone(record);

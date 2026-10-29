@@ -566,14 +566,32 @@ test('bulk stage rules, persistent empty pool plans and suggestion reviews work 
     dialog.getByRole('button', { name: 'Save completed review', exact: true }).click(),
   );
   await expect(dialog).toHaveCount(0);
-  await page.getByRole('button', { name: 'Select Competition NM1 into pool', exact: true }).click();
-  dialog = page.getByRole('dialog');
+  await page.goto(`${f.root}/admin/mappools?stage=${later.id}`);
+  await page.getByRole('button', { name: 'Suggestions', exact: true }).click();
+  const suggestions = page.getByRole('region', { name: 'Mappool suggestions', exact: true });
+  await suggestions.getByLabel('Search suggestions', { exact: true }).fill('not-a-suggested-map');
+  await expect(
+    suggestions.getByText('No suggestions match this view.', { exact: true }),
+  ).toBeVisible();
+  await suggestions.getByLabel('Search suggestions', { exact: true }).fill('Competition NM1');
+  await suggestions.getByLabel('Category', { exact: true }).selectOption('NM');
+  await suggestions.getByLabel('Suggestion status', { exact: true }).selectOption('ACCEPTED');
+  await suggestions.getByRole('button').filter({ hasText: 'Competition NM1' }).click();
+  await expect(
+    suggestions.getByText('Verified through the organizer browser workflow.', { exact: false }),
+  ).toBeVisible();
+  await page.locator('summary').filter({ hasText: 'Mappool notes' }).click();
+  await page
+    .getByLabel('Mappool notes', { exact: true })
+    .fill('Keep these edits while assigning a suggestion.');
   await uiAction(page, 'pooling.select', () =>
-    dialog.getByRole('button', { name: 'Select into draft', exact: true }).click(),
+    suggestions.getByRole('button', { name: 'Assign to NM1', exact: true }).click(),
   );
-  await expect(dialog).toHaveCount(0);
-  await page.reload();
-  await expect(page.getByRole('cell', { name: 'Selected NM1', exact: true })).toBeVisible();
+  await suggestions.getByLabel('Suggestion status', { exact: true }).selectOption('SELECTED');
+  await expect(
+    suggestions.getByRole('button').filter({ hasText: 'Competition NM1' }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/admin/mappools\\?stage=${later.id}$`));
   const candidate = await db.poolCandidate.findFirstOrThrow({
     where: { tournamentId: f.id },
     include: { reviews: true },
@@ -585,6 +603,10 @@ test('bulk stage rules, persistent empty pool plans and suggestion reviews work 
   });
   expect(destination.publishedRevisionId).toBeNull();
   expect(destination.draftRevision!.slots).toHaveLength(1);
+  expect(destination.draftRevision!.notes).toBe('Keep these edits while assigning a suggestion.');
+  expect(
+    (await db.mappool.findUniqueOrThrow({ where: { id: currentPool.id } })).publishedRevisionId,
+  ).toBe(currentPool.publishedRevisionId);
   await screenshotLayouts(page, context, testInfo, 'pooling-reviews', page.getByRole('main'), true);
   expect(errors).toEqual([]);
 });

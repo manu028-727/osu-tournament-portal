@@ -237,7 +237,7 @@ describe.sequential('assigned referee and persistent match workflows', () => {
       ).toThrow('permission');
     await expect(act(referee, deletion)).rejects.toMatchObject({ status: 403 });
     await expect(act(owner, { ...deletion, confirmCode: 'wrong match' })).rejects.toThrow(
-      'exact match code',
+      'exact match number',
     );
     await expect(act(owner, { ...deletion, baseVersion: m.version + 1 })).rejects.toMatchObject({
       status: 409,

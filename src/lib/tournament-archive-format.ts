@@ -151,7 +151,7 @@ export const ARCHIVE_TABLES = {
   ),
   matches: def(
     'match',
-    'id:s tournamentId:s code:s matchNumber:i? stageId:s teamAId:s? teamBId:s? poolRevisionId:s? participants:j rules:j status:s scheduledAt:d? published:b bracket:s resultMode:s sourceKey:s? source:j? version:i scoreA:i scoreB:i winnerSide:s? forfeitSide:s? rollA:i? rollB:i? firstPickSide:s? firstBanSide:s? firstProtectSide:s? lobbyUrl:s multiplayerId:i? multiplayerSync:j? multiplayerSyncedAt:d? multiplayerError:s? notes:s timerKind:s? timerRemainingSeconds:i timerStartedAt:d? startedAt:d? submittedAt:d? completedAt:d? createdAt:d updatedAt:d',
+    'id:s tournamentId:s code:s matchNumber:i? stageId:s teamAId:s? teamBId:s? poolRevisionId:s? participants:j rules:j status:s scheduledAt:d? published:b bracket:s resultMode:s sourceKey:s? source:j? version:i scoreA:i scoreB:i winnerSide:s? forfeitSide:s? rollA:i? rollB:i? firstPickSide:s? firstBanSide:s? firstProtectSide:s? lobbyUrl:s multiplayerId:i? multiplayerSync:j? multiplayerSyncedAt:d? multiplayerError:s? notes:s timerKind:s? timerRemainingSeconds:i timerStartedAt:d? startedAt:d? submittedAt:d? completedAt:d? deletedAt:d? createdAt:d updatedAt:d',
     {
       tournamentId: 'tournament',
       stageId: 'stages',

@@ -66,6 +66,7 @@ function archiveCompetition(witness: CompetitionArchiveWitness) {
         winnerSide: z.enum(['A', 'B']).nullable(),
         version: z.number().int(),
         matchNumber: z.number().int().positive().optional(),
+        deletedAt: z.union([z.string(), z.date()]).nullable().optional(),
       })
       .parse(row),
   );
@@ -90,6 +91,7 @@ function archiveCompetition(witness: CompetitionArchiveWitness) {
       if (node.matchId && !match) throw new AppError('Archived competition match not found.');
       if (
         match &&
+        !match.deletedAt &&
         assigned.some((slot) => slot.teamId !== (slot.side === 'A' ? match.teamAId : match.teamBId))
       )
         throw new AppError(

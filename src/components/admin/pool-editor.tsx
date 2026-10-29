@@ -40,6 +40,7 @@ import { PoolSlotTable, type EditorSlot } from './pool-slot-table';
 import { movePoolSlot, nextSlotName, poolSlotErrors, sortPoolSlots } from '@/lib/mappool-order';
 import type { PoolPlanView } from '@/lib/pooling-types';
 import { PoolReleaseManager } from './pool-release-manager';
+import { PoolSuggestionsPanel } from './pool-suggestions-panel';
 type Category = {
   id: string;
   version: number;
@@ -115,6 +116,7 @@ export function PoolEditor({
     [preview, setPreview] = useState(false),
     [categoriesOpen, setCategoriesOpen] = useState(false),
     [categoryDraft, setCategoryDraft] = useState<Partial<Category>>({});
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const stage = data?.stages.find((s) => s.id === active),
     pool = stage?.mappool;
   const populatedMaps = slots
@@ -220,29 +222,32 @@ export function PoolEditor({
     setDirty(true);
     setCopyOpen(false);
   };
+  const saveDraft = async () => {
+    const problems = slotErrors(slots, data!.categories);
+    if (problems.length) throw new Error(problems.join(' '));
+    const ordered = sortPoolSlots(slots, data!.categories);
+    return action<{ revisionId: string }>({
+      type: 'pool.save',
+      id: pool!.id,
+      baseRevisionId: base,
+      notes,
+      plan: {
+        baseVersion: stage?.poolPlan?.version ?? null,
+        slots: ordered.map(({ name, category }) => ({ name, category })),
+        minStars: minStars === '' ? null : Number(minStars),
+        maxStars: maxStars === '' ? null : Number(maxStars),
+      },
+      slots: ordered
+        .filter((slot) => slot.beatmapId > 0)
+        .map(({ editorId, ...slot }) => {
+          void editorId;
+          return slot;
+        }),
+    });
+  };
   const save = () =>
     run(async () => {
-      const problems = slotErrors(slots, data!.categories);
-      if (problems.length) throw new Error(problems.join(' '));
-      const ordered = sortPoolSlots(slots, data!.categories);
-      await action({
-        type: 'pool.save',
-        id: pool!.id,
-        baseRevisionId: base,
-        notes,
-        plan: {
-          baseVersion: stage?.poolPlan?.version ?? null,
-          slots: ordered.map(({ name, category }) => ({ name, category })),
-          minStars: minStars === '' ? null : Number(minStars),
-          maxStars: maxStars === '' ? null : Number(maxStars),
-        },
-        slots: ordered
-          .filter((slot) => slot.beatmapId > 0)
-          .map(({ editorId, ...slot }) => {
-            void editorId;
-            return slot;
-          }),
-      });
+      await saveDraft();
       await reload();
     }, tr('Mappool draft saved.'));
   if (!data) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
@@ -329,6 +334,14 @@ export function PoolEditor({
           </div>
           <div className="mb-3 flex flex-wrap justify-between gap-3 border-y py-3">
             <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant={suggestionsOpen ? 'default' : 'outline'}
+                aria-expanded={suggestionsOpen}
+                onClick={() => setSuggestionsOpen((value) => !value)}
+              >
+                {tr('Suggestions')}
+              </Button>
               {editable && (
                 <>
                   <Button
@@ -494,6 +507,43 @@ export function PoolEditor({
               )}
             </div>
           </div>
+          {suggestionsOpen && (
+            <PoolSuggestionsPanel
+              key={stage.id}
+              stageId={stage.id}
+              slots={slots}
+              editable={editable}
+              busy={busy}
+              dirty={dirty}
+              onAssign={async (candidate, slotName, replace, warningResolution) => {
+                const assigned = await run(async () => {
+                  let current = base;
+                  let saved = false;
+                  try {
+                    if (dirty) {
+                      current = (await saveDraft()).revisionId;
+                      saved = true;
+                    }
+                    await action({
+                      type: 'pooling.select',
+                      candidateId: candidate.id,
+                      baseVersion: candidate.version,
+                      stageId: stage.id,
+                      slotName,
+                      baseRevisionId: current,
+                      replace,
+                      warningResolution,
+                    });
+                  } finally {
+                    if (saved) await reload();
+                  }
+                  if (!saved) await reload();
+                  return true;
+                }, tr('Suggestion assigned.'));
+                return !!assigned;
+              }}
+            />
+          )}
           <div className="mb-3 flex flex-wrap items-end gap-3 border-b pb-3">
             <p className="mr-auto self-center text-sm text-muted">
               {slots.filter((slot) => slot.beatmapId > 0).length}/{slots.length} {tr('filled')}

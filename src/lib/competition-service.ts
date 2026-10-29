@@ -237,7 +237,11 @@ async function persistRecalculation(
         changed = true;
       }
     }
-    if (node.match && (node.match.teamAId !== a.teamId || node.match.teamBId !== b.teamId)) {
+    if (
+      node.match &&
+      !node.match.deletedAt &&
+      (node.match.teamAId !== a.teamId || node.match.teamBId !== b.teamId)
+    ) {
       if (node.match.status !== 'SCHEDULED' || node.match.startedAt)
         throw new AppError('Match {0} has started; participants cannot be replaced.', 409, [
           node.match.code,

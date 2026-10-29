@@ -29,6 +29,7 @@ const matchSelect = {
   startedAt: true,
   scheduledAt: true,
   published: true,
+  deletedAt: true,
 };
 export const include = {
   rounds: { orderBy: { position: 'asc' as const } },
@@ -203,7 +204,9 @@ export async function publicCompetitionData(
     ).map((team) => team.id),
   );
   const visibleMatch = (match: (typeof brackets)[number]['nodes'][number]['match']) =>
-    !!match?.published && [match.teamAId, match.teamBId].every((id) => !id || visibleTeams.has(id));
+    !!match?.published &&
+    !match.deletedAt &&
+    [match.teamAId, match.teamBId].every((id) => !id || visibleTeams.has(id));
   // Publish only the explicit read model, never configuration, seed provenance, rosters, or audit data.
   return brackets.map((b) => {
     const data = withStandings(b);

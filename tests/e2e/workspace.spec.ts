@@ -257,11 +257,13 @@ test('a fresh organizer configures, publishes and operates one tournament throug
   await dialog.getByLabel(new RegExp(prefix + '-1')).check();
   await dialog.getByRole('button', { name: 'Save match' }).click();
   await expect(dialog).toHaveCount(0);
-  await page.getByRole('button', { name: 'Multiplayer link for 1', exact: true }).click();
-  dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Multiplayer URL').fill('https://osu.ppy.sh/community/matches/123456');
-  await dialog.getByRole('button', { name: 'Save multiplayer link' }).click();
-  await expect(dialog).toHaveCount(0);
+  await page.getByRole('button', { name: 'Import mp results for match 1', exact: true }).click();
+  const source = page.getByRole('region', { name: 'Result editor for match 1', exact: true });
+  await source
+    .getByLabel('osu! multiplayer link', { exact: true })
+    .fill('https://osu.ppy.sh/community/matches/123456');
+  await source.getByRole('button', { name: 'Save multiplayer link', exact: true }).click();
+  await expect(source).toHaveCount(0);
   const match = await db.match.findFirstOrThrow({ where: { tournamentId: id, code: '1' } });
   expect(match.rules).toMatchObject({ bestOf: 1, teamSize: 1, bansPerTeam: 0 });
   expect(match.lobbyUrl).toContain('/123456');

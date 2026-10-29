@@ -15,6 +15,8 @@ type ReviewPayload = {
   metadata: { id: number; name?: string; start_time?: string | null; end_time?: string | null };
   games: MultiplayerImportGame[];
   redSide?: 'A' | 'B';
+  warmups?: number;
+  playerSides?: Record<string, 'A' | 'B'>;
   checkpoint?: MultiplayerCheckpoint;
 };
 function signature(body: string) {

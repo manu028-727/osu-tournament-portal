@@ -17,6 +17,7 @@ import {
   competitionEligibility,
   finalizedGroupSeeds,
   previewCompetitionCorrection,
+  synchronizeCompetitionResults,
 } from '../src/lib/competition-service';
 import { competitionActionSchema, type CompetitionCreate } from '../src/lib/competition-validation';
 import { DEFAULT_COPY } from '../src/lib/copy';
@@ -173,6 +174,219 @@ async function finish(f: Fixture, id: string, lowerWinsFinal = false) {
 }
 afterAll(() => db.$disconnect());
 describe('native competition PostgreSQL persistence', () => {
+  it('deletes generated fixtures without losing history, reservations or recreating the fixture', () =>
+    isolated(async (f) => {
+      f.actor = { ...f.actor, permissions: [...f.actor.permissions, 'matches.delete'] };
+      const created = await apply(f, create(f, 4)),
+        initial = await bracket(f, created.id);
+      const ready = initial.nodes.filter((node) => node.match).map((node) => node.match!);
+      for (const match of ready)
+        await applyMatchAction(
+          f.tx,
+          f.actor,
+          matchActionSchema.parse({
+            type: 'match.result.set',
+            id: match.id,
+            baseVersion: match.version,
+            scoreA: 2,
+            scoreB: 0,
+            winnerSide: 'A',
+            forfeitSide: null,
+            reason: 'Organizer result',
+          }),
+        );
+      const first = await f.tx.match.findUniqueOrThrow({ where: { id: ready[0].id } });
+      const input = {
+        type: 'match.delete',
+        id: first.id,
+        baseVersion: first.version,
+        confirmCode: String(first.matchNumber),
+        reason: 'Remove the duplicate fixture',
+      };
+      const preview = await previewCompetitionCorrection(f.tx, f.tournamentId, first.id, null);
+      expect(preview.affected).toHaveLength(1);
+      await expect(applyMatchAction(f.tx, f.actor, matchActionSchema.parse(input))).rejects.toThrow(
+        /approve/i,
+      );
+      await expect(
+        applyMatchAction(
+          f.tx,
+          f.actor,
+          matchActionSchema.parse({
+            ...input,
+            approveProgression: true,
+            correctionHash: '0'.repeat(64),
+          }),
+        ),
+      ).rejects.toThrow(/changed since/);
+      await applyMatchAction(
+        f.tx,
+        f.actor,
+        matchActionSchema.parse({
+          ...input,
+          approveProgression: true,
+          correctionHash: preview.hash,
+        }),
+      );
+      expect(await f.tx.match.findUniqueOrThrow({ where: { id: first.id } })).toMatchObject({
+        deletedAt: expect.any(Date),
+        status: 'CANCELLED',
+        scoreA: 2,
+        winnerSide: 'A',
+        matchNumber: first.matchNumber,
+        published: false,
+      });
+      expect(await f.tx.matchResultRevision.count({ where: { matchId: first.id } })).toBe(2);
+      expect(
+        await f.tx.matchEvent.count({ where: { matchId: first.id, kind: 'match.result.set' } }),
+      ).toBe(1);
+      await synchronizeCompetitionResults(f.tx, f.tournamentId, f.actor.id);
+      const after = await bracket(f, created.id);
+      expect(after.nodes.find((node) => node.matchId === first.id)).toMatchObject({
+        state: 'DELETED',
+        matchNumber: first.matchNumber,
+      });
+      expect(await f.tx.match.count({ where: { tournamentId: f.tournamentId } })).toBe(3);
+      expect(
+        after.nodes.find((node) => node.matchNumber === 3)?.slots.some((slot) => !slot.resolved),
+      ).toBe(true);
+      await expect(
+        applyMatchAction(
+          f.tx,
+          f.actor,
+          matchActionSchema.parse({
+            type: 'match.result.set',
+            id: first.id,
+            baseVersion: first.version + 1,
+            scoreA: 0,
+            scoreB: 2,
+            winnerSide: 'B',
+            forfeitSide: null,
+            reason: 'Old browser mutation',
+          }),
+        ),
+      ).rejects.toThrow(/deleted/i);
+      await applyMatchAction(
+        f.tx,
+        f.actor,
+        matchActionSchema.parse({
+          type: 'match.reopen',
+          id: first.id,
+          baseVersion: first.version + 1,
+          reason: 'Restore retained fixture',
+        }),
+      );
+      expect(await f.tx.match.findUniqueOrThrow({ where: { id: first.id } })).toMatchObject({
+        deletedAt: null,
+        matchNumber: first.matchNumber,
+        scoreA: 2,
+      });
+    }));
+  it('protects generated deletion from stale forms, foreign actors and started downstream history', () =>
+    isolated(async (f) => {
+      f.actor = { ...f.actor, permissions: [...f.actor.permissions, 'matches.delete'] };
+      const created = await apply(f, create(f, 4)),
+        initial = await bracket(f, created.id);
+      const ready = initial.nodes.filter((node) => node.match).map((node) => node.match!);
+      const request = await f.tx.ircLobbyRequest.create({
+        data: {
+          tournamentId: f.tournamentId,
+          matchId: ready[0].id,
+          userId: f.actor.id,
+          status: 'UNKNOWN',
+          name: 'Synthetic uncertain room',
+        },
+      });
+      await expect(
+        applyMatchAction(
+          f.tx,
+          f.actor,
+          matchActionSchema.parse({
+            type: 'match.delete',
+            id: ready[0].id,
+            baseVersion: ready[0].version,
+            confirmCode: String(ready[0].matchNumber),
+            reason: 'Remove unused fixture',
+          }),
+        ),
+      ).rejects.toThrow(/pending lobby/);
+      await f.tx.ircLobbyRequest.delete({ where: { id: request.id } });
+      for (const match of ready) await confirm(f, match.id);
+      const after = await bracket(f, created.id),
+        final = after.nodes.find((node) => node.matchNumber === 3)!.match!;
+      await f.tx.match.update({
+        where: { id: final.id },
+        data: { status: 'IN_PROGRESS', startedAt: new Date() },
+      });
+      const first = await f.tx.match.findUniqueOrThrow({ where: { id: ready[0].id } });
+      const input = {
+        type: 'match.delete',
+        id: first.id,
+        baseVersion: first.version,
+        confirmCode: String(first.matchNumber),
+        reason: 'Reviewed removal',
+        approveProgression: true,
+      };
+      await expect(
+        applyMatchAction(
+          f.tx,
+          f.actor,
+          matchActionSchema.parse({ ...input, baseVersion: first.version + 1 }),
+        ),
+      ).rejects.toThrow(/changed/i);
+      await expect(
+        applyMatchAction(
+          f.tx,
+          { ...f.actor, permissions: ['matches.manage'] },
+          matchActionSchema.parse(input),
+        ),
+      ).rejects.toThrow();
+      await expect(
+        applyMatchAction(
+          f.tx,
+          { ...f.actor, tournamentId: 'foreign' },
+          matchActionSchema.parse(input),
+        ),
+      ).rejects.toThrow();
+      await expect(applyMatchAction(f.tx, f.actor, matchActionSchema.parse(input))).rejects.toThrow(
+        /started|completed downstream/,
+      );
+      expect(
+        (await f.tx.match.findUniqueOrThrow({ where: { id: first.id } })).deletedAt,
+      ).toBeNull();
+    }));
+  it('saves inline partial scores without advancing until a winner is recorded', () =>
+    isolated(async (f) => {
+      const created = await apply(f, create(f, 4)),
+        initial = await bracket(f, created.id),
+        match = initial.nodes.find((node) => node.match)!.match!;
+      await applyMatchAction(
+        f.tx,
+        f.actor,
+        matchActionSchema.parse({
+          type: 'match.result.set',
+          id: match.id,
+          baseVersion: match.version,
+          scoreA: 1,
+          scoreB: 0,
+          winnerSide: null,
+          forfeitSide: null,
+          reason: 'Organizer entered partial score',
+        }),
+      );
+      expect(await f.tx.match.findUniqueOrThrow({ where: { id: match.id } })).toMatchObject({
+        scoreA: 1,
+        scoreB: 0,
+        winnerSide: null,
+        status: 'IN_PROGRESS',
+        completedAt: null,
+      });
+      expect(
+        (await bracket(f, created.id)).nodes
+          .find((node) => node.matchNumber === 3)
+          ?.slots.every((slot) => !slot.resolved),
+      ).toBe(true);
+    }));
   it('records organizer results and forfeits, preserves referee records and advances reserved numeric bracket positions', () =>
     isolated(async (f) => {
       const created = await apply(f, create(f, 4)),
@@ -1008,13 +1222,28 @@ describe('native competition PostgreSQL persistence', () => {
             sourceBracketId: groups.id,
             teamIds: seeds.seeds.map((seed) => seed.teamId),
           });
+          const removed = await apply(f, { ...create(f, 2), name: 'Removed fixture' });
+          const removedMatch = (await bracket(f, removed.id)).nodes.find(
+            (node) => node.match,
+          )!.match!;
+          await applyMatchAction(
+            tx,
+            f.actor,
+            matchActionSchema.parse({
+              type: 'match.delete',
+              id: removedMatch.id,
+              baseVersion: removedMatch.version,
+              confirmCode: String(removedMatch.matchNumber),
+              reason: 'Retain deleted fixture in archive',
+            }),
+          );
           return f;
         },
         { timeout: 60000 },
       );
       const exported = await exportTournament(source.actor, 'https://competition.example');
       const inspected = await inspectArchive(exported.bytes);
-      expect(inspected.archive.data.brackets).toHaveLength(2);
+      expect(inspected.archive.data.brackets).toHaveLength(3);
       validateCompetitionArchive(inspected.archive.data);
       const report = await importTournament(
         source.actor,
@@ -1028,7 +1257,14 @@ describe('native competition PostgreSQL persistence', () => {
         include: { entries: { include: { team: true } }, nodes: { include: { match: true } } },
       });
       const groups = restored.find((row) => row.format === 'GROUPS')!,
-        target = restored.find((row) => row.format === 'SINGLE_ELIMINATION')!;
+        target = restored.find((row) => row.name === 'Final bracket')!;
+      const removed = restored
+        .find((row) => row.name === 'Removed fixture')!
+        .nodes.find((node) => node.match)!;
+      expect(removed.match!.deletedAt).toBeInstanceOf(Date);
+      await expect(
+        db.$transaction((tx) => assertCompetitionMatchStart(tx, importedId!, removed.matchId!)),
+      ).rejects.toThrow();
       expect((target.config as { sourceBracketId: string }).sourceBracketId).toBe(groups.id);
       const seeds = await db.$transaction((tx) => finalizedGroupSeeds(tx, importedId!, groups.id));
       expect(
@@ -1045,6 +1281,7 @@ describe('native competition PostgreSQL persistence', () => {
         scoreB: true,
         winnerSide: true,
         status: true,
+        deletedAt: true,
       } as const;
       expect(
         await db.match.findMany({

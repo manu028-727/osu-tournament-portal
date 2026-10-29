@@ -119,6 +119,12 @@ Plans persist empty distributions and advisory difficulty targets before maps
 exist. Suggestions have real metadata, tags/skillsets, notes, filters, status,
 review assignments, ratings and feedback. Accepted maps enter a selected draft
 slot without publication. Artist warnings/bans require traceable resolution.
+The Mappool editor includes a contextual suggestions panel: browse/search by
+category, status, skillset and stage scope, inspect metadata and feedback, accept
+eligible suggestions and assign a destination slot without leaving the editor.
+Assignment saves any pending pool edits first. Replacement and artist-ban
+resolution remain explicit; stale candidate/draft versions fail visibly. If
+assignment fails after a draft save, those saved edits remain available.
 Copying structure is distinct from copying/moving saved contents between drafts.
 Statistics summarize stars/BPM/length. Draft/review/approved/public states differ.
 Single and multi-pool release validate completeness, rules, warnings and expected
@@ -174,16 +180,30 @@ source credits, stages and notes. Filters, sort and page remain in the URL. Inli
 time/referee changes and existing bulk/pasted scheduling retain version/conflict
 checks; hidden page selections are cleared.
 
-Organizers with `matches.manage` can enter or correct scores, winners, forfeits and
-external referee credits directly in Matches or from a bracket position. An
-overall result requires a reason and a valid configured win target. Saving may
-submit or explicitly confirm; only confirmation advances the bracket. Corrections
+Organizers with `matches.manage` click a score cell to edit scores, winners and
+forfeits inline in its match row, with optional notes and external referee credit
+under a disclosure.
+The editor retains its values across responsive layout and language changes.
+Partial scores remain in progress; reaching the configured win target confirms
+the result and advances the bracket. Choosing a winner or FF fills the winning
+score. Every save records the actor, before/after values and a default audit reason
+when no note is supplied. Bracket positions use the same compact result controls.
+Corrections
 preview affected match numbers, require approval for unstarted downstream changes
 and reject stale impact or protected gameplay/frozen standings. Existing referee
 actions, player/map scores, events and revisions remain preserved independently of
 the organizer's overall result. An explicit external referee credit takes precedence
 in public results without changing assignments or permissions. Referee Mode keeps
 its operational workflow.
+
+The existing Delete action removes generated fixtures from active scheduling
+without destroying their record, actions, scores, revisions or reserved number.
+The bracket keeps a deleted position which cannot advance or regenerate itself.
+Reviewed changes may clear unstarted downstream positions; played downstream
+matches, frozen seed snapshots, stale forms and pending/uncertain room creation
+remain protected. The Deleted matches filter exposes retained history. Authorized
+reopening restores the same record and number. Standalone permanent deletion
+retains its explicit confirmation and dependency checks.
 
 Native single elimination, double elimination/reset and groups support deterministic
 seeding, byes, previews, configurable round/stage assignments, manual/locked slots,
@@ -254,15 +274,25 @@ layouts are detected/reported but not imported as invented performances.
 ## Interoperability And Portability
 
 **Current.** Matches imports an osu! multiplayer link through the official API,
-including available lobby metadata, games and player-score evidence. Review the
-red/blue mapping, exclude warmups/replays and explain manual winner corrections.
-Automatic proposals validate frozen rosters, pool, mode and scoring; unsupported
-evidence requires explicit manual winner review and never invented conversion.
-Load earlier history before applying a complete review. Incomplete sources cannot
-be silently confirmed. Partial results may be saved without confirmation.
+including available lobby metadata, games and player-score evidence. Tournament
+sides come from osu! IDs in the match rosters, including substitutes, rather than
+usernames or lobby colors. Team totals use the available player scores and frozen
+score multipliers. Historical lobby settings and maps outside a frozen pool do
+not silently exclude otherwise usable evidence; unsupported scoring/custom slot
+multipliers or missing/ambiguous identities require review instead of invented
+conversion or players.
 
-Import creates an audited overall result and separately retained game evidence;
-it does not invent rolls or pick/ban ownership. Re-import uses unique lobby/game
+Import has an explicit warmup count, initially zero. Only the chosen initial maps
+are warmups; accepted games count chronologically until the configured win target.
+An ordinary complete, unambiguous import saves directly without an approval step.
+Partial scores save in progress. Incomplete history must finish loading first.
+Ambiguous IDs expose team mapping, and individual games can be excluded or have
+their winner corrected with a reason. Existing completed-result correction guards
+still apply when changing downstream progression. Imports remain editable later.
+
+Import creates an audited overall result and separately retained game evidence.
+Changing the warmup count retains previous map-winner corrections and reasons.
+It does not invent rolls or pick/ban ownership. Re-import uses unique lobby/game
 identities, preserves previous evidence in correction history and leaves unchanged
 reviews unchanged. Public completed matches show only accepted game projections,
 without private reasons, review tokens or audit payloads. Expired/unavailable osu!

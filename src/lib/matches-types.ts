@@ -27,6 +27,7 @@ export type MatchSummary = {
   code: string;
   status: MatchStatus;
   notes: string;
+  deletedAt?: string | null;
   lobbyUrl?: string;
   scheduledAt: string | null;
   published: boolean;
@@ -42,6 +43,8 @@ export type MatchSummary = {
       origin: 'MANUAL' | 'MULTIPLAYER';
       redSide?: Side;
       externalReferee?: string;
+      warmups?: number;
+      playerSides?: Record<string, Side>;
     };
   } | null;
   scoreA: number;

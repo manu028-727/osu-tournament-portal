@@ -109,17 +109,22 @@ export function CompetitionBracket({
               : node.key}
         </span>
         <span className="shrink-0">
-          {node.state === 'BYE'
-            ? tr('Bye')
-            : node.state === 'SKIPPED'
-              ? tr('Not required')
-              : tr(humanizeCode(node.match?.status || node.state))}
+          {node.match?.deletedAt || node.state === 'DELETED'
+            ? tr('Deleted')
+            : node.state === 'BYE'
+              ? tr('Bye')
+              : node.state === 'SKIPPED'
+                ? tr('Not required')
+                : tr(humanizeCode(node.match?.status || node.state))}
         </span>
       </div>
       {(['A', 'B'] as const).map((side) => {
         const slot = node.slots.find((s) => s.side === side),
           entry = bracket.entries.find((e) => e.teamId === slot?.teamId);
-        const winner = node.match?.status === 'COMPLETED' && node.match.winnerSide === side;
+        const winner =
+          !node.match?.deletedAt &&
+          node.match?.status === 'COMPLETED' &&
+          node.match.winnerSide === side;
         return (
           <div
             key={side}

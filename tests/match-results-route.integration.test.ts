@@ -8,6 +8,9 @@ import { matchRulesSchema } from '../src/lib/match-rules';
 import { AppError, type Actor } from '../src/lib/permissions';
 import { verifyMatchResultReview } from '../src/lib/match-result-review';
 import { assertTestDatabase } from '../src/lib/instance';
+import { applyMatchAction } from '../src/lib/matches-service';
+import { matchActionSchema } from '../src/lib/matches-validation';
+import type { ImportGameDecision } from '../src/lib/match-results-contract';
 
 vi.mock('../src/lib/auth', async (original) => ({
   ...(await original<typeof import('../src/lib/auth')>()),
@@ -263,4 +266,115 @@ it('retains saved data when the provider is unavailable or returns another lobby
     scoreB: 0,
     multiplayerId: null,
   });
+});
+
+it('reconstructs roster-based wins, honours explicit warmup counts and re-imports without duplicates', async () => {
+  vi.mocked(osuGet).mockResolvedValue({
+    match: { id: 47, name: 'Reversed colours, roster identities' },
+    first_event_id: 1,
+    events: [1, 2, 3].map((n) => {
+      const source = game(n);
+      source.beatmap_id = mapId + 999;
+      source.mods = [];
+      source.scores[0].match.team = 'blue';
+      source.scores[1].match.team = 'red';
+      if (n === 2) {
+        source.scores[0].score = 50;
+        source.scores[1].score = 400;
+      }
+      return { id: n, game: source };
+    }),
+  });
+  const preview = async (version: number, warmups: number) => {
+    const response = await request({
+      type: 'multiplayer',
+      lobbyUrl: 'https://osu.ppy.sh/mp/47',
+      baseVersion: version,
+      warmups,
+    });
+    expect(response.status).toBe(200);
+    return response.json();
+  };
+  const zero = await preview(1, 0);
+  expect(
+    zero.decisions.map((row: { included: boolean; winnerSide: string }) => [
+      row.included,
+      row.winnerSide,
+    ]),
+  ).toEqual([
+    [true, 'A'],
+    [true, 'B'],
+    [true, 'A'],
+  ]);
+  expect(zero.games[0].proposal).toMatchObject({ scoreA: 200, scoreB: 100 });
+  const warmup = await preview(1, 1);
+  expect(warmup.decisions[0].included).toBe(false);
+  const apply = (version: number, review: typeof zero, confirm: boolean) =>
+    db.$transaction((tx) =>
+      applyMatchAction(
+        tx,
+        actor,
+        matchActionSchema.parse({
+          type: 'match.result.import',
+          id: matchId,
+          baseVersion: version,
+          token: review.token,
+          decisions: review.decisions,
+          confirm,
+          reason: 'Imported official score evidence',
+        }),
+      ),
+    );
+  await apply(1, warmup, false);
+  expect(await db.match.findUniqueOrThrow({ where: { id: matchId } })).toMatchObject({
+    version: 2,
+    scoreA: 1,
+    scoreB: 1,
+    status: 'IN_PROGRESS',
+  });
+  const { signMatchResultReview } = await import('../src/lib/match-result-review');
+  const manual = {
+    ...warmup,
+    token: signMatchResultReview({
+      ...verifyMatchResultReview(warmup.token, actor, matchId, 1),
+      version: 2,
+    }),
+    decisions: warmup.decisions.map((row: ImportGameDecision) =>
+      row.gameId === '102'
+        ? { ...row, winnerSide: 'A', reason: 'Retain the previously reviewed map winner' }
+        : row,
+    ),
+  };
+  await apply(2, manual, true);
+  const corrected = await preview(3, 0);
+  expect(corrected.decisions.find((row: ImportGameDecision) => row.gameId === '102')).toMatchObject(
+    { winnerSide: 'A', reason: 'Retain the previously reviewed map winner' },
+  );
+  expect(corrected.decisions.filter((row: ImportGameDecision) => row.included)).toHaveLength(2);
+  const cached = await request({
+    type: 'multiplayer',
+    lobbyUrl: 'https://osu.ppy.sh/mp/47',
+    baseVersion: 3,
+    reviewToken: corrected.token,
+  });
+  expect(cached.status).toBe(200);
+  expect(osuGet).toHaveBeenCalledTimes(3);
+  await apply(3, corrected, true);
+  expect(await db.match.findUniqueOrThrow({ where: { id: matchId } })).toMatchObject({
+    version: 4,
+    scoreA: 2,
+    scoreB: 0,
+    winnerSide: 'A',
+    status: 'COMPLETED',
+  });
+  const signed = verifyMatchResultReview(corrected.token, actor, matchId, 3);
+  const unchanged = { ...corrected, token: signMatchResultReview({ ...signed, version: 4 }) };
+  await apply(4, unchanged, true);
+  expect(await db.match.findUniqueOrThrow({ where: { id: matchId } })).toMatchObject({
+    version: 4,
+    scoreA: 2,
+    scoreB: 0,
+  });
+  expect(await db.multiplayerGame.count({ where: { matchId } })).toBe(3);
+  expect(await db.matchResultRevision.count({ where: { matchId } })).toBe(3);
 });

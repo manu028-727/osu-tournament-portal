@@ -61,7 +61,11 @@ export async function stageReconciliationPreview(actor: Actor) {
   assertPermission(actor, 'matches.manage');
   const db = scopedDb(rootDb, actor.tournamentId || 'main');
   const [matches, stages, settings, tournament] = await Promise.all([
-    db.match.findMany({ include: matchInclude, orderBy: { code: 'asc' } }),
+    db.match.findMany({
+      where: { deletedAt: null },
+      include: matchInclude,
+      orderBy: { matchNumber: 'asc' },
+    }),
     db.tournamentStage.findMany({ include: stageInclude, orderBy: { position: 'asc' } }),
     db.tournamentSettings.findUniqueOrThrow({
       where: { tournamentId: actor.tournamentId || 'main' },
@@ -187,6 +191,8 @@ export async function applyStageReconciliation(
       include: matchInclude,
     });
     if (!match) throw new AppError('Match not found in this tournament.', 404);
+    if (match.deletedAt)
+      throw new AppError('This generated match was deleted. Reopen it before making changes.', 409);
     const previous = await tx.matchEvent.findFirst({
       where: {
         matchId: match.id,

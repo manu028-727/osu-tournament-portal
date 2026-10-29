@@ -44,7 +44,8 @@ append another guide. SPEC's capability labels do not override discrepancies her
 | 22    | Patch dependency advisories, reproduce adapter warning and gate releases on checks                                                                                            | Verified completed; upstream warning Blocked           | `14acd73`                                  |
 | 23    | Add complete English/Italian built-in interfaces and shared dirty-navigation/dialog ownership                                                                                 | Verified within recorded frontend scope                | `4c74c4c`                                  |
 | 24    | Separate editable homepage Heroes, polish all block types and widen shared responsive containers                                                                              | Verified within recorded Chromium scope                | `09a9fc2`                                  |
-| 25    | Improve numeric match navigation, direct organizer results, reviewed multiplayer imports and Matches scheduling/search                                                        | Verified within recorded Chromium and PostgreSQL scope | Working tree after `09a9fc2`; checks below |
+| 25    | Improve numeric match navigation, direct organizer results, reviewed multiplayer imports and Matches scheduling/search                                                        | Verified within recorded Chromium and PostgreSQL scope | `3b5beb4`                                  |
+| 26    | Retain deleted generated fixtures, edit scores in rows, reconstruct roster-based MP results and integrate mappool suggestions                                                 | Verified within recorded Chromium and PostgreSQL scope | Working tree after `3b5beb4`; checks below |
 
 Rejected calm/earlier redesign pilots are not design authority. Their useful
 usability lessons and verification procedures are incorporated in DESIGN and
@@ -70,6 +71,8 @@ arbitrary order. Existing-schema adoption is a separate guarded procedure in
 | `20261024012000_immutable_revision_owners`         | Prevent saved revision reparenting                                                 |
 | `20261024013000_staff_edit_versions`               | Add staff/category optimistic edit counters                                        |
 | `20261024014000_media_cleanup_outbox`              | Empty durable media cleanup journal                                                |
+| `20261028010000_generated_match_deletion`          | Retain generated match history with a nullable deletion witness                    |
+| `20261028020000_deleted_bracket_state`             | Expand the bracket state constraint for retained deleted positions                 |
 
 No phase authorizes a database reset, rewrite of historical results or automatic
 live cutover. Private installation settings and published content stay authoritative.
@@ -884,6 +887,75 @@ IRC coverage used the existing mock Bancho harness. Additional browser engines
 and a live osu! import smoke test remain unverified. The existing upstream pg
 concurrent-query warning is unchanged; synthetic empty-avatar warnings were also
 observed without browser-test failures.
+
+## Organizer Workspace Corrections - 28 October 2026
+
+Source scope: working tree after `3b5beb4`. The maintainer requested generated
+deletion, fast inline results, reliable MP reconstruction and contextual suggestions.
+
+- The existing Delete action now retains generated Match records, child history,
+  revisions, the bracket relation and immutable number. A deleted node produces no
+  output or replacement fixture. Reviewed unstarted downstream changes can retract;
+  protected gameplay, frozen seeds, stale versions, legacy references and uncertain
+  room requests remain guarded. Deleted history is filterable and can be reopened
+  through the established manager workflow. Public projections exclude it.
+- Scores themselves open a compact row/card editor for scores, winner and FF.
+  Notes/credit are optional; partial scores stay in progress and a winning score
+  confirms through the existing audited result service. One editor retains values
+  across responsive hosts and language changes, with dirty/busy guards. Removed
+  the old expanded manual result form and redundant Result action.
+- MP teams resolve through roster osu! IDs and substitutes, independently of
+  usernames/colors. Historical available player scores produce actual team totals
+  and map wins, including maps outside a published pool. Unknown/shared identities,
+  ties and unsupported evidence expose review. Warmups explicitly default to zero;
+  ordinary unambiguous imports apply directly. Signed complete evidence supports
+  local recalculation, corrections and duplicate-safe re-import; game provenance
+  remains separate from referee picks and private review payloads. Changing warmup
+  counts preserves reviewed winners/reasons. Link-only saving remains available
+  through the same pane and established lobby action.
+- Suggestions now open inside the pool editor, with search/category/status/skillset
+  and stage filtering, metadata/feedback previews, acceptance and slot assignment.
+  Existing selection permissions, artist/replacement rules and revision checks
+  remain authoritative. Assignment first saves pending pool edits; a later rejected
+  selection does not discard that saved draft or publish it.
+- Removed the blanket bracket-deletion rejection and obsolete copy after checking
+  callers. Added the explicit deletion date to archive coverage/restoration, while
+  keeping old archives compatible. A first-click List/Bracket race found by the
+  qualifier browser flow was fixed by persisting filter URLs only on actual edits.
+- **Verified completed within recorded scope.** Node 22.23.3 lockfile installation,
+  formatting, lint, types, 363 unit tests, 219 PostgreSQL integration tests, source
+  audit and standalone production build passed. Four affected route/database cases
+  reran successfully after the final warmup-correction fix; reruns are not extra
+  unique tests. Import issue literals are also covered by the locale catalog check.
+- All 56 final production Chromium cases passed with exit 0 and Playwright
+  `status: passed`, including existing Referee Mode, qualifier, bracket, public
+  pool and fresh-workspace flows. This supersedes the earlier 55-pass/one-failure
+  run that exposed the missing link-only action. Development evidence includes
+  17 passing cases from the initial run and five successful targeted cases after
+  correcting a feedback assertion and the first-click navigation race. Failed
+  attempts remain in ignored logs and are not counted as completed verification.
+- Regression scope includes stale/foreign/unauthorized deletion, protected
+  downstream history and uncertain IRC requests, no regeneration or renumbering,
+  archive round trips, partial/manual/FF results, frozen-roster preservation,
+  ID/substitute/color-independent reconstruction, zero/explicit warmups, retained
+  winner corrections, ambiguous player mapping, default immediate imports,
+  duplicate-safe history and link-only saving. Contextual suggestions exercise
+  filters, metadata/review previews, actual assignment, pending notes preservation
+  and unchanged publication through existing services.
+- Rendered coverage includes light/dark, English/Italian, long names, empty and
+  populated/filter-empty states, 320/375/390/768/1024/1366/1920px, 844px landscape
+  and 683px reflow. Dirty score/note values survive responsive host and language
+  changes. Actual screenshots were inspected for inline rows, narrow controls,
+  suggestions and ambiguous mapping. Final evidence lives under
+  `.data/workspace-fixes-20261028/production-final/`, `development-final/`,
+  `development-rerun/` and `checks/`.
+
+Deployment requires the two additive migrations listed above before this source
+runs. No installation data, live services or deployment was changed. Provider
+responses and sessions are synthetic; a live osu! MP import and additional browser
+engines remain unverified. Evidence stays ignored in
+`.data/workspace-fixes-20261028/`; the existing pg warning and synthetic empty-avatar
+warnings are retained rather than suppressed.
 
 ## Completion Rules
 

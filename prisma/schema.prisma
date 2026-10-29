@@ -852,6 +852,7 @@ model Match {
   startedAt             DateTime?
   submittedAt           DateTime?
   completedAt           DateTime?
+  deletedAt             DateTime?
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
   assignments           MatchAssignment[]

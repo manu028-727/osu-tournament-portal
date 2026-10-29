@@ -288,6 +288,14 @@ with shared 100-slot bounds. Candidate statuses are SUGGESTED, REVIEW, PLAYTESTI
 ACCEPTED, REJECTED, SELECTED; plan DRAFT/REVIEW/APPROVED is separate from release.
 Assigned reviewers write their own feedback; managers assign others. Selection
 creates a draft with expected base revision, never automatically publishes.
+`pool-suggestions-panel.tsx` reads the same authorized pooling data inside
+`pool-editor.tsx`, reuses its metadata/review display helpers, and uses the existing
+acceptance and `pooling.select` actions. It does not implement a second selection
+policy. Pending local pool edits first save through `pool.save`, then assignment
+compares the returned draft revision and candidate version. If assignment fails,
+the completed draft save remains visible; no edits are silently discarded and no
+publication changes. Replacement and artist resolutions follow the same service
+checks as the full suggestions workspace.
 
 Artist resolutions bind exact warning identity/reason and are rechecked at publish.
 Shared `publishPoolDraft` validates single/bulk releases; batches compare every
@@ -309,7 +317,8 @@ player scores. Corrections/undo void or version records rather than discard hist
 events/result revisions retain audit and snapshots. Stale baseVersion writes fail.
 `polling.ts` schedules after completion and pauses/resumes with visibility/connection,
 preventing overlaps; observing grants no edit ownership. Permanent deletion is an
-explicit matches.delete workflow with dependency guards, not cancellation.
+explicit matches.delete workflow with dependency guards; generated matches use the
+retained deletion lifecycle described below rather than cascading their history.
 
 `match-numbering.ts`/SQL trigger serialize allocation on tournament counter.
 Positive matchNumber is tenant-unique, immutable and never recycled. Requested
@@ -327,6 +336,11 @@ participant names, live names, referee assignments, external credit, stage and n
 page/filter selections and suspends polling during inline/result editing. Inline
 schedule cells reuse the existing `match.schedule` authorization/version/conflict
 path. No separate mutable scheduling implementation exists.
+`match-inline-result.tsx` owns the compact score/winner/FF form. One editor instance
+portals into the visible row/card host, preserving unsaved state across responsive
+layout changes. Optional reason/credit fields are secondary; default reasons still
+produce attributed events. Partial scores remain IN_PROGRESS; a configured winning
+score confirms through the existing result service. Referee gameplay is unchanged.
 
 `match-results-contract.ts` owns client-safe organizer result actions. The existing
 mutation dispatcher explicitly routes both actions to `matches.manage` and
@@ -334,12 +348,33 @@ mutation dispatcher explicitly routes both actions to `matches.manage` and
 decision uses SUMMARY mode, retains all referee actions/results, appends an event
 and result revision, and advances only after confirmation. Existing winner-based
 correction previews/locks protect downstream gameplay and frozen standings; the
-reviewed hash is compared again inside the transaction. No schema migration or
-automatic renumbering/content conversion is required.
+reviewed hash is compared again inside the transaction. Result entry does not
+renumber records or convert historical scoring.
 An explicitly saved `source.organizerResult.externalReferee` controls public
 result credit before assignments, without granting access or changing assignments.
 Multiplayer re-import preserves that credit; legacy sheet credit keeps its existing
 fallback behavior.
+
+Generated deletion uses the existing `match.delete` permission/action with a
+reviewed impact hash and version under the same lock. `Match.deletedAt` is a
+retained lifecycle witness: the match becomes CANCELLED and unpublished while
+all actions, scores, events, revisions and its node/number remain intact. The
+DELETED node has no progression output and cannot lazily recreate a match.
+Unstarted downstream assignments can be cleared with approval; protected matches,
+frozen source standings, legacy dependencies and pending/unknown room requests
+block deletion. Deleted records remain readable through a list filter and reject
+mutations until the established organizer reopen action clears the marker.
+Workbook and reconciliation entrypoints enforce the same guard. Public projections
+exclude deleted records independently of publication flags. Standalone permanent
+deletion retains its established confirmation/dependency behavior.
+
+Apply `20261028010000_generated_match_deletion` and
+`20261028020000_deleted_bracket_state` through the normal migration workflow before
+running this source. They add the nullable date and expand the existing node state
+constraint; foreign keys and immutable number triggers remain unchanged. The archive
+allowlist explicitly includes the date, old archives default to null, and competition
+restoration retains deleted nodes and historical roster witnesses without activating
+them. scopedDb ownership still follows the retained Match parent for child history.
 
 Native brackets use the established engine for SE/DE/groups construction and native
 rows for lifecycle/routes/eligibility/lazy matches. Playable nodes reserve numbers
@@ -466,8 +501,14 @@ Organizer imports use `POST /api/admin/match-results` for impact/source preview 
 `match.result.import` for application. They use the official
 [Get Match API](https://osu.ppy.sh/docs/#get-match), with legacy score representation
 pinned through the API version header, server credentials and existing timeouts.
-The historical/red-side proposal options are explicit; referee synchronization
-keeps its existing start-time and state-machine checks.
+`organizer-multiplayer.ts` reconstructs tournament sides by immutable osu! IDs in
+the match roster, including substitutes. Lobby colors and mutable names do not own
+team identity. Unknown/shared identities require explicit mappings. Team totals sum
+available score evidence with the frozen multiplier policy; historical team-size,
+NoFail or missing pool membership do not invent or discard scores. Custom slot
+multipliers still need a uniquely identified slot, and unsupported scoring, ties,
+duplicate players or absent team evidence require review. Referee synchronization
+retains its strict pool, start-time, roster/color and state-machine checks.
 
 `match-result-review.ts` signs bounded, actor/tenant/match/version-bound evidence
 for 15 minutes using domain-separated HMAC and the existing private osu! client
@@ -478,6 +519,18 @@ stateless preview works across processes sharing the installation credentials.
 History loads in six-page batches with signed continuation checkpoints; previews
 are bounded to 120 games and the existing request-size limit. Incomplete history
 cannot be applied, and source failures leave the saved match unchanged.
+The organizer form supplies an explicit warmup count (default zero), then counts
+accepted games chronologically to the win target. Unambiguous complete history
+applies directly; partial outcomes remain IN_PROGRESS. Ambiguous identities or
+unsupported evidence expose review rather than a default approval checkbox.
+Complete signed evidence can be recalculated without another provider request;
+fresh imports still fetch the source. Saved warmup/mapping decisions stay in
+`source.organizerResult`; source evidence and reviewed game decisions remain
+separate provenance. Warmup changes recalculate inclusion while retaining reviewed
+map winners and their reasons. Unchanged re-imports preserve explicit previous
+decisions. Saving a link without importing still uses the existing `match.lobby`
+action. A possible no-op still
+reaches server fingerprint verification even when downstream state is protected.
 
 Accepted and excluded games persist in MultiplayerGame under the existing unique
 match/lobby/game key. Its evidence is source provenance; proposal.organizerReview

@@ -13,6 +13,7 @@ type PublicMatchFilters = { code?: string; teamId?: string; stage?: string; stat
 function publicMatchWhere(filters: PublicMatchFilters) {
   const where: Prisma.MatchWhereInput = {
     published: true,
+    deletedAt: null,
     AND: [
       { OR: [{ teamAId: null }, { teamA: { published: true, status: 'APPROVED' } }] },
       { OR: [{ teamBId: null }, { teamB: { published: true, status: 'APPROVED' } }] },

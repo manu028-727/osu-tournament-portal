@@ -147,7 +147,13 @@ export const matchActionOptions = [
     approveProgression: z.boolean().optional(),
     correctionHash: z.string().length(64).optional(),
   }),
-  base.extend({ type: z.literal('match.delete'), reason, confirmCode: z.string().min(1).max(80) }),
+  base.extend({
+    type: z.literal('match.delete'),
+    reason,
+    confirmCode: z.string().min(1).max(80),
+    approveProgression: z.boolean().default(false),
+    correctionHash: z.string().length(64).optional(),
+  }),
   base.extend({
     type: z.literal('match.detected_pick'),
     proposalId: z.string().min(1).max(100),

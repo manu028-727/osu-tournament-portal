@@ -1,11 +1,14 @@
 import type { Prisma } from '@/generated/prisma/client';
 import { AppError, can, type Actor } from './permissions';
 
-export function matchAccess(actor: Actor, match: { assignments: { userId: string }[] }) {
+export function matchAccess(
+  actor: Actor,
+  match: { assignments: { userId: string }[]; deletedAt?: unknown },
+) {
   const manager = can(actor, 'matches.manage');
   const assigned = match.assignments.some((r) => r.userId === actor.id);
   const override = can(actor, 'matches.manage_all');
-  const scope = manager || assigned || override;
+  const scope = !match.deletedAt && (manager || assigned || override);
   return {
     manager,
     assigned,

@@ -8,6 +8,8 @@ import { assertTestDatabase } from '../../src/lib/instance';
 import { signMatchResultReview } from '../../src/lib/match-result-review';
 import type { MultiplayerImportGame } from '../../src/lib/match-results-contract';
 import type { MatchParticipants } from '../../src/lib/matches-types';
+import type { MatchView } from '../../src/lib/matches-types';
+import { organizerMultiplayerGames } from '../../src/lib/organizer-multiplayer';
 
 assertTestDatabase(process.env.TEST_DATABASE_URL);
 const db = new PrismaClient({
@@ -201,6 +203,11 @@ const test = base.extend<{
       });
       expect(errors).toEqual([]);
     } finally {
+      await db.bracketSlot.deleteMany({ where: { tournamentId: id } });
+      await db.bracketEntry.deleteMany({ where: { tournamentId: id } });
+      await db.bracketNode.deleteMany({ where: { tournamentId: id } });
+      await db.bracketRound.deleteMany({ where: { tournamentId: id } });
+      await db.bracket.deleteMany({ where: { tournamentId: id } });
       await db.auditLog.deleteMany({ where: { tournamentId: id } });
       await db.match.deleteMany({ where: { tournamentId: id } });
       await db.tournamentStage.deleteMany({ where: { tournamentId: id } });
@@ -213,6 +220,217 @@ const test = base.extend<{
   },
 });
 test.afterAll(async () => db.$disconnect());
+
+test('the existing Delete action removes a generated fixture while retaining its history and number', async ({
+  page,
+  tournament,
+}) => {
+  const teams = await db.team.findMany({
+    where: { tournamentId: tournament.id },
+    orderBy: { slug: 'asc' },
+  });
+  const response = await page.request.post(`/api/admin/action?tournament=${tournament.id}`, {
+    headers: { Origin: 'http://localhost:3001' },
+    data: {
+      type: 'competition.create',
+      format: 'SINGLE_ELIMINATION',
+      name: 'Deletion bracket',
+      generationKey: randomUUID(),
+      stageId: tournament.targetStageId,
+      teamIds: teams.map((team) => team.id),
+    },
+  });
+  expect(response.ok(), await response.text()).toBe(true);
+  const node = await db.bracketNode.findFirstOrThrow({
+    where: { tournamentId: tournament.id, matchId: { not: null } },
+    include: { match: true },
+  });
+  const match = node.match!;
+  await page.goto(tournament.root);
+  await page
+    .getByRole('button', { name: `Delete match ${match.matchNumber}`, exact: true })
+    .click();
+  const dialog = page.getByRole('dialog', { name: 'Delete generated match', exact: true });
+  await expect(dialog).toBeVisible();
+  await dialog
+    .getByLabel('Match number confirmation', { exact: true })
+    .fill(String(match.matchNumber));
+  await dialog
+    .getByLabel('Deletion reason', { exact: true })
+    .fill('Remove duplicate generated fixture');
+  await dialog.getByRole('button', { name: 'Delete generated match', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: `Delete match ${match.matchNumber}`, exact: true }),
+  ).toHaveCount(0);
+  expect(await db.match.findUniqueOrThrow({ where: { id: match.id } })).toMatchObject({
+    deletedAt: expect.any(Date),
+    matchNumber: match.matchNumber,
+    status: 'CANCELLED',
+  });
+  expect(
+    await db.matchEvent.count({ where: { matchId: match.id, kind: 'competition.match.create' } }),
+  ).toBe(1);
+  await page.getByLabel('Match status', { exact: true }).selectOption('DELETED');
+  await expect(page.getByRole('table').locator('tbody tr')).toHaveCount(1);
+  await expect(page.getByRole('table')).toContainText('Deleted');
+});
+
+test('roster-based MP imports apply immediately with explicit warmups and preserve unique history', async ({
+  page,
+  tournament,
+}, info) => {
+  const matchId = tournament.matches[0].id,
+    number = tournament.matches[0].matchNumber;
+  let unknownPlayer = false;
+  const actor = await db.user.findFirstOrThrow({
+    where: { username: tournament.id, platformAdmin: true },
+  });
+  await page.route('**/api/admin/match-results**', async (route) => {
+    const input = route.request().postDataJSON();
+    if (input.type !== 'multiplayer') return route.continue();
+    const stored = await db.match.findUniqueOrThrow({ where: { id: matchId } });
+    const participants = stored.participants as unknown as MatchParticipants;
+    const games: MultiplayerImportGame[] = [0, 1, 2].map((n) => ({
+      proposal: null,
+      evidence: {
+        eventId: n + 1,
+        gameId: String(970 + n),
+        beatmapId: 10000 + n,
+        slotName: '',
+        startTime: `2026-10-01T12:0${n}:00Z`,
+        endTime: `2026-10-01T12:0${n}:30Z`,
+        mode: 'osu',
+        scoringType: 'scorev2',
+        teamType: 'team-vs',
+        mods: [],
+        issue: null,
+        scores: [
+          {
+            user_id: participants.A.members[0].osuId,
+            score: n === 1 ? 50 : 200,
+            accuracy: 0.95,
+            max_combo: 100,
+            mods: [],
+            match: { team: 'blue' },
+          },
+          {
+            user_id: unknownPlayer ? 1990000011 : participants.B.members[0].osuId,
+            score: 100,
+            accuracy: 0.9,
+            max_combo: 90,
+            mods: [],
+            match: { team: 'red' },
+          },
+        ],
+      },
+    }));
+    const resolved = organizerMultiplayerGames(
+      games,
+      {
+        ...stored,
+        participants,
+        rules,
+        poolRevision: null,
+      } as unknown as MatchView,
+      input.playerSides || {},
+    );
+    const decisions = resolved.games.map((game, n) => ({
+      gameId: game.evidence.gameId,
+      included: n >= input.warmups && !!game.proposal,
+      winnerSide: game.proposal?.winnerSide || null,
+      reason: '',
+    }));
+    const metadata = { id: 987654, name: 'Roster reconstruction fixture' };
+    const token = signMatchResultReview({
+      actorId: actor.id,
+      tournamentId: tournament.id,
+      matchId,
+      version: input.baseVersion,
+      complete: true,
+      metadata,
+      games: resolved.games,
+      warmups: input.warmups,
+      playerSides: input.playerSides || {},
+    });
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ...resolved,
+        metadata,
+        token,
+        complete: true,
+        decisions,
+        warmups: input.warmups,
+      }),
+    });
+  });
+  await page.goto(tournament.root);
+  await page.getByRole('button', { name: 'Bracket', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Create bracket', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'List', exact: true }).click();
+  const open = async (warmups: number) => {
+    await page
+      .getByRole('button', { name: `Import mp results for match ${number}`, exact: true })
+      .click();
+    const panel = page.getByRole('region', {
+      name: `Result editor for match ${number}`,
+      exact: true,
+    });
+    await panel
+      .getByLabel('osu! multiplayer link', { exact: true })
+      .fill('https://osu.ppy.sh/mp/987654');
+    await panel.getByLabel('Warmup maps', { exact: true }).fill(String(warmups));
+    await panel.getByRole('button', { name: 'Import results', exact: true }).click();
+    await expect(panel).toHaveCount(0);
+  };
+  await open(0);
+  expect(await db.match.findUniqueOrThrow({ where: { id: matchId } })).toMatchObject({
+    scoreA: 2,
+    scoreB: 1,
+    winnerSide: 'A',
+    status: 'COMPLETED',
+  });
+  await open(1);
+  expect(await db.match.findUniqueOrThrow({ where: { id: matchId } })).toMatchObject({
+    scoreA: 1,
+    scoreB: 1,
+    winnerSide: null,
+    status: 'IN_PROGRESS',
+  });
+  await open(0);
+  const version = (await db.match.findUniqueOrThrow({ where: { id: matchId } })).version;
+  await open(0);
+  expect((await db.match.findUniqueOrThrow({ where: { id: matchId } })).version).toBe(version);
+  expect(await db.multiplayerGame.count({ where: { matchId } })).toBe(3);
+  expect(await db.multiplayerGame.count({ where: { matchId, ignoredAt: null } })).toBe(3);
+  await page.screenshot({ path: info.outputPath('automatic-roster-result.png'), fullPage: true });
+  unknownPlayer = true;
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page
+    .getByRole('button', { name: `Import mp results for match ${number}`, exact: true })
+    .click();
+  const mapping = page.getByRole('region', {
+    name: `Result editor for match ${number}`,
+    exact: true,
+  });
+  await mapping.getByRole('button', { name: 'Import results', exact: true }).click();
+  await expect(mapping.getByLabel('1990000011 · 1990000011', { exact: true })).toBeVisible();
+  await mapping.getByLabel('1990000011 · 1990000011', { exact: true }).selectOption('B');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({
+    path: info.outputPath('ambiguous-mp-mapping-mobile.png'),
+    fullPage: true,
+  });
+  await mapping.getByRole('button', { name: 'Import with team mapping', exact: true }).click();
+  await expect(mapping).toHaveCount(0);
+  expect(await db.match.findUniqueOrThrow({ where: { id: matchId } })).toMatchObject({
+    scoreA: 2,
+    scoreB: 1,
+    source: { organizerResult: { playerSides: { '1990000011': 'B' } } },
+  });
+  expect(await db.multiplayerGame.count({ where: { matchId } })).toBe(3);
+});
 
 test('long participant and referee labels remain usable on a narrow Matches page', async ({
   page,
@@ -243,7 +461,7 @@ test('long participant and referee labels remain usable on a narrow Matches page
     path: info.outputPath('matches-long-labels-result.png'),
     fullPage: true,
   });
-  await page.getByRole('button', { name: 'Close result editor', exact: true }).click();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page
     .getByRole('article', { name: `Match ${match.matchNumber}`, exact: true })
     .getByRole('button', { name: `Edit referees for match ${match.matchNumber}`, exact: true })
@@ -348,13 +566,14 @@ test('numeric match navigation, inline scheduling and organizer results work wit
   await page.reload();
   await expect(page.getByLabel('Search matches', { exact: true })).toHaveValue(`#${number}`);
   await page.getByRole('button', { name: `Edit result for match ${number}`, exact: true }).click();
-  const panel = page.getByRole('region', {
+  const panel = page.getByRole('form', {
     name: `Result editor for match ${number}`,
     exact: true,
   });
-  await expect(panel).toBeFocused();
+  await expect(panel.getByLabel('Score for Entrant 0', { exact: true })).toBeFocused();
   await panel.getByLabel('Score for Entrant 0', { exact: true }).fill('2');
   await panel.getByLabel('Score for Entrant 1', { exact: true }).fill('1');
+  await panel.getByText('Result notes and external referee', { exact: true }).click();
   await panel
     .getByLabel('External referee credit (optional)', { exact: true })
     .fill('External tournament referee');
@@ -374,9 +593,6 @@ test('numeric match navigation, inline scheduling and organizer results work wit
   await expect(page).toHaveURL(/\/admin\/matches\?/);
   await page.getByRole('button', { name: `Edit result for match ${number}`, exact: true }).click();
   await panel.getByLabel('Forfeit (FF)', { exact: true }).selectOption('B');
-  await panel
-    .getByLabel('Result reason / source', { exact: true })
-    .fill('Reviewed a correction to an external forfeit');
   await panel.getByRole('button', { name: 'Save result', exact: true }).click();
   await expect(panel).toHaveCount(0);
   expect(await db.matchResultRevision.count({ where: { matchId } })).toBe(2);
@@ -465,13 +681,12 @@ test('reviewed multiplayer history imports, corrects and re-imports without dupl
   });
   const fetch = async () => {
     await page
-      .getByRole('button', { name: `Edit result for match ${number}`, exact: true })
+      .getByRole('button', { name: `Import mp results for match ${number}`, exact: true })
       .click();
-    await panel.getByRole('button', { name: 'Import mp results', exact: true }).click();
     await panel
       .getByLabel('osu! multiplayer link', { exact: true })
       .fill('https://osu.ppy.sh/community/matches/876543');
-    await panel.getByRole('button', { name: 'Fetch games', exact: true }).click();
+    await panel.getByRole('button', { name: 'Import results', exact: true }).click();
     await expect(
       panel.getByText('Synthetic official-API evidence', { exact: false }),
     ).toBeVisible();
@@ -488,23 +703,17 @@ test('reviewed multiplayer history imports, corrects and re-imports without dupl
       .getByLabel(`Game correction reason ${id}`, { exact: true })
       .fill('Reviewed against external player scores');
   }
-  await panel
-    .getByLabel('Result reason / source', { exact: true })
-    .fill('Accepted the reviewed multiplayer history');
   await page.screenshot({
     path: info.outputPath('multiplayer-review-desktop.png'),
     fullPage: true,
   });
-  await panel.getByRole('button', { name: 'Save result', exact: true }).click();
+  await panel.getByRole('button', { name: 'Apply reviewed results', exact: true }).click();
   await expect(panel).toHaveCount(0);
   expect(await db.multiplayerGame.count({ where: { matchId } })).toBe(4);
   expect(await db.matchMapAction.count({ where: { matchId } })).toBe(0);
   const version = (await db.match.findUniqueOrThrow({ where: { id: matchId } })).version;
   await fetch();
-  await panel
-    .getByLabel('Result reason / source', { exact: true })
-    .fill('Reviewed the same multiplayer history');
-  await panel.getByRole('button', { name: 'Save result', exact: true }).click();
+  await panel.getByRole('button', { name: 'Apply reviewed results', exact: true }).click();
   await expect(panel).toHaveCount(0);
   expect((await db.match.findUniqueOrThrow({ where: { id: matchId } })).version).toBe(version);
   await fetch();
@@ -512,12 +721,9 @@ test('reviewed multiplayer history imports, corrects and re-imports without dupl
   await panel
     .getByLabel('Game correction reason 903', { exact: true })
     .fill('Corrected the external winner after review');
-  await panel
-    .getByLabel('Result reason / source', { exact: true })
-    .fill('Reviewed the final map correction');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: info.outputPath('multiplayer-review-mobile.png'), fullPage: true });
-  await panel.getByRole('button', { name: 'Save result', exact: true }).click();
+  await panel.getByRole('button', { name: 'Apply reviewed results', exact: true }).click();
   await expect(panel).toHaveCount(0);
   expect(await db.match.findUniqueOrThrow({ where: { id: matchId } })).toMatchObject({
     scoreA: 1,
@@ -574,7 +780,7 @@ for (const appearance of ['light', 'dark'])
         path: info.outputPath(`matches-result-${appearance}-${width}.png`),
         fullPage: true,
       });
-      await page.getByRole('button', { name: 'Close result editor', exact: true }).click();
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     }
     await page
       .getByRole('button', {
@@ -583,9 +789,19 @@ for (const appearance of ['light', 'dark'])
       })
       .click();
     await page.getByLabel('Score for Entrant 0', { exact: true }).fill('2');
+    await page.getByText('Result notes and external referee', { exact: true }).click();
     await page
       .getByLabel('Result reason / source', { exact: true })
       .fill('Authored source note stays unchanged');
+    for (const width of [1366, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      await expect(page.getByLabel('Score for Entrant 0', { exact: true })).toHaveValue('2');
+      await expect(page.getByLabel('Score for Entrant 0', { exact: true })).toBeVisible();
+      await expect(page.getByLabel('Result reason / source', { exact: true })).toHaveValue(
+        'Authored source note stays unchanged',
+      );
+    }
+    await page.getByText('Result notes and external referee', { exact: true }).click();
     await page.getByRole('button', { name: 'Interface language', exact: true }).click();
     await page.getByRole('menuitemradio', { name: 'Italiano', exact: true }).click();
     await expect(page.getByLabel('Punteggio di Entrant 0', { exact: true })).toHaveValue('2');
@@ -600,7 +816,7 @@ for (const appearance of ['light', 'dark'])
     await page.getByRole('menuitemradio', { name: 'English', exact: true }).click();
     await expect(page.getByLabel('Score for Entrant 0', { exact: true })).toHaveValue('2');
     page.once('dialog', (dialog) => dialog.accept());
-    await page.getByRole('button', { name: 'Close result editor', exact: true }).click();
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   });
 
 test('edits stage, staff, referee, and notes in one atomic bulk save', async ({

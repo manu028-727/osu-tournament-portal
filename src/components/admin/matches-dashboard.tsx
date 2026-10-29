@@ -3,7 +3,7 @@ import { localDateTimeInput } from '@/lib/utils';
 import { Feedback, useT } from '@/components/locale';
 
 import Link from '@/components/tournament-scope';
-import { useState, useEffect, useRef } from 'react';
+import { Fragment, useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Plus,
@@ -15,7 +15,6 @@ import {
   Trash2,
   Link2,
   ClipboardPaste,
-  Trophy,
 } from 'lucide-react';
 import { DeleteMatchDialog, type DeleteMatchSelection } from './delete-match-dialog';
 import { Button } from '../ui/button';
@@ -30,6 +29,7 @@ import { MatchRulesFields } from './match-rules-fields';
 import { RefereeSheetImporter } from './referee-sheet-importer';
 import { StageReconciliation } from './stage-reconciliation';
 import { OrganizerMatchResult } from './organizer-match-result';
+import { MatchInlineResult } from './match-inline-result';
 import { MatchInlineSchedule, type InlineMatchEdit } from './match-inline-schedule';
 import { ListPagination } from '../list-pagination';
 import {
@@ -54,7 +54,7 @@ type BulkField =
 export function MatchesDashboard({ actor }: { actor: Actor }) {
   const tr = useT();
   const search = useSearchParams();
-  const [filters, storeFilters] = useState(() => ({
+  const [filters, setFilterValues] = useState(() => ({
     stage: search.get('stage') || '',
     status: search.get('status') || '',
     assigned: search.get('assigned') || '',
@@ -64,6 +64,19 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
     sort: search.get('sort') || 'number',
     page: search.get('page') || '1',
   }));
+  const storeFilters = (next: typeof filters) => {
+    const url = new URL(window.location.href);
+    for (const [key, value] of Object.entries(next)) {
+      const defaultValue =
+        (key === 'sort' && value === 'number') || (key === 'page' && value === '1');
+      if (value && !defaultValue) url.searchParams.set(key, value);
+      else url.searchParams.delete(key);
+    }
+    const href = `${url.pathname}${url.search}`;
+    if (href !== `${window.location.pathname}${window.location.search}`)
+      window.history.replaceState(null, '', href);
+    setFilterValues(next);
+  };
   const setFilters = (next: Omit<typeof filters, 'page'> & { page?: string }) =>
     storeFilters({ ...next, page: '1' });
   const [searchText, setSearchText] = useState(filters.q);
@@ -71,18 +84,9 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
     const timer = setTimeout(() => setSearchText(filters.q), 250);
     return () => clearTimeout(timer);
   }, [filters.q]);
-  useEffect(() => {
-    const url = new URL(window.location.href);
-    for (const [key, value] of Object.entries(filters)) {
-      const defaultValue =
-        (key === 'sort' && value === 'number') || (key === 'page' && value === '1');
-      if (value && !defaultValue) url.searchParams.set(key, value);
-      else url.searchParams.delete(key);
-    }
-    window.history.replaceState(null, '', `${url.pathname}${url.search}`);
-  }, [filters]);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [resultId, setResultId] = useState<string | null>(null);
+  const [resultImport, setResultImport] = useState(false);
   const [inline, setInline] = useState<InlineMatchEdit | null>(null);
   const activeFilters = [
     filters.stage,
@@ -304,20 +308,34 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
       }
     />
   );
+  const scoreControl = (m: MatchSummary, large = false) => {
+    const score = (
+      <>
+        {m.forfeitSide === 'A' ? tr('FF') : m.scoreA} :{' '}
+        {m.forfeitSide === 'B' ? tr('FF') : m.scoreB}
+      </>
+    );
+    return can(actor, 'matches.manage') && m.status !== 'CANCELLED' ? (
+      <Button
+        size="sm"
+        variant="outline"
+        className={`min-w-20 font-mono tabular-nums ${large ? 'text-xl' : 'text-sm'}`}
+        aria-label={tr('Edit result for match {0}', m.matchNumber)}
+        title={tr('Edit result for match {0}', m.matchNumber)}
+        disabled={!!inline || !!resultId || !m.participants.A.id || !m.participants.B.id}
+        onClick={() => {
+          setResultImport(false);
+          setResultId(m.id);
+        }}
+      >
+        {score}
+      </Button>
+    ) : (
+      score
+    );
+  };
   const matchActions = (m: MatchSummary) => (
     <div className="flex flex-wrap gap-1">
-      {can(actor, 'matches.manage') && m.status !== 'CANCELLED' && (
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={!!inline || (!!resultId && resultId !== m.id)}
-          aria-label={tr('Edit result for match {0}', m.matchNumber)}
-          onClick={() => setResultId(m.id)}
-        >
-          <Trophy size={16} />
-          {tr('Result')}
-        </Button>
-      )}
       <Button asChild size="sm" variant="outline">
         <Link
           href={`/admin/referee/${m.matchNumber}`}
@@ -332,19 +350,28 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
           {matchAccess(actor, m).editable ? tr('Referee') : tr('View')}
         </Link>
       </Button>
-      {matchAccess(actor, m).operate && !['COMPLETED', 'CANCELLED'].includes(m.status) && (
+      {((can(actor, 'matches.manage') && m.status !== 'CANCELLED') ||
+        (matchAccess(actor, m).operate && !['COMPLETED', 'CANCELLED'].includes(m.status))) && (
         <Button
           size="icon"
           variant="ghost"
-          title={tr('Multiplayer link')}
-          aria-label={tr('Multiplayer link for {0}', m.matchNumber)}
+          title={tr(can(actor, 'matches.manage') ? 'Import mp results' : 'Multiplayer link')}
+          disabled={!!inline || !!resultId}
+          aria-label={tr(
+            can(actor, 'matches.manage')
+              ? 'Import mp results for match {0}'
+              : 'Multiplayer link for {0}',
+            m.matchNumber,
+          )}
           onClick={() =>
-            setLobby({
-              id: m.id,
-              code: String(m.matchNumber),
-              version: m.version,
-              url: m.lobbyUrl || '',
-            })
+            can(actor, 'matches.manage')
+              ? (setResultImport(true), setResultId(m.id))
+              : setLobby({
+                  id: m.id,
+                  code: String(m.matchNumber),
+                  version: m.version,
+                  url: m.lobbyUrl || '',
+                })
           }
         >
           <Link2 size={17} />
@@ -361,7 +388,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
           <Pencil size={17} />
         </Button>
       )}
-      {can(actor, 'matches.delete') && (
+      {can(actor, 'matches.delete') && !m.deletedAt && (
         <Button
           size="icon"
           variant="ghost"
@@ -411,8 +438,18 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
           )}
         </div>
       </SectionTitle>
-      {resultId && (
+      {resultId && resultImport && (
         <OrganizerMatchResult
+          initialMode="multiplayer"
+          key={resultId}
+          id={resultId}
+          onClose={() => setResultId(null)}
+          onSaved={reload}
+        />
+      )}
+      {resultId && !resultImport && (
+        <MatchInlineResult
+          inRow
           key={resultId}
           id={resultId}
           onClose={() => setResultId(null)}
@@ -541,6 +578,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                   {tr(label)}
                 </option>
               ))}
+              <option value="DELETED">{tr('Deleted matches')}</option>
             </select>
           </Field>
           <Field label={tr('Match date')}>
@@ -734,7 +772,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                     {tr('Match')} {m.matchNumber} · {m.stage.name}
                   </Link>
                   <MatchStatusBadge status={m.status}>
-                    {tr(MATCH_STATUS_LABELS[m.status])}
+                    {tr(m.deletedAt ? 'Deleted' : MATCH_STATUS_LABELS[m.status])}
                   </MatchStatusBadge>
                 </div>
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
@@ -746,8 +784,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                     <p className="text-sky-200">{m.participants.B.name}</p>
                   </Link>
                   <p className="whitespace-nowrap font-mono text-xl tabular-nums">
-                    {m.forfeitSide === 'A' ? tr('FF') : m.scoreA} :{' '}
-                    {m.forfeitSide === 'B' ? tr('FF') : m.scoreB}
+                    {scoreControl(m, true)}
                   </p>
                 </div>
                 <div className="mt-2 text-xs text-muted">
@@ -769,6 +806,9 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
                     m.status === 'SCHEDULED' &&
                     inlineSchedule(m, 'referees')}
                 </div>
+                {resultId === m.id && !resultImport && (
+                  <div className="mt-3 min-w-0" data-match-result-slot={m.id} />
+                )}
               </article>
             ))}
           </div>
@@ -788,95 +828,102 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
               </thead>
               <tbody>
                 {data.matches.map((m) => (
-                  <tr key={m.id}>
-                    {can(actor, 'matches.manage') && (
-                      <td>
-                        <input
-                          type="checkbox"
-                          aria-label={tr('Select match {0}', m.matchNumber)}
-                          disabled={m.status !== 'SCHEDULED' || loading || !!inline || !!resultId}
-                          checked={selectedMatches.has(m.id)}
-                          onChange={(event) =>
-                            selectMatch(
-                              m.id,
-                              event.target.checked,
-                              event.nativeEvent instanceof MouseEvent && event.nativeEvent.shiftKey,
-                            )
-                          }
-                        />
+                  <Fragment key={m.id}>
+                    <tr>
+                      {can(actor, 'matches.manage') && (
+                        <td>
+                          <input
+                            type="checkbox"
+                            aria-label={tr('Select match {0}', m.matchNumber)}
+                            disabled={m.status !== 'SCHEDULED' || loading || !!inline || !!resultId}
+                            checked={selectedMatches.has(m.id)}
+                            onChange={(event) =>
+                              selectMatch(
+                                m.id,
+                                event.target.checked,
+                                event.nativeEvent instanceof MouseEvent &&
+                                  event.nativeEvent.shiftKey,
+                              )
+                            }
+                          />
+                        </td>
+                      )}
+                      <td className="font-semibold">
+                        {tr('Match')} {m.matchNumber}
                       </td>
-                    )}
-                    <td className="font-semibold">
-                      {tr('Match')} {m.matchNumber}
-                    </td>
-                    <td>
-                      <p>
-                        {m.stage.name}
-                        {m.bracket ? ` · ${m.bracket}` : ''}
-                      </p>
-                      {matchAccess(actor, m).schedule && m.status === 'SCHEDULED' ? (
-                        inlineSchedule(m, 'time')
-                      ) : (
-                        <p className="whitespace-nowrap text-xs text-muted">
-                          {matchTime(m.scheduledAt)}
+                      <td>
+                        <p>
+                          {m.stage.name}
+                          {m.bracket ? ` · ${m.bracket}` : ''}
                         </p>
-                      )}
-                      {m.lobbyUrl && (
-                        <a
-                          href={m.lobbyUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-primary"
-                        >
-                          {tr('MP link')}
-                        </a>
-                      )}
-                    </td>
-                    <td className="min-w-40">
-                      <p className="text-red-200">{m.participants.A.name}</p>
-                      <p className="text-sky-200">{m.participants.B.name}</p>
-                    </td>
-                    <td className="whitespace-nowrap font-semibold">
-                      {m.forfeitSide === 'A' ? tr('FF') : m.scoreA} :{' '}
-                      {m.forfeitSide === 'B' ? tr('FF') : m.scoreB}
-                    </td>
-                    <td>
-                      {matchAccess(actor, m).schedule &&
-                        m.status === 'SCHEDULED' &&
-                        inlineSchedule(m, 'referees')}
-                      {matchCredits(m.source).referee && (
-                        <p className="text-xs">
-                          {matchCredits(m.source).referee}{' '}
-                          {tr(organizerRefereeCredit(m.source) ? '· External' : '· Sheet')}
-                        </p>
-                      )}
-                      {m.assignments.map((r) => (
-                        <p key={r.userId} className="text-xs">
-                          {r.user.username}
-                          {r.primary ? tr(' · Lead') : ''}
-                        </p>
-                      ))}
-                      {matchCredits(m.source).streamer && (
+                        {matchAccess(actor, m).schedule && m.status === 'SCHEDULED' ? (
+                          inlineSchedule(m, 'time')
+                        ) : (
+                          <p className="whitespace-nowrap text-xs text-muted">
+                            {matchTime(m.scheduledAt)}
+                          </p>
+                        )}
+                        {m.lobbyUrl && (
+                          <a
+                            href={m.lobbyUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-primary"
+                          >
+                            {tr('MP link')}
+                          </a>
+                        )}
+                      </td>
+                      <td className="min-w-40">
+                        <p className="text-red-200">{m.participants.A.name}</p>
+                        <p className="text-sky-200">{m.participants.B.name}</p>
+                      </td>
+                      <td className="whitespace-nowrap font-semibold">{scoreControl(m)}</td>
+                      <td>
+                        {matchAccess(actor, m).schedule &&
+                          m.status === 'SCHEDULED' &&
+                          inlineSchedule(m, 'referees')}
+                        {matchCredits(m.source).referee && (
+                          <p className="text-xs">
+                            {matchCredits(m.source).referee}{' '}
+                            {tr(organizerRefereeCredit(m.source) ? '· External' : '· Sheet')}
+                          </p>
+                        )}
+                        {m.assignments.map((r) => (
+                          <p key={r.userId} className="text-xs">
+                            {r.user.username}
+                            {r.primary ? tr(' · Lead') : ''}
+                          </p>
+                        ))}
+                        {matchCredits(m.source).streamer && (
+                          <p className="mt-1 text-xs text-muted">
+                            {tr('Stream:')} {matchCredits(m.source).streamer}
+                          </p>
+                        )}
+                        {!!matchCredits(m.source).commentators.length && (
+                          <p className="text-xs text-muted">
+                            {tr('Comms:')} {matchCredits(m.source).commentators.join(', ')}
+                          </p>
+                        )}
+                      </td>
+                      <td>
+                        <MatchStatusBadge status={m.status}>
+                          {tr(m.deletedAt ? 'Deleted' : MATCH_STATUS_LABELS[m.status])}
+                        </MatchStatusBadge>
                         <p className="mt-1 text-xs text-muted">
-                          {tr('Stream:')} {matchCredits(m.source).streamer}
+                          {m.published ? tr('Public') : tr('Private')}
                         </p>
-                      )}
-                      {!!matchCredits(m.source).commentators.length && (
-                        <p className="text-xs text-muted">
-                          {tr('Comms:')} {matchCredits(m.source).commentators.join(', ')}
-                        </p>
-                      )}
-                    </td>
-                    <td>
-                      <MatchStatusBadge status={m.status}>
-                        {tr(MATCH_STATUS_LABELS[m.status])}
-                      </MatchStatusBadge>
-                      <p className="mt-1 text-xs text-muted">
-                        {m.published ? tr('Public') : tr('Private')}
-                      </p>
-                    </td>
-                    <td>{matchActions(m)}</td>
-                  </tr>
+                      </td>
+                      <td>{matchActions(m)}</td>
+                    </tr>
+                    {resultId === m.id && !resultImport && (
+                      <tr>
+                        <td colSpan={can(actor, 'matches.manage') ? 8 : 7}>
+                          <div data-match-result-slot={m.id} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

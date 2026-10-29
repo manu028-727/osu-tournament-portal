@@ -5,8 +5,127 @@ import { multiplayerEvidence } from '../src/lib/multiplayer';
 import { matchRulesSchema } from '../src/lib/match-rules';
 import type { Actor } from '../src/lib/permissions';
 import type { MatchView } from '../src/lib/matches-types';
+import { organizerMultiplayerGames } from '../src/lib/organizer-multiplayer';
+import type { MultiplayerImportGame } from '../src/lib/match-results-contract';
 
 afterEach(() => vi.unstubAllEnvs());
+
+function organizerFixture() {
+  const match = {
+    rules: matchRulesSchema.parse({ teamSize: 2, enforceNoFail: true, multiplierMode: 'NONE' }),
+    participants: {
+      A: {
+        members: [
+          { osuId: 11, username: 'Renamed A' },
+          { osuId: 12 },
+          { osuId: 13, substitute: true },
+        ],
+      },
+      B: { members: [{ osuId: 21 }, { osuId: 22 }] },
+    },
+    poolRevision: null,
+  } as unknown as MatchView;
+  const game: MultiplayerImportGame = {
+    proposal: null,
+    evidence: {
+      eventId: 1,
+      gameId: '4',
+      beatmapId: 99,
+      slotName: '',
+      startTime: '2026-10-01T12:00:00Z',
+      endTime: '2026-10-01T12:03:00Z',
+      mode: 'osu',
+      scoringType: 'scorev2',
+      teamType: 'team-vs',
+      mods: [],
+      issue: 'Not in the frozen pool',
+      scores: [
+        {
+          user_id: 11,
+          score: 100,
+          max_combo: 50,
+          accuracy: 0.9,
+          mods: [],
+          match: { team: 'blue' },
+        },
+        {
+          user_id: 13,
+          score: 300,
+          max_combo: 100,
+          accuracy: 0.95,
+          mods: [],
+          match: { team: 'blue' },
+        },
+        {
+          user_id: 21,
+          score: 150,
+          max_combo: 60,
+          accuracy: 0.91,
+          mods: [],
+          match: { team: 'red' },
+        },
+        {
+          user_id: 22,
+          score: 200,
+          max_combo: 70,
+          accuracy: 0.92,
+          mods: [],
+          match: { team: 'red' },
+        },
+      ],
+    },
+  };
+  return { match, game };
+}
+describe('organizer multiplayer roster reconstruction', () => {
+  it('uses osu! IDs and substitutes despite reversed colours, missing pool membership or NoFail', () => {
+    const { match, game } = organizerFixture();
+    const result = organizerMultiplayerGames([game], match);
+    expect(result.games[0].proposal).toMatchObject({ scoreA: 400, scoreB: 350, winnerSide: 'A' });
+    expect(result.games[0].proposal?.players.map((player) => [player.osuId, player.side])).toEqual([
+      [11, 'A'],
+      [13, 'A'],
+      [21, 'B'],
+      [22, 'B'],
+    ]);
+    expect(result.players.every((player) => !player.ambiguous)).toBe(true);
+    expect(game.proposal).toBeNull();
+    expect(game.evidence.issue).toBe('Not in the frozen pool');
+  });
+  it('requires an explicit mapping for unknown or shared identities', () => {
+    const { match, game } = organizerFixture();
+    (game.evidence.scores[3] as { user_id: number }).user_id = 999;
+    expect(organizerMultiplayerGames([game], match).games[0].proposal).toBeNull();
+    expect(
+      organizerMultiplayerGames([game], match).players.find((player) => player.osuId === 999),
+    ).toMatchObject({ side: null, ambiguous: true });
+    expect(
+      organizerMultiplayerGames([game], match, { '999': 'B' }).games[0].proposal,
+    ).toMatchObject({ scoreA: 400, scoreB: 350 });
+    match.participants.B.members.push({ ...match.participants.A.members[0] });
+    expect(
+      organizerMultiplayerGames([game], match, { '999': 'B' }).players.find(
+        (player) => player.osuId === 11,
+      )?.ambiguous,
+    ).toBe(true);
+  });
+  it('rejects duplicate scores, ties and unsupported scoring rather than inventing points', () => {
+    const { match, game } = organizerFixture();
+    const duplicate = structuredClone(game);
+    duplicate.evidence.scores.push(duplicate.evidence.scores[0]);
+    expect(organizerMultiplayerGames([duplicate], match).games[0].evidence.issue).toMatch(
+      /duplicated/,
+    );
+    const tied = structuredClone(game);
+    const malformed = structuredClone(game);
+    (malformed.evidence.scores[0] as { score: number }).score = 0.5;
+    expect(organizerMultiplayerGames([malformed], match).games[0].proposal).toBeNull();
+    (tied.evidence.scores[3] as { score: number }).score = 250;
+    expect(organizerMultiplayerGames([tied], match).games[0].evidence.issue).toMatch(/Tied/);
+    match.rules.gameplayScoring = 'LAZER';
+    expect(organizerMultiplayerGames([game], match).games[0].proposal).toBeNull();
+  });
+});
 const actor = { id: 'reviewer', tournamentId: 'tenant-a' } as Actor;
 function token(now = 1000) {
   vi.stubEnv('OSU_CLIENT_SECRET', 'synthetic-provider-secret-for-unit-tests');

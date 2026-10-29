@@ -247,9 +247,11 @@ export async function matchData(actor: Actor, url: URL, section: string) {
       serverNow: new Date().toISOString(),
     };
   }
-  const filters: Prisma.MatchWhereInput = {};
+  const filters: Prisma.MatchWhereInput = {
+    deletedAt: url.searchParams.get('status') === 'DELETED' ? { not: null } : null,
+  };
   const status = url.searchParams.get('status');
-  if (status)
+  if (status && status !== 'DELETED')
     filters.status = z
       .enum([
         'SCHEDULED',
@@ -321,6 +323,7 @@ export async function matchData(actor: Actor, url: URL, section: string) {
         matchNumber: true,
         status: true,
         notes: true,
+        deletedAt: true,
         lobbyUrl: true,
         scheduledAt: true,
         published: true,
@@ -337,7 +340,11 @@ export async function matchData(actor: Actor, url: URL, section: string) {
         assignments: { include: { user: { select: profileSelect } } },
       },
     }),
-    db.match.groupBy({ by: ['status'], where: matchScope(actor), _count: { _all: true } }),
+    db.match.groupBy({
+      by: ['status'],
+      where: { AND: [matchScope(actor), { deletedAt: null }] },
+      _count: { _all: true },
+    }),
   ]);
   const stages = await db.tournamentStage.findMany({
     where: { matches: { some: matchScope(actor) } },

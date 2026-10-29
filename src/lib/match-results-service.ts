@@ -62,10 +62,10 @@ export async function applyOrganizerResult(
   if (action.type === 'match.result.set') {
     ({ scoreA, scoreB, winnerSide, forfeitSide } = action);
     if (
-      Math.max(scoreA, scoreB) !== target ||
+      Math.max(scoreA, scoreB) > target ||
       Math.min(scoreA, scoreB) >= target ||
-      winnerSide !== (scoreA > scoreB ? 'A' : 'B') ||
-      forfeitSide === winnerSide
+      winnerSide !== (scoreA === target ? 'A' : scoreB === target ? 'B' : null) ||
+      (!!forfeitSide && (!winnerSide || forfeitSide === winnerSide))
     )
       throw new AppError(
         'The result must contain exactly one match winner at the configured win target.',
@@ -121,11 +121,12 @@ export async function applyOrganizerResult(
             )
           : [],
     });
-  const status = action.confirm
-    ? 'COMPLETED'
-    : winnerSide
-      ? 'AWAITING_CONFIRMATION'
-      : 'IN_PROGRESS';
+  const status =
+    action.confirm && winnerSide
+      ? 'COMPLETED'
+      : winnerSide
+        ? 'AWAITING_CONFIRMATION'
+        : 'IN_PROGRESS';
   if (
     importHash &&
     (source.organizerResult as { importHash?: string } | undefined)?.importHash === importHash &&
@@ -205,7 +206,7 @@ export async function applyOrganizerResult(
       timerStartedAt: null,
       timerRemainingSeconds: 0,
       submittedAt: winnerSide ? new Date() : null,
-      completedAt: action.confirm ? new Date() : null,
+      completedAt: action.confirm && winnerSide ? new Date() : null,
       source: json({
         ...source,
         ...(action.type === 'match.result.set' ? { referee: action.externalReferee } : {}),
@@ -219,6 +220,8 @@ export async function applyOrganizerResult(
           importHash,
           metadata: imported?.metadata || null,
           redSide: imported?.redSide || 'A',
+          warmups: imported?.warmups || 0,
+          playerSides: imported?.playerSides || {},
         },
       }),
       ...(imported
@@ -267,7 +270,7 @@ export async function applyOrganizerResult(
   });
   await advanceConfirmedCompetitionResult(tx, tournamentId, match.id, actor.id);
   // Also retract unstarted downstream positions when an imported history is deliberately left unconfirmed.
-  if (!action.confirm && match.status === 'COMPLETED') {
+  if (status !== 'COMPLETED' && match.status === 'COMPLETED') {
     const { synchronizeCompetitionResults } = await import('./competition-service');
     await synchronizeCompetitionResults(tx, tournamentId, actor.id);
   }

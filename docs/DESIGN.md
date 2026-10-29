@@ -194,20 +194,39 @@ Time and referee assignments expand in their row rather than opening the full
 match dialog. The full form remains available for participant changes and less
 common settings.
 
-An organizer Result action opens one embedded editor above the list/bracket,
-with the selected number, opponents, score, winner/FF and source/reason in context.
+Clicking an organizer score cell expands a compact editor inside its match row/card,
+with scores, winner and FF immediately available. Notes and external referee
+credit are secondary. Save confirms a complete result or retains partial scores;
+routine updates need no typed explanation or extra confirmation. Use the same
+compact controls when a bracket position is opened.
 Keep the Referee link explicit and preserve the referee screen's composition and
 state machine. Bracket position clicks open the same organizer editor; position
 editing remains a separate action. View changes must respect unsaved edits.
-Focus enters the embedded editor and returns to its opener on close. Long entrant
-and referee names wrap within narrow layouts; assignment controls remain usable.
+Focus enters the first score input and returns to its opener on close. Preserve
+one editor's values when its row changes between table and mobile card layouts.
+Long entrant and referee names wrap within narrow layouts; assignment controls
+remain usable.
 
-Multiplayer review shows source metadata and an ordered, bounded game list. Make
-warmup exclusion, red/blue mapping, proposed totals/winners, player-score details
-and reasoned manual corrections explicit. Load earlier pages before reviewing an
-incomplete source. Confirming is separate from retaining unconfirmed history;
-show downstream impact and the necessary approval before changing earlier results.
+The existing row multiplayer action opens a link field and numeric warmup count,
+defaulting to zero. Import applies unambiguous results directly. Show a review
+only when mappings or evidence need attention. Keep link-only saving secondary
+and available without importing scores. Show source metadata, calculated totals,
+osu! ID/team mappings and a bounded ordered game list. Keep inclusion,
+player-score details and reasoned corrections available. Load earlier pages before
+applying an incomplete source. Show downstream impact and the necessary approval
+when a correction would change earlier progression.
 Completed public history contains only accepted game data and a clear source label.
+
+The existing Delete confirmation explains that generated fixtures retain history
+and their bracket number. Deleted matches remain available through the history
+filter; their bracket position visibly pauses. Keep standalone permanent deletion
+distinct in its confirmation copy.
+
+Suggestions open contextually from the mappool toolbar, with compact metadata rows,
+search/category/status/skillset filters, stage scope and expandable map/feedback
+details. Slot assignment stays beside the preview and uses existing acceptance,
+replacement and artist-warning controls. Pending pool edits survive browsing and
+are saved when assigning a map; show that behavior beside the assignment flow.
 
 Referee desktop uses match/score/current action, compact central pool/pick-ban board,
 and commands/history/rules. Sticky scoreboard and bounded scroll panes are functional,

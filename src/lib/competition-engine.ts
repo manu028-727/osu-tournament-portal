@@ -288,6 +288,7 @@ export function competitionOutput(
   node: CompetitionNode,
   outcome: string | null,
 ): { teamId: string | null; resolved: boolean } {
+  if (node.match?.deletedAt) return { teamId: null, resolved: false };
   const a = node.slots.find((s) => s.side === 'A')!,
     b = node.slots.find((s) => s.side === 'B')!;
   if (!a.resolved || !b.resolved) return { teamId: null, resolved: false };
@@ -324,8 +325,9 @@ export function recalculateCompetition(nodes: CompetitionNode[]): CompetitionNod
     const [a, b] = (['A', 'B'] as const).map((side) => node.slots.find((s) => s.side === side)!);
     if (a.teamId && a.teamId === b.teamId)
       throw new AppError('A participant cannot occupy both sides of a match.', 409);
-    node.state =
-      !a.resolved || !b.resolved
+    node.state = node.match?.deletedAt
+      ? 'DELETED'
+      : !a.resolved || !b.resolved
         ? 'WAITING'
         : !a.teamId && !b.teamId
           ? 'SKIPPED'
@@ -344,7 +346,7 @@ export function competitionChanges(before: CompetitionNode[], after: Competition
       const previous = old.slots.find((s) => s.side === slot.side)!;
       return slot.teamId !== previous.teamId || slot.resolved !== previous.resolved;
     });
-    if (!changed || !old.match) return [];
+    if (!changed || !old.match || old.match.deletedAt) return [];
     const protectedMatch = old.match.status !== 'SCHEDULED' || !!old.match.startedAt;
     return [
       {

@@ -22,6 +22,7 @@ export type CompetitionMatch = {
   version: number;
   startedAt?: Date | string | null;
   scheduledAt?: Date | string | null;
+  deletedAt?: Date | string | null;
 };
 export type CompetitionNode = {
   id: string;

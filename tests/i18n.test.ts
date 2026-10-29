@@ -134,6 +134,12 @@ it('covers literal interface messages, domain errors and shared built-in label m
       if (ts.isCallExpression(node) && ['tr', 't'].includes(node.expression.getText(source)))
         literals(node.arguments[0]).forEach(check);
       if (
+        file === 'lib/organizer-multiplayer.ts' &&
+        ts.isCallExpression(node) &&
+        node.expression.getText(source) === 'Error'
+      )
+        literals(node.arguments[0]).forEach(check);
+      if (
         ts.isNewExpression(node) &&
         ['AppError', 'Error'].includes(node.expression.getText(source))
       )

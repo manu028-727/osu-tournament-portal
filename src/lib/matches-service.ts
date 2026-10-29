@@ -122,7 +122,7 @@ export async function applyMatchAction(
   tx: Prisma.TransactionClient,
   actor: Actor,
   a: MatchAction,
-): Promise<{ id: string; version?: number; matchNumber?: number }> {
+): Promise<{ id: string; version?: number; matchNumber?: number; retainedHistory?: boolean }> {
   const tournamentId = actor.tournamentId || 'main';
   tx = scopedDb(tx, tournamentId);
   assertMatchActionPermission(actor, a);
@@ -266,11 +266,6 @@ export async function applyMatchAction(
   }
   const match = await tx.match.findUniqueOrThrow({ where: { id: a.id }, include: matchInclude });
   if (a.type === 'match.delete') {
-    if (await tx.bracketNode.findFirst({ where: { matchId: match.id } }))
-      throw new AppError(
-        'This match belongs to a bracket. Correct its position or cancel it through the competition workflow instead of deleting its history.',
-        409,
-      );
     if (match.version !== a.baseVersion)
       throw new AppError('The match changed. Reload and review it before deleting.', 409);
     if (a.confirmCode !== match.code && a.confirmCode !== String(match.matchNumber))
@@ -278,6 +273,7 @@ export async function applyMatchAction(
     const dependency = await tx.match.findFirst({
       where: {
         id: { not: match.id },
+        deletedAt: null,
         OR: [
           ...(['A', 'B'] as const).flatMap((side) =>
             ['W', 'L'].map((prefix) => ({
@@ -291,14 +287,68 @@ export async function applyMatchAction(
           },
         ],
       },
-      select: { code: true },
+      select: { matchNumber: true },
     });
     if (dependency)
       throw new AppError(
         'Match {0} depends on this result. Remove that dependent match first, or cancel this match instead.',
         409,
-        [dependency.code],
+        [dependency.matchNumber],
       );
+    const node = await tx.bracketNode.findFirst({ where: { matchId: match.id, tournamentId } });
+    if (node) {
+      if (match.deletedAt) throw new AppError('This generated match is already deleted.', 409);
+      if (
+        await tx.ircLobbyRequest.count({
+          where: { matchId: match.id, status: { in: ['PENDING', 'UNKNOWN'] } },
+        })
+      )
+        throw new AppError('Resolve the pending lobby creation before deleting this match.', 409);
+      const impact = await assertCompetitionResultCorrection(
+        tx,
+        tournamentId,
+        match.id,
+        null,
+        a.approveProgression,
+      );
+      if (impact.affected.length && impact.hash !== a.correctionHash)
+        throw new AppError(
+          'Downstream progression changed since the preview. Review it again.',
+          409,
+        );
+      const saved = await tx.match.update({
+        where: { id: match.id },
+        data: {
+          deletedAt: new Date(),
+          status: 'CANCELLED',
+          published: false,
+          timerStartedAt: null,
+          version: { increment: 1 },
+        },
+      });
+      await tx.matchEvent.create({
+        data: {
+          matchId: match.id,
+          version: saved.version,
+          actorId: actor.id,
+          kind: 'match.delete',
+          notes: a.reason,
+          data: json({ before: match, bracketNodeId: node.id }),
+        },
+      });
+      await tx.matchResultRevision.create({
+        data: {
+          matchId: match.id,
+          version: saved.version,
+          createdBy: actor.id,
+          kind: 'match.delete',
+          reason: a.reason,
+          snapshot: json(match),
+        },
+      });
+      await synchronizeCompetitionResults(tx, tournamentId, actor.id);
+      return { id: match.id, retainedHistory: true };
+    }
     const deleted = await tx.match.deleteMany({ where: { id: match.id, version: a.baseVersion } });
     if (deleted.count !== 1) throw new AppError('The match changed. Reload before deleting.', 409);
     return { id: match.id };
@@ -309,6 +359,8 @@ export async function applyMatchAction(
     !match.assignments.some((ref) => ref.userId === actor.id)
   )
     throw new AppError('This match is not assigned to you.', 403);
+  if (match.deletedAt && a.type !== 'match.reopen')
+    throw new AppError('This generated match was deleted. Reopen it before making changes.', 409);
   if (match.version !== a.baseVersion)
     throw new AppError(
       'Another referee updated this match. Reload and review the latest state.',
@@ -995,6 +1047,7 @@ export async function applyMatchAction(
         throw new AppError('This match is already open.');
       changes = {
         status: match.resultMode === 'MAPS' && !match.poolRevisionId ? 'SCHEDULED' : 'IN_PROGRESS',
+        deletedAt: null,
         completedAt: null,
         submittedAt: null,
         ...(match.forfeitSide && match.resultMode !== 'SUMMARY'

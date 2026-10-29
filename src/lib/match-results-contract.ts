@@ -21,7 +21,7 @@ export const organizerResultOptions = [
     type: z.literal('match.result.set'),
     scoreA: z.number().int().min(0).max(16),
     scoreB: z.number().int().min(0).max(16),
-    winnerSide: side,
+    winnerSide: side.nullable(),
     forfeitSide: side.nullable(),
     externalReferee: z.string().trim().max(120).default(''),
   }),
@@ -43,6 +43,8 @@ export type MultiplayerResultPreview = {
   metadata: { id: number; name?: string; start_time?: string | null; end_time?: string | null };
   games: MultiplayerImportGame[];
   decisions: ImportGameDecision[];
+  warmups?: number;
+  players?: { osuId: number; username: string; side: 'A' | 'B' | null; ambiguous: boolean }[];
 };
 export type MatchResultImpact = {
   hash: string;
