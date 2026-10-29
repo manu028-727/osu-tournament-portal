@@ -242,6 +242,18 @@ the generation form remains available for retry.
 Native single elimination, double elimination/reset and groups support deterministic
 seeding, byes, previews, configurable round/stage assignments, manual/locked slots,
 reviewed routes, qualification and public views. Only confirmed results advance.
+Double-elimination presentation has only Winners Bracket and Losers Bracket paths.
+Winners Finals and Losers Finals end their respective paths in aligned columns.
+Grand Finals and the optional reset form their shared conclusion to the right;
+there is no third Finals section. Connectors stay within each path. Pending slots
+show Winner/Loser of Match # with the reserved match number, and show actual
+participants only when the stored slots resolve. Reset slots show the conditional
+Grand Finals loser/winner references, retaining their original sides, and remain
+explicitly conditional until required.
+Round headings, navigation and organizer controls use configured stage names,
+with Finals/reset roles as secondary labels. These are presentation rules only:
+stored lanes, routes, seeding, numbering, confirmation and reset eligibility remain
+unchanged.
 Eligibility/losses/withdrawals are competition-path-specific; overrides need reasons.
 Link existing matches round-by-round without duplicating records or rewriting
 original colors, scores, actions or multiplayer evidence.

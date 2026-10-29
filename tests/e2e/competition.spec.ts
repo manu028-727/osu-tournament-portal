@@ -1346,6 +1346,231 @@ test('DE8 routes losers, preserves an independent division and plays the Grand F
   expect(await db.match.count({ where: { tournamentId: f.id } })).toBe(19);
 });
 
+for (const resetPlayed of [false, true]) {
+  test(`DE8 presentation uses two paths, configured stages and a ${resetPlayed ? 'played' : 'skipped'} reset`, async ({
+    page,
+    competition: f,
+  }, info) => {
+    test.setTimeout(180000);
+    page.setDefaultTimeout(15000);
+    const pool = await db.mappool.findUniqueOrThrow({
+      where: { stageId: f.stageId },
+      include: { publishedRevision: { include: { slots: true } } },
+    });
+    const stageNames = ['Quarterfinals', 'Semifinals', "Finalissima dell'autore"];
+    const stages = [];
+    for (const [i, name] of stageNames.entries()) {
+      const stage = await db.tournamentStage.create({
+        data: {
+          tournamentId: f.id,
+          name,
+          slug: `display-${i}`,
+          kind: 'ELIMINATION',
+          position: i + 1,
+        },
+      });
+      await publishPool(
+        f.id,
+        stage.id,
+        pool.publishedRevision!.slots.map((slot) => slot.beatmapId),
+      );
+      stages.push(stage.id);
+    }
+    const roundStages = Object.fromEntries([
+      ['g1-r1', stages[0]],
+      ['g1-r2', stages[1]],
+      ['g1-r3', stages[2]],
+      ['g2-r1', stages[0]],
+      ['g2-r2', stages[1]],
+      ['g2-r3', stages[1]],
+      ['g2-r4', stages[2]],
+      ['g3-r1', stages[2]],
+      ['g3-r2', stages[2]],
+    ]);
+    const created = await f.post(
+      bracketInput(f, 'Readable double elimination', {
+        format: 'DOUBLE_ELIMINATION',
+        stageId: stages[0],
+        roundStages,
+      }),
+    );
+    await f.post({
+      type: 'competition.publish',
+      id: created.id,
+      baseVersion: (await bracket(created.id)).version,
+      published: true,
+    });
+    const initial = await bracket(created.id);
+    const beforeViewing = JSON.stringify(initial);
+    await openBracket(page, f, created.id);
+    const canvas = page.getByLabel('Bracket canvas', { exact: true });
+    const wf = initial.rounds.filter((round) => round.lane === 'WINNERS').at(-1)!;
+    const lf = initial.rounds.filter((round) => round.lane === 'LOSERS').at(-1)!;
+    const gf = initial.rounds.find((round) => round.lane === 'FINALS')!;
+    const reset = initial.rounds.filter((round) => round.lane === 'FINALS').at(-1)!;
+    const gfNode = initial.nodes.find((node) => node.roundId === gf.id)!;
+    const resetNode = initial.nodes.find((node) => node.roundId === reset.id)!;
+    await expect(canvas.locator('[data-bracket-section]')).toHaveCount(2);
+    await expect(canvas.locator('[data-bracket-section="WINNERS"]')).toHaveText('Winners Bracket');
+    await expect(canvas.locator('[data-bracket-section="LOSERS"]')).toHaveText('Losers Bracket');
+    await expect(canvas.locator('path[data-progression-lane="WINNERS"]')).toHaveCount(6);
+    await expect(canvas.locator('path[data-progression-lane="LOSERS"]')).toHaveCount(5);
+    await expect(canvas.locator('path')).toHaveCount(11);
+    for (const round of [wf, lf, gf, reset])
+      await expect(canvas.locator(`[data-round-heading="${round.id}"]`)).toContainText(
+        stageNames[2],
+      );
+    await expect(canvas.locator(`[data-round-heading="${wf.id}"]`)).toContainText('Winners Finals');
+    await expect(canvas.locator(`[data-round-heading="${lf.id}"]`)).toContainText('Losers Finals');
+    await expect(canvas.locator(`[data-round-heading="${gf.id}"]`)).toContainText('Grand Finals');
+    await expect(canvas.locator(`[data-round-heading="${reset.id}"]`)).toContainText(
+      'Bracket reset',
+    );
+    const losingTarget = initial.nodes.find((node) =>
+      node.slots.some((slot) => slot.outcome === 'LOSER'),
+    )!;
+    const losingSlot = losingTarget.slots.find((slot) => slot.outcome === 'LOSER')!;
+    const losingSource = initial.nodes.find((node) => node.id === losingSlot.sourceNodeId)!;
+    await expect(
+      canvas.getByRole('button', { name: `Match ${losingTarget.matchNumber}`, exact: true }),
+    ).toContainText(`Loser of Match #${losingSource.matchNumber}`);
+    await expect(
+      canvas.getByRole('button', { name: `Match ${gfNode.matchNumber}`, exact: true }),
+    ).toContainText(
+      `Winner of Match #${initial.nodes.find((node) => node.roundId === wf.id)!.matchNumber}`,
+    );
+    await expect(
+      canvas.getByRole('button', { name: `Match ${resetNode.matchNumber}`, exact: true }),
+    ).toContainText(`Loser of Match #${gfNode.matchNumber}`);
+    const positions = await canvas.locator('button[data-round]').evaluateAll((buttons) =>
+      buttons.map((button) => ({
+        round: button.getAttribute('data-round'),
+        x: button.parentElement!.style.left,
+        y: button.parentElement!.style.top,
+      })),
+    );
+    const at = (id: string) => positions.find((position) => position.round === id)!;
+    expect(at(wf.id).x).toBe(at(lf.id).x);
+    expect(parseFloat(at(gf.id).x)).toBeGreaterThan(parseFloat(at(wf.id).x));
+    expect(at(gf.id).y).toBe(at(reset.id).y);
+    expect(parseFloat(at(reset.id).x)).toBeGreaterThan(parseFloat(at(gf.id).x));
+    for (const appearance of ['light', 'dark']) {
+      await page.getByRole('button', { name: 'Appearance', exact: true }).first().click();
+      await page
+        .getByRole('menuitemradio', {
+          name: appearance === 'light' ? 'Light' : 'Dark',
+          exact: true,
+        })
+        .click();
+      for (const width of [1920, 1366, 1024, 844, 768, 683, 390, 375, 320]) {
+        await page.setViewportSize({ width, height: width === 844 ? 390 : 900 });
+        await page.getByLabel('Bracket round', { exact: true }).selectOption(lf.id);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+          true,
+        );
+        if (width >= 768) {
+          await page.getByRole('button', { name: 'Fit bracket', exact: true }).click();
+          const fitted = await page
+            .getByRole('button', { name: 'Reset zoom', exact: true })
+            .textContent();
+          await page.getByRole('button', { name: 'Fit bracket', exact: true }).click();
+          await expect(page.getByRole('button', { name: 'Reset zoom', exact: true })).toHaveText(
+            fitted!,
+          );
+        } else {
+          await expect(
+            page.getByRole('heading', { name: 'Losers Bracket', exact: true }),
+          ).toBeVisible();
+          await page.getByLabel('Bracket round', { exact: true }).selectOption(gf.id);
+          await expect(
+            page
+              .getByRole('button', { name: `Match ${gfNode.matchNumber}`, exact: true })
+              .filter({ visible: true }),
+          ).toContainText('Winner of Match #');
+        }
+        await page.screenshot({
+          path: info.outputPath(`de-pending-${appearance}-${width}.png`),
+          fullPage: true,
+          animations: 'disabled',
+        });
+      }
+    }
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.getByRole('button', { name: 'Reset zoom', exact: true }).click();
+    await page.getByLabel('Bracket round', { exact: true }).selectOption(gf.id);
+    await canvas.getByRole('button', { name: `Match ${gfNode.matchNumber}`, exact: true }).click();
+    const editor = page.getByRole('complementary', { name: 'Bracket match editor', exact: true });
+    await expect(editor).toContainText(stageNames[2]);
+    await expect(editor).toContainText('Winner of Match #');
+    await editor.getByRole('button', { name: 'Close bracket editor', exact: true }).click();
+    expect(JSON.stringify(await bracket(created.id))).toBe(beforeViewing);
+    const guests = await page.context().browser()!.newContext();
+    try {
+      const publicPage = await guests.newPage();
+      await publicPage.goto(`${f.root}/brackets`);
+      await expect(
+        publicPage.getByLabel('Bracket canvas', { exact: true }).locator('[data-bracket-section]'),
+      ).toHaveCount(2);
+      await expect(publicPage.getByLabel('Bracket canvas', { exact: true })).toContainText(
+        'Loser of Match #',
+      );
+      expect(await finish(f, created.id, resetPlayed ? 'RESET_FINAL' : 'RED_WINS')).toBe(
+        resetPlayed ? 15 : 14,
+      );
+      const finished = await bracket(created.id);
+      expect(finished.nodes.find((node) => node.id === resetNode.id)!.state).toBe(
+        resetPlayed ? 'COMPLETED' : 'SKIPPED',
+      );
+      const finalWitness = JSON.stringify(finished);
+      await page.reload();
+      await page.getByLabel('Bracket round', { exact: true }).selectOption(reset.id);
+      await expect(
+        page
+          .getByLabel('Bracket canvas', { exact: true })
+          .getByRole('button', { name: `Match ${resetNode.matchNumber}`, exact: true }),
+      ).toContainText(resetPlayed ? 'Completed' : 'Not required');
+      await publicPage.reload();
+      await expect(
+        publicPage.getByLabel('Bracket canvas', { exact: true }).locator('path'),
+      ).toHaveCount(11);
+      const playedFinal = finished.nodes.find((node) => node.id === gfNode.id)!.match!;
+      const visibleFinal = publicPage
+        .getByLabel('Bracket canvas', { exact: true })
+        .getByRole('button', { name: `Match ${gfNode.matchNumber}`, exact: true });
+      for (const teamId of [playedFinal.teamAId, playedFinal.teamBId])
+        await expect(visibleFinal).toContainText(
+          f.entrants.find((entry) => entry.id === teamId)!.name,
+        );
+      await expect(visibleFinal).not.toContainText('Winner of Match #');
+      await page.getByRole('button', { name: 'Fit bracket', exact: true }).click();
+      await page.screenshot({
+        path: info.outputPath('de-completed-desktop.png'),
+        fullPage: true,
+        animations: 'disabled',
+      });
+      await page.setViewportSize({ width: 320, height: 844 });
+      await page.screenshot({
+        path: info.outputPath('de-completed-mobile.png'),
+        fullPage: true,
+        animations: 'disabled',
+      });
+      await page.getByRole('button', { name: 'Interface language', exact: true }).click();
+      await page.getByRole('menuitemradio', { name: 'Italiano', exact: true }).click();
+      await expect(page.getByLabel('Turno del tabellone', { exact: true })).toContainText(
+        stageNames[2],
+      );
+      await page.screenshot({
+        path: info.outputPath('de-completed-italian.png'),
+        fullPage: true,
+        animations: 'disabled',
+      });
+      expect(JSON.stringify(await bracket(created.id))).toBe(finalWitness);
+    } finally {
+      await guests.close();
+    }
+  });
+}
+
 test('six-player byes, locked placements, and group standings use native confirmed matches', async ({
   competition: f,
 }) => {

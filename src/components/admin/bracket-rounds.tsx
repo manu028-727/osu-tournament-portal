@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import type { CompetitionBracketData, CompetitionOptions } from '@/lib/competition-types';
 import type { CompetitionAction } from '@/lib/competition-validation';
 import { Field, Modal, useTask } from './shared';
+import { bracketRoundDetails } from '@/lib/bracket-presentation';
 
 export function BracketRoundTools({
   bracket,
@@ -40,6 +41,16 @@ export function BracketRoundTools({
         <div className="space-y-4">
           <div className="max-h-72 overflow-auto divide-y">
             {bracket.rounds.map((round) => {
+              const details = bracketRoundDetails(
+                bracket,
+                {
+                  ...round,
+                  stageName:
+                    round.stageName ||
+                    options.stages.find((stage) => stage.id === round.stageId)?.name,
+                },
+                tr,
+              );
               const matches = bracket.nodes.filter((node) => node.roundId === round.id);
               const locked = matches.some(
                 (node) => node.match && (node.match.status !== 'SCHEDULED' || node.match.startedAt),
@@ -59,10 +70,10 @@ export function BracketRoundTools({
                     }
                   />
                   <span className="min-w-0 flex-1">
-                    {round.name}
+                    {details.stage}
                     <span className="block text-xs text-muted">
-                      {options.stages.find((stage) => stage.id === round.stageId)?.name} ·{' '}
-                      {matches.length} {tr('positions')}
+                      {details.group && <>{details.group} · </>}
+                      {details.role} · {matches.length} {tr('positions')}
                       {locked ? tr(' · history protected') : ''}
                     </span>
                   </span>

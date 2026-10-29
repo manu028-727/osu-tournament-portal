@@ -43,6 +43,7 @@ export type CompetitionRound = {
   name: string;
   lane: string;
   stageId: string;
+  stageName?: string;
   position: number;
 };
 export type CompetitionEntry = {

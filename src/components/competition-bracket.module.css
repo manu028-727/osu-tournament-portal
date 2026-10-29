@@ -41,7 +41,7 @@
 }
 .entrant {
   display: flex;
-  height: 32px;
+  height: 40px;
   align-items: center;
   gap: 8px;
   padding: 0 10px;
@@ -69,6 +69,44 @@
   text-align: right;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+.entrantName {
+  display: -webkit-box;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 13px;
+  line-height: 16px;
+}
+.section {
+  position: absolute;
+  margin: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--separator);
+  font-size: 15px;
+  font-weight: 600;
+}
+.card[data-conclusion='true'] {
+  border-color: var(--accent-border);
+}
+.round[data-conclusion='true'] {
+  border-left-width: 5px;
+}
+.mobileHeading h2 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.mobileHeading h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.mobileHeading p {
+  color: var(--muted);
+  font-size: 12px;
 }
 .matchFooter {
   height: 24px;

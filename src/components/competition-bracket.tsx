@@ -18,6 +18,12 @@ import { Button } from './ui/button';
 import type { CompetitionBracketData, CompetitionNode } from '@/lib/competition-types';
 import { useTournamentTime } from './tournament-scope';
 import styles from './competition-bracket.module.css';
+import {
+  bracketPresentation,
+  bracketRoundDetails,
+  bracketSlotLabel,
+  BRACKET_CARD_WIDTH,
+} from '@/lib/bracket-presentation';
 
 export function CompetitionViewToggle({
   value,
@@ -70,50 +76,23 @@ export function CompetitionBracket({
     [roundIndex, setRoundIndex] = useState(0);
   const viewport = useRef<HTMLDivElement>(null),
     drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
-  const layout = useMemo(() => {
-    const positions = new Map<string, { x: number; y: number }>();
-    const lanes = [...new Set(bracket.rounds.map((r) => r.lane))];
-    let height = 0,
-      width = 280;
-    const headers: { id: string; name: string; x: number; y: number }[] = [];
-    for (const lane of lanes) {
-      const rounds = bracket.rounds.filter((r) => r.lane === lane);
-      const maxCount = Math.max(
-        1,
-        ...rounds.map((r) => bracket.nodes.filter((n) => n.roundId === r.id).length),
-      );
-      const laneHeight = maxCount * 148;
-      rounds.forEach((round, column) => {
-        const x = column * 296 + 16;
-        headers.push({ id: round.id, name: round.name, x, y: height });
-        const nodes = bracket.nodes
-          .filter((n) => n.roundId === round.id)
-          .sort((a, b) => a.position - b.position);
-        nodes.forEach((node, index) =>
-          positions.set(node.id, {
-            x,
-            y: height + 50 + ((index + 0.5) * laneHeight) / Math.max(1, nodes.length) - 56,
-          }),
-        );
-      });
-      width = Math.max(width, rounds.length * 296);
-      height += laneHeight + 64;
-    }
-    return { positions, headers, width, height: Math.max(180, height) };
-  }, [bracket]);
-  const currentRound = bracket.rounds[Math.min(roundIndex, Math.max(0, bracket.rounds.length - 1))];
+  const layout = useMemo(() => bracketPresentation(bracket), [bracket]);
+  const currentRound = layout.rounds[Math.min(roundIndex, Math.max(0, layout.rounds.length - 1))];
+  const currentDetails = currentRound ? bracketRoundDetails(bracket, currentRound, tr) : null;
   const select = (node: CompetitionNode) => {
     if (onSelectNode) onSelectNode(node.id);
     else if (node.matchId && onOpenMatch) onOpenMatch(node.matchId);
   };
+  const searchTerm = search
+    .trim()
+    .replace(/^#(?=\d+$)/, '')
+    .toLocaleLowerCase();
   const matchesSearch = (node: CompetitionNode) =>
-    !search.trim() ||
+    !searchTerm ||
     [
       String(node.match?.matchNumber || node.matchNumber || ''),
-      ...node.slots.map(
-        (slot) => bracket.entries.find((entry) => entry.teamId === slot.teamId)?.team.name || '',
-      ),
-    ].some((value) => value.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+      ...node.slots.map((slot) => bracketSlotLabel(bracket, node, slot.side, tr)),
+    ].some((value) => value.toLocaleLowerCase().includes(searchTerm));
   const nodeContent = (node: CompetitionNode) => (
     <>
       <div className={styles.matchHeader}>
@@ -141,6 +120,7 @@ export function CompetitionBracket({
           !node.match?.deletedAt &&
           node.match?.status === 'COMPLETED' &&
           node.match.winnerSide === side;
+        const label = bracketSlotLabel(bracket, node, side, tr);
         return (
           <div
             key={side}
@@ -148,9 +128,8 @@ export function CompetitionBracket({
             data-side={side}
           >
             <span className={styles.seed}>{entry?.seed || '-'}</span>
-            <span className="min-w-0 flex-1 truncate text-left text-sm" title={entry?.team.name}>
-              {entry?.team.name ||
-                (slot?.teamId ? tr('Participant') : slot?.resolved ? tr('Bye') : tr('Pending'))}
+            <span className={styles.entrantName} title={label}>
+              {label}
             </span>
             {slot?.mode === 'LOCKED' ? (
               <LockKeyhole size={12} aria-label={tr('Locked position')} />
@@ -182,7 +161,10 @@ export function CompetitionBracket({
                   ? tr('Not required')
                   : node.state === 'READY'
                     ? tr('Ready to schedule')
-                    : tr('Awaiting progression')}
+                    : bracket.rounds.find((round) => round.id === node.roundId)?.lane ===
+                          'FINALS' && node.slots.some((slot) => slot.outcome?.startsWith('RESET_'))
+                      ? tr('Only played if a reset is required')
+                      : tr('Awaiting progression')}
       </div>
     </>
   );
@@ -203,7 +185,7 @@ export function CompetitionBracket({
   };
   const changeRound = (index: number) => {
     setRoundIndex(index);
-    const header = layout.headers.find((h) => h.id === bracket.rounds[index]?.id);
+    const header = layout.headers.find((h) => h.round.id === layout.rounds[index]?.id);
     if (header && viewport.current)
       viewport.current.scrollTo({
         left: header.x * zoom,
@@ -222,9 +204,13 @@ export function CompetitionBracket({
         onChange={(event) => setSearch(event.target.value)}
         onKeyDown={(event) => {
           if (event.key !== 'Enter' || !search.trim()) return;
-          const node = bracket.nodes.find(matchesSearch);
+          const number = /^#?\d+$/.test(search.trim()) ? Number(searchTerm) : null;
+          const node =
+            bracket.nodes.find(
+              (item) => number && (item.match?.matchNumber || item.matchNumber) === number,
+            ) || bracket.nodes.find(matchesSearch);
           if (!node) return;
-          changeRound(bracket.rounds.findIndex((round) => round.id === node.roundId));
+          changeRound(layout.rounds.findIndex((round) => round.id === node.roundId));
           select(node);
         }}
       />
@@ -245,13 +231,13 @@ export function CompetitionBracket({
             className="min-w-0 max-w-64"
             value={currentRound?.id || ''}
             onChange={(e) => {
-              const i = bracket.rounds.findIndex((r) => r.id === e.target.value);
+              const i = layout.rounds.findIndex((r) => r.id === e.target.value);
               changeRound(i);
             }}
           >
-            {bracket.rounds.map((r) => (
+            {layout.rounds.map((r) => (
               <option key={r.id} value={r.id}>
-                {r.name}
+                {bracketRoundDetails(bracket, r, tr).label}
               </option>
             ))}
           </select>
@@ -260,8 +246,8 @@ export function CompetitionBracket({
             size="icon"
             title={tr('Next round')}
             aria-label={tr('Next round')}
-            disabled={roundIndex >= bracket.rounds.length - 1}
-            onClick={() => changeRound(Math.min(bracket.rounds.length - 1, roundIndex + 1))}
+            disabled={roundIndex >= layout.rounds.length - 1}
+            onClick={() => changeRound(Math.min(layout.rounds.length - 1, roundIndex + 1))}
           >
             <ChevronRight size={18} />
           </Button>
@@ -312,6 +298,13 @@ export function CompetitionBracket({
         </p>
       )}
       <div className="space-y-3 md:hidden">
+        {currentDetails && !search.trim() && (
+          <div className={styles.mobileHeading}>
+            {currentDetails.group && <h2>{currentDetails.group}</h2>}
+            <h3>{currentDetails.stage}</h3>
+            <p>{currentDetails.role}</p>
+          </div>
+        )}
         {bracket.nodes
           .filter((n) => (search.trim() ? matchesSearch(n) : n.roundId === currentRound?.id))
           .map((node) => (
@@ -319,6 +312,12 @@ export function CompetitionBracket({
               <button
                 type="button"
                 className={styles.card}
+                data-round={node.roundId}
+                data-lane={bracket.rounds.find((round) => round.id === node.roundId)?.lane}
+                data-conclusion={
+                  bracket.rounds.find((round) => round.id === node.roundId)?.lane === 'FINALS' ||
+                  undefined
+                }
                 data-selected={selectedNodeId === node.id}
                 data-deleted={!!node.match?.deletedAt}
                 aria-pressed={onSelectNode ? selectedNodeId === node.id : undefined}
@@ -382,45 +381,60 @@ export function CompetitionBracket({
               width={layout.width}
               height={layout.height}
             >
-              {bracket.nodes.flatMap((node) =>
-                node.slots
-                  .filter((s) => s.sourceNodeId)
-                  .map((slot) => {
-                    const source = layout.positions.get(slot.sourceNodeId!),
-                      target = layout.positions.get(node.id);
-                    if (!source || !target) return null;
-                    const x1 = source.x + 248,
-                      y1 = source.y + 56,
-                      x2 = target.x,
-                      y2 = target.y + (slot.side === 'A' ? 44 : 76),
-                      middle = (x1 + x2) / 2;
-                    return (
-                      <path
-                        key={`${node.id}-${slot.side}`}
-                        d={`M${x1},${y1} H${middle} V${y2} H${x2}`}
-                        stroke="currentColor"
-                        strokeWidth={1.5}
-                        strokeDasharray={slot.outcome === 'LOSER' ? '4 4' : undefined}
-                        fill="none"
-                      />
-                    );
-                  }),
-              )}
+              {layout.connectors.map((connector) => {
+                const source = layout.positions.get(connector.sourceId),
+                  target = layout.positions.get(connector.targetId);
+                if (!source || !target) return null;
+                const x1 = source.x + BRACKET_CARD_WIDTH,
+                  y1 = source.y + 68,
+                  x2 = target.x,
+                  y2 = target.y + (connector.side === 'A' ? 48 : 88),
+                  middle = (x1 + x2) / 2;
+                return (
+                  <path
+                    key={`${connector.targetId}-${connector.side}`}
+                    data-progression-lane={connector.lane}
+                    data-source={connector.sourceId}
+                    data-target={connector.targetId}
+                    d={`M${x1},${y1} H${middle} V${y2} H${x2}`}
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                    strokeDasharray={connector.outcome === 'LOSER' ? '4 4' : undefined}
+                    fill="none"
+                  />
+                );
+              })}
             </svg>
+            {layout.sections.map((section) => (
+              <h2
+                key={section.lane}
+                data-bracket-section={section.lane}
+                className={styles.section}
+                style={{ left: section.x, top: section.y, width: section.width }}
+              >
+                {section.lane === 'WINNERS'
+                  ? tr('Winners Bracket')
+                  : section.lane === 'LOSERS'
+                    ? tr('Losers Bracket')
+                    : section.lane.startsWith('GROUP_')
+                      ? tr('Group {0}', section.lane.slice(6))
+                      : tr('Third-place match')}
+              </h2>
+            ))}
             {layout.headers.map((header) => (
               <h3
-                key={header.id}
-                className={`absolute m-0 w-[248px] truncate ${styles.round}`}
-                style={{ left: header.x, top: header.y + 8 }}
+                key={header.round.id}
+                data-round-heading={header.round.id}
+                data-conclusion={header.round.lane === 'FINALS' || undefined}
+                className={`absolute m-0 ${styles.round}`}
+                style={{ left: header.x, top: header.y, width: BRACKET_CARD_WIDTH }}
+                title={bracketRoundDetails(bracket, header.round, tr).label}
               >
-                {header.name}
+                <span className="block truncate">
+                  {bracketRoundDetails(bracket, header.round, tr).stage}
+                </span>
                 <span className="mt-1 block text-[11px] font-normal text-muted">
-                  {bracket.nodes.filter((node) => node.roundId === header.id).length === 1
-                    ? tr('1 match')
-                    : tr(
-                        '{0} matches',
-                        bracket.nodes.filter((node) => node.roundId === header.id).length,
-                      )}
+                  {bracketRoundDetails(bracket, header.round, tr).role}
                 </span>
               </h3>
             ))}
@@ -429,7 +443,12 @@ export function CompetitionBracket({
               return (
                 <div
                   key={node.id}
-                  style={{ left: position.x, top: position.y, position: 'absolute', width: 248 }}
+                  style={{
+                    left: position.x,
+                    top: position.y,
+                    position: 'absolute',
+                    width: BRACKET_CARD_WIDTH,
+                  }}
                   className={!matchesSearch(node) ? styles.dimmed : undefined}
                 >
                   <button
@@ -440,6 +459,12 @@ export function CompetitionBracket({
                         : node.key
                     }
                     className={styles.card}
+                    data-round={node.roundId}
+                    data-lane={bracket.rounds.find((round) => round.id === node.roundId)?.lane}
+                    data-conclusion={
+                      bracket.rounds.find((round) => round.id === node.roundId)?.lane ===
+                        'FINALS' || undefined
+                    }
                     data-selected={selectedNodeId === node.id}
                     data-deleted={!!node.match?.deletedAt}
                     aria-pressed={onSelectNode ? selectedNodeId === node.id : undefined}

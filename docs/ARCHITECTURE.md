@@ -383,6 +383,22 @@ retains reservations even after unrelated matches are created. Confirmed results
 advance; losses/withdrawals/overrides are path-specific. Manual slots/routes/locks
 are audited, cycle-checked and cannot replace started history.
 
+`bracket-presentation.ts` owns display-only lane grouping, coordinates, labels and
+connector filtering. It reads the native graph without mutating it. DE has two
+display paths; the engine's existing FINALS lane is rendered as their common ending,
+not as a third section. Winners/Losers Finals share the last path column; Grand
+Finals and reset follow in columns to the right. Only same-path connectors render.
+Slot labels read reserved numbers and resolved team IDs. Under the existing
+B-wins reset condition, RESET_A/RESET_B label the Grand Finals loser/winner while
+retaining their original sides; no reset eligibility or color rule is changed.
+The existing bracket renderer, round tools, preview and inspector share these labels.
+
+Competition read queries now include only the related stage's name and project
+optional `stageName` on round DTOs in both authorized and public views. The public
+projection contains no stage rules, pool drafts or added configuration. Stored
+round names/lane keys, generation configuration, archives and all mutation/domain
+services remain unchanged. This presentation update requires no migration.
+
 Bracket lifecycle operations live in `competition-service.ts` and the existing
 mutation dispatcher. Delete and its preview require both `matches.manage` and
 `matches.delete`; restoration/missing generation require `matches.manage`.

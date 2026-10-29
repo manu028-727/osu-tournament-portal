@@ -33,6 +33,7 @@ import type {
 import { action, Field, LoadingState, Modal, usePolling, useResource, useTask } from './shared';
 import { BracketRoundTools } from './bracket-rounds';
 import { OrganizerMatchResult } from './organizer-match-result';
+import { bracketRoundDetails, bracketSlotLabel } from '@/lib/bracket-presentation';
 import { BracketLifecycle } from './bracket-lifecycle';
 import { DeleteMatchDialog } from './delete-match-dialog';
 import { MatchInlineSchedule, type InlineMatchEdit } from './match-inline-schedule';
@@ -398,7 +399,8 @@ function BracketMatchPanel({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-xs text-muted">
-            {round?.name} · {options?.stages.find((stage) => stage.id === round?.stageId)?.name}
+            {round && bracketRoundDetails(bracket, round, tr).stage} ·{' '}
+            {round && bracketRoundDetails(bracket, round, tr).role}
           </p>
           <h2 className="text-lg font-semibold">{title}</h2>
         </div>
@@ -410,11 +412,7 @@ function BracketMatchPanel({
         {(['A', 'B'] as const).map((side) => (
           <div key={side} className="flex gap-2 text-sm">
             <span className="text-muted">{side}</span>
-            <span>
-              {bracket.entries.find(
-                (entry) => entry.teamId === node.slots.find((slot) => slot.side === side)?.teamId,
-              )?.team.name || tr('Pending')}
-            </span>
+            <span>{bracketSlotLabel(bracket, node, side, tr)}</span>
           </div>
         ))}
       </div>
@@ -965,7 +963,21 @@ function CreateCompetition({
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               {plan.rounds.map((round) => (
-                <Field key={round.key} label={round.name}>
+                <Field
+                  key={round.key}
+                  label={
+                    bracketRoundDetails(
+                      { format: form.format, rounds: plan.rounds },
+                      {
+                        ...round,
+                        stageName: options.stages.find(
+                          (stage) => stage.id === (form.roundStages[round.key] || form.stageId),
+                        )?.name,
+                      },
+                      tr,
+                    ).label
+                  }
+                >
                   <select
                     value={form.roundStages[round.key] || form.stageId}
                     onChange={(e) =>

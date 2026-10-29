@@ -46,7 +46,8 @@ append another guide. SPEC's capability labels do not override discrepancies her
 | 24    | Separate editable homepage Heroes, polish all block types and widen shared responsive containers                                                                              | Verified within recorded Chromium scope                | `09a9fc2`                     |
 | 25    | Improve numeric match navigation, direct organizer results, reviewed multiplayer imports and Matches scheduling/search                                                        | Verified within recorded Chromium and PostgreSQL scope | `3b5beb4`                     |
 | 26    | Retain deleted generated fixtures, edit scores in rows, reconstruct roster-based MP results and integrate mappool suggestions                                                 | Verified within recorded Chromium and PostgreSQL scope | `01971b2`; checks below       |
-| 27    | Interactive bracket editing, explicit fixture restoration and permanent whole-bracket deletion with reviewed numbering restart                                                | Verified within recorded Chromium and PostgreSQL scope | Working tree after `01971b2`  |
+| 27    | Interactive bracket editing, explicit fixture restoration and permanent whole-bracket deletion with reviewed numbering restart                                                | Verified within recorded Chromium and PostgreSQL scope | `48f8b5d`; checks below       |
+| 28    | Two-path double-elimination presentation, shared finals conclusion, stage headings and numbered pending slots                                                                 | Verified within recorded Chromium and PostgreSQL scope | Working tree after `48f8b5d`  |
 
 Rejected calm/earlier redesign pilots are not design authority. Their useful
 usability lessons and verification procedures are incorporated in DESIGN and
@@ -1038,6 +1039,68 @@ Apply the two new migrations through the normal install workflow before this
 version runs. No installation data, live services or deployment was changed.
 Live OAuth/osu! MP/Bancho and additional browser engines remain unverified; the
 upstream pg concurrent-query warning remains visible.
+
+## Double-Elimination Presentation - 29 October 2026
+
+Source scope: working tree after `48f8b5d`. This is a presentation change: native
+generation, stored lane keys/routes, seeds, match numbers, reset eligibility,
+confirmation, correction, deletion and audit services remain unchanged.
+
+- Extracted display grouping/coordinates/labels to the client-safe
+  `bracket-presentation.ts`. DE renders exactly Winners Bracket and Losers Bracket
+  path headings, with their finals aligned in the last path column. Grand Finals
+  and reset sit together to the right between those path finals; there is no
+  third Finals section. Only same-path connectors remain.
+- Pending slots use readable Winner/Loser of Match # references; actual resolved
+  participants replace those labels. Reset slots use conditional Grand Finals
+  loser/winner references, preserving their original sides and color/history meaning.
+  Byes, unavailable numbers, deleted fixtures and unused resets retain honest states.
+- Competition read queries project the configured stage name, without adding
+  stage rules or pool drafts to public results. Stage names are primary in headers,
+  navigation, round tools, creation previews and the inspector; Finals/reset roles
+  remain secondary. Authored names stay unchanged across English/Italian switches.
+- Preserved selected-node editing, search, width-fit/zoom, contained panning and
+  mobile round navigation. Removed the old independent Finals-band layout,
+  unconditional all-route SVG rendering, generic lane-number captions and their
+  unused count translations. Stored round names and archive fields remain intact.
+- Added semantic presentation regressions for DE2/4/8/16/32/128, configured reset
+  variants, exact two-path grouping, connector boundaries, shared-ending alignment,
+  stage names, pending/resolved/reset labels and unchanged input witnesses.
+  Browser cases complete real persisted DE8 brackets both with and without a
+  played reset, and compare database graph/history witnesses before/after viewing.
+
+Verification on Node 22.23.3:
+
+- `npm ci`, Prisma generation, format, lint, route generation/TypeScript and the
+  production build passed. The source audit includes both new TypeScript files
+  and reports 408 source files with no issues; `git diff --check` passed.
+- All 375 unit tests in 31 files passed, including 12 new presentation cases.
+  The competition/tournament integration suites passed 35 tests in two files;
+  the public visibility suite passed four more, using isolated PostgreSQL only.
+- Production Chromium passed 29 distinct cases: 12 competition, 10 Matches/bulk
+  editing and seven Referee Mode cases, including mock IRC. After the final reset
+  captions and exact-number search correction, the affected three bracket cases
+  passed again in both development and production. These reruns are not counted
+  as additional distinct cases. The initial development run's search failure
+  exposed matches referenced by pending slots taking priority over their exact
+  number; Enter now selects the exact numeric match first.
+- Both DE8 cases complete every required persisted match, with 14 played matches
+  for a skipped reset and 15 for a played reset. They verify two sections, 11
+  same-path connectors, aligned path finals, configured stage headings, conditional
+  numbered references, resolved public participants and unchanged graph/history
+  witnesses after viewing. Editor scheduling, referee assignment, positions,
+  results, deletion/restoration and rebuilding remain covered.
+- Captured and inspected light/dark screenshots, English/Italian interface states,
+  empty/populated and completed/unused-reset states. Responsive checks cover
+  1920, 1366, 1024, 844 landscape, 768, 683, 390, 375 and 320px widths, contained
+  canvas scrolling, repeated Fit stability and the mobile round list.
+
+Evidence and command logs remain ignored under `.data/bracket-layout-20261029/`.
+Interrupted checks were not counted as passes. Browser coverage is Chromium;
+OAuth, osu! and Bancho use synthetic/local mocks rather than live provider
+verification. Existing pg concurrent-query and synthetic avatar warnings remain
+visible. No migration or installation-data conversion is required; no deployment
+or live service change is part of this work.
 
 ## Completion Rules
 

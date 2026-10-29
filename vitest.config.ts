@@ -27,6 +27,7 @@ export default defineConfig({
       'tests/irc.test.ts',
       'tests/gameplay-scoring.test.ts',
       'tests/competition-engine.test.ts',
+      'tests/bracket-presentation.test.ts',
       'tests/qualifier-seeding.test.ts',
       'tests/qualifier-seeding-service.test.ts',
       'tests/stage-reconciliation.test.ts',

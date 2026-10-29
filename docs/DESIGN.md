@@ -226,7 +226,25 @@ Bracket cards use rounded surfaces, compact state headers, seed labels, red/blue
 side rails, clear winning scores and a schedule/progression footer. Connected rounds
 have readable labels; selection uses the configured accent. Keep search by number
 or participant above the canvas, keyboard-operable round/zoom/fit controls, contained
-drag scrolling and a round list on mobile. Search Enter selects the first match.
+drag scrolling and a round list on mobile. Search Enter prioritizes an exact match
+number (including # prefixes), then selects the first matching participant/reference.
+
+Double elimination shows exactly two path headings: Winners Bracket and Losers
+Bracket. Their last rounds are aligned as Winners Finals and Losers Finals.
+Grand Finals and reset cards sit together to the right, vertically between the
+two path finals, without a separate Finals band or section. Their configured stage
+name remains the primary heading; Grand Finals/Bracket reset are secondary roles
+with restrained accent emphasis. Existing round/zoom/pan and side-editor controls
+remain available. Width fitting preserves card proportions; zoom supports details.
+
+Draw connectors only within a path; omit cross-path and shared-ending connectors.
+Pending rows explicitly say Winner/Loser of Match # using reserved numbers, then
+display resolved participants. Reset placeholders identify the Grand Finals
+loser/winner with a conditional-play note; original sides/colors stay unchanged.
+Both rows allow two lines and retain full labels as titles. Mobile retains the
+round selector and shows the active path, authored stage name and round/final role.
+Stage names remain verbatim in both interface languages. No generic stored lane
+number replaces a configured stage name.
 
 Selecting a position opens a persistent editor beside the canvas on wide screens
 and below it on narrower screens. Match and Positions tabs expose existing inline

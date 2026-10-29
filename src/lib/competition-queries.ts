@@ -34,7 +34,7 @@ const matchSelect = {
   deletedAt: true,
 };
 export const include = {
-  rounds: { orderBy: { position: 'asc' as const } },
+  rounds: { orderBy: { position: 'asc' as const }, include: { stage: { select: { name: true } } } },
   entries: {
     orderBy: { seed: 'asc' as const },
     include: { team: { select: { id: true, name: true, slug: true } } },
@@ -187,7 +187,10 @@ export async function competitionData(actor: Actor): Promise<CompetitionData> {
   ]);
   return {
     brackets: brackets.map((bracket) => ({
-      ...withStandings(bracket),
+      ...withStandings({
+        ...bracket,
+        rounds: bracket.rounds.map(({ stage, ...round }) => ({ ...round, stageName: stage.name })),
+      }),
       configuration: options ? competitionStoredConfigSchema.parse(bracket.config) : undefined,
     })),
     options,
@@ -220,14 +223,17 @@ export async function publicCompetitionData(
     [match.teamAId, match.teamBId].every((id) => !id || visibleTeams.has(id));
   // Publish only the explicit read model, never configuration, seed provenance, rosters, or audit data.
   return brackets.map((b) => {
-    const data = withStandings(b);
+    const data = withStandings({
+      ...b,
+      rounds: b.rounds.map(({ stage, ...round }) => ({ ...round, stageName: stage.name })),
+    });
     return {
       id: b.id,
       name: b.name,
       format: b.format,
       version: b.version,
       published: true,
-      rounds: b.rounds,
+      rounds: data.rounds,
       entries: b.entries
         .filter((entry) => visibleTeams.has(entry.teamId))
         .map((entry) => ({
