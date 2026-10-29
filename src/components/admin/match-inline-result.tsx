@@ -24,6 +24,7 @@ export function MatchInlineResult({
   onCancel,
   onStateChange,
   inRow = false,
+  embedded = false,
 }: {
   id: string;
   onClose: () => void;
@@ -31,6 +32,7 @@ export function MatchInlineResult({
   onCancel?: () => void;
   onStateChange?: (state: { dirty: boolean; busy: boolean }) => void;
   inRow?: boolean;
+  embedded?: boolean;
 }) {
   const tr = useT();
   const { data, error, reload } = useResource<{ match: MatchView }>(
@@ -149,7 +151,11 @@ export function MatchInlineResult({
   const form = (
     <form
       aria-label={tr('Result editor for match {0}', m.matchNumber)}
-      className="min-w-0 space-y-3 rounded-xl border border-[var(--accent-border)] bg-card p-3 [overflow-wrap:anywhere]"
+      className={
+        embedded
+          ? '@container min-w-0 space-y-3 [overflow-wrap:anywhere]'
+          : '@container min-w-0 space-y-3 rounded-xl border border-[var(--accent-border)] bg-card p-3 [overflow-wrap:anywhere]'
+      }
       onSubmit={(event) => {
         event.preventDefault();
         void run(async () => {
@@ -178,9 +184,14 @@ export function MatchInlineResult({
       }}
     >
       <h3 className="text-xs font-semibold">
-        {tr('Match {0}', m.matchNumber)} · {tr('Result')} · {tr('First to {0}', target)}
+        {!embedded && (
+          <>
+            {tr('Match {0}', m.matchNumber)} · {tr('Result')} ·{' '}
+          </>
+        )}
+        {tr('First to {0}', target)}
       </h3>
-      <fieldset disabled={busy} className="grid min-w-0 grid-cols-2 gap-3 lg:grid-cols-4">
+      <fieldset disabled={busy} className="grid min-w-0 grid-cols-2 gap-3 @min-[600px]:grid-cols-4">
         <Field label={tr('Score for {0}', m.participants.A.name)}>
           <input
             ref={input}
@@ -235,7 +246,7 @@ export function MatchInlineResult({
         <summary className="cursor-pointer text-xs text-muted">
           {tr('Result notes and external referee')}
         </summary>
-        <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="mt-2 grid grid-cols-1 gap-3 @min-[600px]:grid-cols-2">
           <Field label={tr('Result reason / source')}>
             <input
               maxLength={2000}

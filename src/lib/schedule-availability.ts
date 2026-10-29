@@ -56,6 +56,7 @@ export async function assertScheduleAvailability(
       id: { notIn: exclude.matchIds || [] },
       scheduledAt: { in: dates },
       status: { notIn: ['COMPLETED', 'CANCELLED'] },
+      deletedAt: null,
     },
     select: {
       matchNumber: true,

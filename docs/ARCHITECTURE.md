@@ -321,7 +321,7 @@ explicit matches.delete workflow with dependency guards; generated matches use t
 retained deletion lifecycle described below rather than cascading their history.
 
 `match-numbering.ts`/SQL trigger serialize allocation on tournament counter.
-Positive matchNumber is tenant-unique, immutable and never recycled. Requested
+Positive matchNumber is tenant-unique and immutable while its record is retained. Requested
 numeric source codes must exceed the allocated high-water mark; nonnumeric codes
 retain spelling with a new number. Migration preserves unambiguous numeric codes
 and allocates remaining records safely. Numeric public URLs resolve numbers only.
@@ -382,6 +382,44 @@ by round position, lane, node position/key; BYE/SKIPPED consume none. Lazy creat
 retains reservations even after unrelated matches are created. Confirmed results
 advance; losses/withdrawals/overrides are path-specific. Manual slots/routes/locks
 are audited, cycle-checked and cannot replace started history.
+
+Bracket lifecycle operations live in `competition-service.ts` and the existing
+mutation dispatcher. Delete and its preview require both `matches.manage` and
+`matches.delete`; restoration/missing generation require `matches.manage`.
+The shared advisory lock protects a preview hash covering bracket/configuration,
+nodes, slots, match versions/assignments, dependencies, lobby requests and current
+stage/settings witnesses. The write compares this hash and bracket version again.
+Single-fixture regeneration reads the retained deletion event, restores that same
+record and prior status, appends an event/revision and reuses normal progression
+persistence. Recorded rosters and started downstream matches cannot be replaced;
+unstarted downstream changes require approval. Missing generation creates only
+ready empty positions, respects manual-link mode and leaves deleted records alone.
+
+Whole-bracket deletion is an explicit permanent purge. Active gameplay,
+pending/UNKNOWN room requests and external progression/seed/legacy match
+dependencies block it. Under the global lock and tournament counter row lock,
+the operation deletes owned slots, nodes, entries and rounds before their bracket,
+then deletes linked multiplayer evidence and matches. Existing FK cascades remove
+assignments, lobby requests, referee actions, scores, events and revisions.
+Associated bracket/match audits are removed; bulk schedule receipts are scrubbed
+only of purged entries. The replacement audit contains deletion counts and whether
+numbering restarted, without old match payloads. The tournament counter is reset
+to zero only if no other match or reserved node number remains. Recreated brackets
+then start at 1; unrelated records keep their existing IDs and counter allocation.
+
+Rebuild deliberately uses the existing generation preview/create path with a fresh
+generation key, reviewed participants and stage configuration. Removal and new
+generation are separate reviewed operations: a failed new generation does not undo
+the permanent deletion. Reusing numbers is limited to this reviewed empty-counter
+reset. Apply `20261029010000_bracket_retirement` and
+`20261029020000_permanent_bracket_deletion` in order through normal migrations.
+The first also replaces unconditional pair/time uniqueness with a SQL partial unique
+index on nondeleted matches (plus the ordinary Prisma index). The compensating
+migration removes the intermediate parent marker; no applied migration is rewritten.
+Scheduling availability excludes individually retained deleted fixtures. Purged
+graphs and histories are absent from subsequent archives; the existing individual
+fixture deletion date remains compatible. No ownership delegate or cascading FK
+has changed.
 
 ### Linking Historical Matches
 

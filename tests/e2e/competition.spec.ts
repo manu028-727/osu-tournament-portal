@@ -642,13 +642,16 @@ test('an existing completed match can be linked with reversed bracket sides and 
     .getByLabel('Bracket canvas', { exact: true })
     .getByRole('button', { name: node.key, exact: true })
     .click();
-  const dialog = page.getByRole('dialog');
+  const dialog = page.getByRole('complementary', { name: 'Bracket match editor', exact: true });
   await dialog.getByLabel('Existing match', { exact: true }).selectOption(existing.id);
   await expect(dialog.getByText('Bracket sides will be swapped', { exact: false })).toBeVisible();
   await uiAction(page, 'competition.link-match', () =>
     dialog.getByRole('button', { name: 'Link existing match', exact: true }).click(),
   );
-  await expect(dialog).toHaveCount(0);
+  await expect(dialog.getByRole('tab', { name: 'Match', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   const linked = await db.bracketNode.findUniqueOrThrow({ where: { id: node.id } });
   expect(linked.matchId).toBe(before.id);
   expect(linked.matchNumber).toBe(before.matchNumber);
@@ -903,6 +906,9 @@ test('SE8 preview, native List/Bracket identity, confirmed advancement and publi
       .getByLabel('Bracket canvas', { exact: true })
       .getByRole('button', { name: `Match ${match.matchNumber}`, exact: true })
       .click();
+    await page
+      .getByRole('button', { name: `Edit result for match ${match.matchNumber}`, exact: true })
+      .click();
     await expect(
       page.getByRole('region', {
         name: `Result editor for match ${match.matchNumber}`,
@@ -910,7 +916,7 @@ test('SE8 preview, native List/Bracket identity, confirmed advancement and publi
       }),
     ).toBeVisible();
     await page
-      .getByRole('region', { name: `Result editor for match ${match.matchNumber}`, exact: true })
+      .getByRole('complementary', { name: 'Bracket match editor', exact: true })
       .getByRole('link', { name: 'Referee', exact: true })
       .click();
     await expect(page).toHaveURL(new RegExp(`/admin/referee/${match.matchNumber}$`));
@@ -920,8 +926,9 @@ test('SE8 preview, native List/Bracket identity, confirmed advancement and publi
       .getByLabel('Bracket canvas', { exact: true })
       .getByRole('button', { name: `Match ${match.matchNumber}`, exact: true })
       .click();
-    const editor = page.getByRole('dialog', { name: `Match ${match.matchNumber}`, exact: true });
-    const nativeLink = editor.getByRole('link', { name: 'Open match', exact: true });
+    const editor = page.getByRole('complementary', { name: 'Bracket match editor', exact: true });
+    await editor.getByRole('tab', { name: 'Match', exact: true }).click();
+    const nativeLink = editor.getByRole('link', { name: 'Referee', exact: true });
     await expect(nativeLink).toHaveAttribute(
       'href',
       `${f.root}/admin/referee/${match.matchNumber}`,
@@ -1069,6 +1076,8 @@ test('SE8 preview, native List/Bracket identity, confirmed advancement and publi
       'Edit bracket positions',
       'Save position',
       'Start match',
+      'Regenerate Match',
+      'Delete bracket',
     ])
       await expect(publicPage.getByRole('button', { name, exact: true })).toHaveCount(0);
     await expect(publicPage.getByRole('checkbox')).toHaveCount(0);
@@ -1096,6 +1105,192 @@ test('SE8 preview, native List/Bracket identity, confirmed advancement and publi
     await guests.close();
   }
   expect(errors).toEqual([]);
+});
+
+test('bracket controls edit and restore fixtures, then permanently rebuild from match 1', async ({
+  page,
+  context,
+  competition: f,
+}, testInfo) => {
+  test.setTimeout(180000);
+  page.setDefaultTimeout(15000);
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const created = await f.post(
+    bracketInput(f, 'Managed bracket', {
+      teamIds: f.entrants.slice(0, 4).map((entry) => entry.id),
+    }),
+  );
+  const initial = await bracket(created.id);
+  const node = initial.nodes.find((node) => node.match)!;
+  const m = node.match!;
+  await openBracket(page, f, created.id);
+  const canvas = page.getByLabel('Bracket canvas', { exact: true });
+  await page.getByLabel('Search bracket', { exact: true }).fill(String(m.matchNumber));
+  await page.getByLabel('Search bracket', { exact: true }).press('Enter');
+  const panel = page.getByRole('complementary', { name: 'Bracket match editor', exact: true });
+  await expect(panel).toBeVisible();
+  await panel
+    .getByRole('button', { name: `Edit time for match ${m.matchNumber}`, exact: true })
+    .click();
+  await panel
+    .getByLabel(`Scheduled time for match ${m.matchNumber}`, { exact: true })
+    .fill('2030-01-02T12:30');
+  await uiAction(page, 'match.schedule', () =>
+    panel.getByRole('button', { name: 'Save', exact: true }).click(),
+  );
+  await panel
+    .getByRole('button', { name: `Edit referees for match ${m.matchNumber}`, exact: true })
+    .click();
+  const ownerName = (await db.user.findUniqueOrThrow({ where: { id: f.ownerId } })).username;
+  await panel.getByRole('checkbox', { name: ownerName, exact: true }).check();
+  await uiAction(page, 'match.schedule', () =>
+    panel.getByRole('button', { name: 'Save', exact: true }).click(),
+  );
+  expect(await db.matchAssignment.count({ where: { matchId: m.id, userId: f.ownerId } })).toBe(1);
+  await panel.getByRole('tab', { name: 'Positions', exact: true }).click();
+  await panel.getByLabel('Assignment', { exact: true }).selectOption('LOCKED');
+  await uiAction(page, 'competition.slot', () =>
+    panel.getByRole('button', { name: 'Save position', exact: true }).click(),
+  );
+  await expect(panel.getByRole('tab', { name: 'Match', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await panel
+    .getByRole('button', { name: `Edit result for match ${m.matchNumber}`, exact: true })
+    .click();
+  const result = panel.getByRole('form', {
+    name: `Result editor for match ${m.matchNumber}`,
+    exact: true,
+  });
+  await result.getByLabel('Forfeit (FF)', { exact: true }).selectOption('B');
+  for (const width of [1920, 1024, 768, 375, 844, 683, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(result.getByLabel('Forfeit (FF)', { exact: true })).toHaveValue('B');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+  }
+  await page.getByRole('button', { name: 'Interface language', exact: true }).click();
+  await page.getByRole('menuitemradio', { name: 'Italiano', exact: true }).click();
+  const localizedPanel = page.locator('aside[tabindex="-1"]');
+  await expect(localizedPanel.getByLabel('Rinuncia (FF)', { exact: true })).toHaveValue('B');
+  await page.screenshot({
+    path: testInfo.outputPath('bracket-result-italian-320.png'),
+    fullPage: true,
+    animations: 'disabled',
+  });
+  await page.getByLabel('Cerca nel tabellone', { exact: true }).fill('2');
+  page.once('dialog', (dialog) => void dialog.dismiss());
+  await page.getByLabel('Cerca nel tabellone', { exact: true }).press('Enter');
+  await expect(localizedPanel.getByLabel('Rinuncia (FF)', { exact: true })).toHaveValue('B');
+  await page.getByRole('button', { name: "Lingua dell'interfaccia", exact: true }).click();
+  await page.getByRole('menuitemradio', { name: 'English', exact: true }).click();
+  await page.getByLabel('Search bracket', { exact: true }).fill(String(m.matchNumber));
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await uiAction(page, 'match.result.set', () =>
+    result.getByRole('button', { name: 'Save result', exact: true }).click(),
+  );
+  expect(await db.match.findUniqueOrThrow({ where: { id: m.id } })).toMatchObject({
+    status: 'COMPLETED',
+    scoreA: 1,
+    scoreB: 0,
+    winnerSide: 'A',
+    forfeitSide: 'B',
+  });
+  await screenshotLayouts(page, context, testInfo, 'bracket-inspector', page.getByRole('main'));
+  await panel.getByRole('button', { name: 'Delete match', exact: true }).click();
+  let dialog = page.getByRole('dialog', { name: 'Delete generated match', exact: true });
+  await dialog.getByLabel('Match number confirmation', { exact: true }).fill(String(m.matchNumber));
+  await dialog
+    .getByLabel('Deletion reason', { exact: true })
+    .fill('Test explicit bracket restoration');
+  await uiAction(page, 'match.delete', () =>
+    dialog.getByRole('button', { name: 'Delete generated match', exact: true }).click(),
+  );
+  await expect(panel).toHaveCount(0);
+  await canvas.getByRole('button', { name: 'Regenerate Match', exact: true }).click();
+  dialog = page.getByRole('dialog', { name: 'Regenerate Match', exact: true });
+  await uiAction(page, 'competition.regenerate', () =>
+    dialog.getByRole('button', { name: 'Regenerate Match', exact: true }).click(),
+  );
+  await expect(dialog).toHaveCount(0);
+  expect(await db.match.findUniqueOrThrow({ where: { id: m.id } })).toMatchObject({
+    deletedAt: null,
+    matchNumber: m.matchNumber,
+    status: 'COMPLETED',
+    scoreA: 1,
+    forfeitSide: 'B',
+  });
+  expect(await db.match.count({ where: { tournamentId: f.id } })).toBe(2);
+  await db.team.updateMany({
+    where: { id: { in: f.entrants.slice(0, 3).map((entrant) => entrant.id) } },
+    data: { seed: { increment: 1 } },
+  });
+  await db.team.update({ where: { id: f.entrants[3].id }, data: { seed: 1 } });
+  await page.getByRole('button', { name: 'Rebuild bracket', exact: true }).click();
+  dialog = page.getByRole('dialog', { name: 'Delete bracket', exact: true });
+  await dialog
+    .getByLabel('Type the bracket name to confirm', { exact: true })
+    .fill('Managed bracket');
+  await dialog
+    .getByRole('checkbox', {
+      name: 'I understand that completed matches and all referee histories will be permanently erased.',
+      exact: true,
+    })
+    .check();
+  await page.setViewportSize({ width: 320, height: 844 });
+  await expect(
+    dialog.getByText('Recreation will start again at match 1.', { exact: true }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath('permanent-bracket-delete-320.png'),
+    fullPage: true,
+    animations: 'disabled',
+  });
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await uiAction(page, 'competition.delete', () =>
+    dialog.getByRole('button', { name: 'Delete bracket', exact: true }).click(),
+  );
+  dialog = page.getByRole('dialog', { name: 'Rebuild bracket', exact: true });
+  await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('Managed bracket');
+  await uiAction(page, 'competition.preview', () =>
+    dialog.getByRole('button', { name: 'Preview bracket', exact: true }).click(),
+  );
+  const rebuilt = await uiAction(page, 'competition.create', () =>
+    dialog.getByRole('button', { name: 'Generate bracket', exact: true }).click(),
+  );
+  expect(rebuilt.id).not.toBe(created.id);
+  const current = await bracket(rebuilt.id);
+  expect(current.entries[0].teamId).toBe(f.entrants[3].id);
+  expect(current.nodes.map((node) => node.matchNumber).sort()).toEqual([1, 2, 3]);
+  expect(await db.bracket.findUnique({ where: { id: created.id } })).toBeNull();
+  expect(await db.match.findUnique({ where: { id: m.id } })).toBeNull();
+  await expect(page.getByLabel('Competition bracket', { exact: true })).toHaveValue(rebuilt.id);
+  await page.getByLabel('Search bracket', { exact: true }).fill('No such participant');
+  await expect(page.getByRole('status').filter({ hasText: 'No matches found.' })).toBeVisible();
+  await page.getByLabel('Search bracket', { exact: true }).fill('');
+  expect(
+    await db.matchEvent.count({ where: { matchId: m.id, kind: 'competition.regenerate' } }),
+  ).toBe(0);
+  await page.getByRole('button', { name: 'Delete bracket', exact: true }).click();
+  dialog = page.getByRole('dialog', { name: 'Delete bracket', exact: true });
+  await expect(
+    dialog.getByText('Recreation will start again at match 1.', { exact: true }),
+  ).toBeVisible();
+  await dialog
+    .getByLabel('Type the bracket name to confirm', { exact: true })
+    .fill('Managed bracket');
+  await uiAction(page, 'competition.delete', () =>
+    dialog.getByRole('button', { name: 'Delete bracket', exact: true }).click(),
+  );
+  await expect(page.getByText('No competition brackets', { exact: true })).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath('bracket-empty.png'),
+    fullPage: true,
+    animations: 'disabled',
+  });
 });
 
 test('DE8 routes losers, preserves an independent division and plays the Grand Finals reset', async ({

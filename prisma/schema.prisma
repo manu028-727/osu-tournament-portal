@@ -864,7 +864,8 @@ model Match {
   ircLobbyRequests      IrcLobbyRequest[]
   bracketNode           BracketNode?
 
-  @@unique([stageId, teamAId, teamBId, scheduledAt])
+  // Active fixture uniqueness is a SQL partial index; retained deleted history is excluded.
+  @@index([stageId, teamAId, teamBId, scheduledAt])
   @@unique([tournamentId, code])
   @@unique([tournamentId, matchNumber])
   @@unique([id, tournamentId])

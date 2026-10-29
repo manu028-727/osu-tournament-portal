@@ -29,7 +29,7 @@ import type { QualifierAction } from './qualifiers-validation';
 import { inheritedRules } from './gameplay-scoring';
 import { applySettingsAction } from './settings-service';
 import { qualifierPolicySchema } from './qualifier-policy';
-import { applyCompetitionAction } from './competition-service';
+import { applyCompetitionAction, competitionPermission } from './competition-service';
 import type { CompetitionAction } from './competition-validation';
 import {
   applyQualifierStandingsAction,
@@ -54,8 +54,8 @@ export function actionPermission(a: AdminAction): PermissionKey {
   if (a.type.startsWith('pooling.')) return poolingPermission(a as PoolingAction);
   if (a.type === 'matches.bulk.schedule' || a.type === 'matches.batch.schedule')
     return 'matches.manage';
+  if (a.type.startsWith('competition.')) return competitionPermission(a as CompetitionAction);
   if (
-    a.type.startsWith('competition.') ||
     a.type.startsWith('qualifier.standings.') ||
     a.type === 'qualifier.policy.save' ||
     a.type === 'stage.reconcile'
@@ -167,6 +167,10 @@ export async function executeAction(
           entityId = 'bulk';
           break;
         case 'competition.create':
+        case 'competition.lifecycle.preview':
+        case 'competition.delete':
+        case 'competition.regenerate':
+        case 'competition.regenerate-missing':
         case 'competition.preview':
         case 'competition.publish':
         case 'competition.link-match':

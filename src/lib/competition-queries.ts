@@ -13,6 +13,7 @@ import type {
 import { db } from './db';
 import { AppError, assertPermission, can, type Actor, type PermissionKey } from './permissions';
 import { publicTournamentWhere } from './public-visibility';
+import { competitionStoredConfigSchema } from './competition-archive';
 
 import { GroupConfig, resolvedGroupSeeds, reviewedGroupOrder } from './competition-groups';
 const matchSelect = {
@@ -25,6 +26,7 @@ const matchSelect = {
   scoreA: true,
   scoreB: true,
   winnerSide: true,
+  forfeitSide: true,
   version: true,
   startedAt: true,
   scheduledAt: true,
@@ -60,7 +62,10 @@ export async function allNodes(
 ): Promise<CompetitionNode[]> {
   return tx.bracketNode.findMany({
     where: { tournamentId },
-    include: { slots: true, match: { select: matchSelect } },
+    include: {
+      slots: true,
+      match: { select: matchSelect },
+    },
   });
 }
 export function withStandings<T extends CompetitionBracketData & { config: Prisma.JsonValue }>(
@@ -180,7 +185,13 @@ export async function competitionData(actor: Actor): Promise<CompetitionData> {
     db.bracket.findMany({ where: { tournamentId }, include, orderBy: { createdAt: 'asc' } }),
     can(actor, 'matches.manage') ? competitionOptions(actor) : null,
   ]);
-  return { brackets: brackets.map(withStandings), options };
+  return {
+    brackets: brackets.map((bracket) => ({
+      ...withStandings(bracket),
+      configuration: options ? competitionStoredConfigSchema.parse(bracket.config) : undefined,
+    })),
+    options,
+  };
 }
 export async function publicCompetitionData(
   tournamentId: string,

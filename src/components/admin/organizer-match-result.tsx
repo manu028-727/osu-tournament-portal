@@ -28,11 +28,15 @@ export function OrganizerMatchResult({
   onClose,
   onSaved,
   initialMode = 'manual',
+  onStateChange,
+  embedded = false,
 }: {
   id: string;
   onClose: () => void;
   onSaved: () => Promise<unknown>;
   initialMode?: 'manual' | 'multiplayer';
+  onStateChange?: (state: { dirty: boolean; busy: boolean }) => void;
+  embedded?: boolean;
 }) {
   const tr = useT();
   const { data, error, reload } = useResource<{ match: MatchView }>(
@@ -52,6 +56,10 @@ export function OrganizerMatchResult({
   const { busy, run } = useTask();
   const root = useRef<HTMLElement>(null);
   useUnsaved(dirty || childState.dirty);
+  useEffect(() => {
+    onStateChange?.({ dirty: dirty || childState.dirty, busy: busy || childState.busy });
+    return () => onStateChange?.({ dirty: false, busy: false });
+  }, [dirty, childState.dirty, childState.busy, busy, onStateChange]);
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     return () => {
@@ -168,31 +176,37 @@ export function OrganizerMatchResult({
       ref={root}
       tabIndex={-1}
       aria-label={tr('Result editor for match {0}', m.matchNumber)}
-      className="my-4 min-w-0 space-y-4 rounded-2xl border border-[var(--accent-border)] bg-card p-4 [overflow-wrap:anywhere]"
+      className={
+        embedded
+          ? '@container min-w-0 space-y-4 [overflow-wrap:anywhere]'
+          : '@container my-4 min-w-0 space-y-4 rounded-2xl border border-[var(--accent-border)] bg-card p-4 [overflow-wrap:anywhere]'
+      }
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold">
-            {tr('Match {0}', m.matchNumber)} · {tr('Result')}
-          </h2>
-          <p className="text-sm text-muted [overflow-wrap:anywhere]">
-            {m.participants.A.name} · {m.participants.B.name}
-          </p>
+      {!embedded && (
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold">
+              {tr('Match {0}', m.matchNumber)} · {tr('Result')}
+            </h2>
+            <p className="text-sm text-muted [overflow-wrap:anywhere]">
+              {m.participants.A.name} · {m.participants.B.name}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/admin/referee/${m.matchNumber}`}>{tr('Referee')}</Link>
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label={tr('Close result editor')}
+              onClick={close}
+            >
+              <X size={18} />
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button asChild size="sm" variant="outline">
-            <Link href={`/admin/referee/${m.matchNumber}`}>{tr('Referee')}</Link>
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            aria-label={tr('Close result editor')}
-            onClick={close}
-          >
-            <X size={18} />
-          </Button>
-        </div>
-      </div>
+      )}
       <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
@@ -211,6 +225,16 @@ export function OrganizerMatchResult({
           <Download size={15} />
           {tr('Import mp results')}
         </Button>
+        {embedded && (
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label={tr('Close result editor')}
+            onClick={close}
+          >
+            <X size={18} />
+          </Button>
+        )}
       </div>
       {mode === 'manual' ? (
         <MatchInlineResult
@@ -219,11 +243,12 @@ export function OrganizerMatchResult({
           onCancel={close}
           onSaved={onSaved}
           onStateChange={setChildState}
+          embedded={embedded}
         />
       ) : (
         <>
           <form
-            className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[minmax(0,1fr)_8rem_auto]"
+            className="grid grid-cols-1 items-end gap-3 @min-[600px]:grid-cols-[minmax(0,1fr)_8rem_auto]"
             onSubmit={(event) => {
               event.preventDefault();
               void run(() => fetchSource(), tr('Multiplayer history loaded.'));

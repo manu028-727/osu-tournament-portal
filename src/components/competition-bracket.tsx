@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { Button } from './ui/button';
 import type { CompetitionBracketData, CompetitionNode } from '@/lib/competition-types';
+import { useTournamentTime } from './tournament-scope';
+import styles from './competition-bracket.module.css';
 
 export function CompetitionViewToggle({
   value,
@@ -52,12 +54,18 @@ export function CompetitionBracket({
   bracket,
   onOpenMatch,
   onSelectNode,
+  selectedNodeId,
+  onRegenerateNode,
 }: {
   bracket: CompetitionBracketData;
   onOpenMatch?: (matchId: string) => void;
   onSelectNode?: (nodeId: string) => void;
+  selectedNodeId?: string;
+  onRegenerateNode?: (nodeId: string) => void;
 }) {
   const tr = useT();
+  const time = useTournamentTime();
+  const [search, setSearch] = useState('');
   const [zoom, setZoom] = useState(1),
     [roundIndex, setRoundIndex] = useState(0);
   const viewport = useRef<HTMLDivElement>(null),
@@ -74,7 +82,7 @@ export function CompetitionBracket({
         1,
         ...rounds.map((r) => bracket.nodes.filter((n) => n.roundId === r.id).length),
       );
-      const laneHeight = maxCount * 116;
+      const laneHeight = maxCount * 148;
       rounds.forEach((round, column) => {
         const x = column * 296 + 16;
         headers.push({ id: round.id, name: round.name, x, y: height });
@@ -84,7 +92,7 @@ export function CompetitionBracket({
         nodes.forEach((node, index) =>
           positions.set(node.id, {
             x,
-            y: height + 36 + ((index + 0.5) * laneHeight) / Math.max(1, nodes.length) - 48,
+            y: height + 50 + ((index + 0.5) * laneHeight) / Math.max(1, nodes.length) - 56,
           }),
         );
       });
@@ -98,9 +106,17 @@ export function CompetitionBracket({
     if (onSelectNode) onSelectNode(node.id);
     else if (node.matchId && onOpenMatch) onOpenMatch(node.matchId);
   };
+  const matchesSearch = (node: CompetitionNode) =>
+    !search.trim() ||
+    [
+      String(node.match?.matchNumber || node.matchNumber || ''),
+      ...node.slots.map(
+        (slot) => bracket.entries.find((entry) => entry.teamId === slot.teamId)?.team.name || '',
+      ),
+    ].some((value) => value.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   const nodeContent = (node: CompetitionNode) => (
     <>
-      <div className="flex h-6 items-center justify-between gap-2 border-b border-border px-2 text-[11px] text-muted">
+      <div className={styles.matchHeader}>
         <span className="truncate">
           {node.match
             ? tr('Match {0}', node.match.matchNumber)
@@ -108,7 +124,7 @@ export function CompetitionBracket({
               ? tr('Match {0}', node.matchNumber)
               : node.key}
         </span>
-        <span className="shrink-0">
+        <span className={styles.status}>
           {node.match?.deletedAt || node.state === 'DELETED'
             ? tr('Deleted')
             : node.state === 'BYE'
@@ -128,9 +144,10 @@ export function CompetitionBracket({
         return (
           <div
             key={side}
-            className={`flex h-8 items-center gap-2 px-2 ${winner ? 'bg-primary/15 font-semibold text-foreground' : 'text-muted'}`}
+            className={`${styles.entrant} ${winner ? styles.winner : ''}`}
+            data-side={side}
           >
-            <span className="w-5 shrink-0 text-[11px] tabular-nums">{entry?.seed || ''}</span>
+            <span className={styles.seed}>{entry?.seed || '-'}</span>
             <span className="min-w-0 flex-1 truncate text-left text-sm" title={entry?.team.name}>
               {entry?.team.name ||
                 (slot?.teamId ? tr('Participant') : slot?.resolved ? tr('Bye') : tr('Pending'))}
@@ -140,12 +157,33 @@ export function CompetitionBracket({
             ) : slot?.mode === 'MANUAL' ? (
               <Hand size={12} aria-label={tr('Manual position')} />
             ) : null}
-            <span className="w-5 shrink-0 text-right text-sm tabular-nums">
-              {node.match ? (side === 'A' ? node.match.scoreA : node.match.scoreB) : ''}
+            <span className={styles.score}>
+              {node.match
+                ? node.match.forfeitSide === side
+                  ? tr('FF')
+                  : side === 'A'
+                    ? node.match.scoreA
+                    : node.match.scoreB
+                : ''}
             </span>
           </div>
         );
       })}
+      <div className={styles.matchFooter}>
+        {node.match?.deletedAt
+          ? tr('History retained')
+          : node.match?.scheduledAt
+            ? time(node.match.scheduledAt)
+            : node.match?.status === 'COMPLETED'
+              ? tr('Completed')
+              : node.state === 'BYE'
+                ? tr('Bye')
+                : node.state === 'SKIPPED'
+                  ? tr('Not required')
+                  : node.state === 'READY'
+                    ? tr('Ready to schedule')
+                    : tr('Awaiting progression')}
+      </div>
     </>
   );
   const pointerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -170,11 +208,26 @@ export function CompetitionBracket({
       viewport.current.scrollTo({
         left: header.x * zoom,
         top: header.y * zoom,
-        behavior: 'smooth',
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
       });
   };
   return (
     <section aria-label={tr('{0} bracket', bracket.name)} className="min-w-0">
+      <input
+        type="search"
+        aria-label={tr('Search bracket')}
+        placeholder={tr('Find a match number or participant')}
+        className="mb-3 w-full md:max-w-sm"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' || !search.trim()) return;
+          const node = bracket.nodes.find(matchesSearch);
+          if (!node) return;
+          changeRound(bracket.rounds.findIndex((round) => round.id === node.roundId));
+          select(node);
+        }}
+      />
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <Button
@@ -224,9 +277,14 @@ export function CompetitionBracket({
           >
             <Minus size={16} />
           </Button>
-          <output className="w-12 text-center text-xs tabular-nums">
+          <button
+            type="button"
+            aria-label={tr('Reset zoom')}
+            className="min-h-11 w-14 text-center text-xs tabular-nums"
+            onClick={() => setZoom(1)}
+          >
             {Math.round(zoom * 100)}%
-          </output>
+          </button>
           <Button
             variant="ghost"
             size="icon"
@@ -248,24 +306,48 @@ export function CompetitionBracket({
           </Button>
         </div>
       </div>
+      {!!search && !bracket.nodes.some(matchesSearch) && (
+        <p role="status" className="py-3 text-sm text-muted">
+          {tr('No matches found.')}
+        </p>
+      )}
       <div className="space-y-3 md:hidden">
         {bracket.nodes
-          .filter((n) => n.roundId === currentRound?.id)
+          .filter((n) => (search.trim() ? matchesSearch(n) : n.roundId === currentRound?.id))
           .map((node) => (
-            <button
-              key={node.id}
-              type="button"
-              className="block w-full overflow-hidden rounded-lg border border-border bg-card text-left disabled:cursor-default"
-              disabled={!onSelectNode && !(node.matchId && onOpenMatch)}
-              onClick={() => select(node)}
-            >
-              {nodeContent(node)}
-            </button>
+            <div key={node.id} className={styles.mobileCard}>
+              <button
+                type="button"
+                className={styles.card}
+                data-selected={selectedNodeId === node.id}
+                data-deleted={!!node.match?.deletedAt}
+                aria-pressed={onSelectNode ? selectedNodeId === node.id : undefined}
+                aria-label={
+                  node.matchNumber
+                    ? tr('Match {0}', node.matchNumber)
+                    : tr('Bracket position {0}', node.position)
+                }
+                disabled={!onSelectNode && !(node.matchId && onOpenMatch)}
+                onClick={() => select(node)}
+              >
+                {nodeContent(node)}
+              </button>
+              {node.match?.deletedAt && onRegenerateNode && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-1 w-full"
+                  onClick={() => onRegenerateNode(node.id)}
+                >
+                  {tr('Regenerate Match')}
+                </Button>
+              )}
+            </div>
           ))}
       </div>
       <div
         ref={viewport}
-        className="hidden max-h-[70vh] min-h-64 overflow-auto overscroll-contain rounded-lg border border-border bg-background md:block"
+        className={`hidden max-h-[70vh] min-h-64 overflow-auto overscroll-contain md:block ${styles.canvas}`}
         tabIndex={0}
         aria-label={tr('Bracket canvas')}
         onPointerDown={pointerDown}
@@ -310,7 +392,7 @@ export function CompetitionBracket({
                     const x1 = source.x + 248,
                       y1 = source.y + 56,
                       x2 = target.x,
-                      y2 = target.y + (slot.side === 'A' ? 40 : 72),
+                      y2 = target.y + (slot.side === 'A' ? 44 : 76),
                       middle = (x1 + x2) / 2;
                     return (
                       <path
@@ -328,30 +410,54 @@ export function CompetitionBracket({
             {layout.headers.map((header) => (
               <h3
                 key={header.id}
-                className="absolute m-0 w-[248px] truncate text-xs font-semibold text-muted"
+                className={`absolute m-0 w-[248px] truncate ${styles.round}`}
                 style={{ left: header.x, top: header.y + 8 }}
               >
                 {header.name}
+                <span className="mt-1 block text-[11px] font-normal text-muted">
+                  {bracket.nodes.filter((node) => node.roundId === header.id).length === 1
+                    ? tr('1 match')
+                    : tr(
+                        '{0} matches',
+                        bracket.nodes.filter((node) => node.roundId === header.id).length,
+                      )}
+                </span>
               </h3>
             ))}
             {bracket.nodes.map((node) => {
               const position = layout.positions.get(node.id)!;
               return (
-                <button
+                <div
                   key={node.id}
-                  type="button"
-                  aria-label={
-                    node.matchNumber || node.match?.matchNumber
-                      ? tr('Match {0}', node.match?.matchNumber || node.matchNumber)
-                      : node.key
-                  }
-                  className="absolute h-[90px] w-[248px] overflow-hidden rounded-lg border border-border bg-card text-left shadow-sm enabled:hover:border-primary disabled:cursor-default"
-                  style={{ left: position.x, top: position.y }}
-                  onClick={() => select(node)}
-                  disabled={!onSelectNode && !(node.matchId && onOpenMatch)}
+                  style={{ left: position.x, top: position.y, position: 'absolute', width: 248 }}
+                  className={!matchesSearch(node) ? styles.dimmed : undefined}
                 >
-                  {nodeContent(node)}
-                </button>
+                  <button
+                    type="button"
+                    aria-label={
+                      node.matchNumber || node.match?.matchNumber
+                        ? tr('Match {0}', node.match?.matchNumber || node.matchNumber)
+                        : node.key
+                    }
+                    className={styles.card}
+                    data-selected={selectedNodeId === node.id}
+                    data-deleted={!!node.match?.deletedAt}
+                    aria-pressed={onSelectNode ? selectedNodeId === node.id : undefined}
+                    onClick={() => select(node)}
+                    disabled={!onSelectNode && !(node.matchId && onOpenMatch)}
+                  >
+                    {nodeContent(node)}
+                  </button>
+                  {node.match?.deletedAt && onRegenerateNode && (
+                    <button
+                      type="button"
+                      className={styles.regenerate}
+                      onClick={() => onRegenerateNode(node.id)}
+                    >
+                      {tr('Regenerate Match')}
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>

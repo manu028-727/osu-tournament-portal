@@ -19,6 +19,7 @@ export type CompetitionMatch = {
   scoreA: number;
   scoreB: number;
   winnerSide: 'A' | 'B' | null;
+  forfeitSide?: 'A' | 'B' | null;
   version: number;
   startedAt?: Date | string | null;
   scheduledAt?: Date | string | null;
@@ -56,6 +57,7 @@ export type CompetitionBracketData = {
   format: string;
   version: number;
   published: boolean;
+  configuration?: import('./competition-validation').CompetitionCreate;
   manualMatches?: boolean;
   sourceStandingId?: string | null;
   rounds: CompetitionRound[];
@@ -105,4 +107,13 @@ export type CompetitionOptions = {
 export type CompetitionData = {
   brackets: CompetitionBracketData[];
   options: CompetitionOptions | null;
+};
+export type CompetitionLifecyclePreview = {
+  hash: string;
+  blocked: boolean;
+  reasons: string[];
+  matches: { matchNumber: number; status: string }[];
+  historical: number;
+  numberingRestarts: boolean;
+  affected: { matchNumber: number | null; protected: boolean }[];
 };

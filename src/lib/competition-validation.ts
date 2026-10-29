@@ -2,6 +2,11 @@ import { z } from 'zod';
 
 const id = z.string().min(1).max(100);
 const base = { id, baseVersion: z.number().int().positive() };
+const lifecycle = {
+  ...base,
+  reviewHash: z.string().regex(/^[a-f0-9]{64}$/),
+  approveCorrections: z.boolean().default(false),
+};
 export const competitionCreateFields = {
   name: z.string().trim().min(1).max(100),
   format: z.enum(['SINGLE_ELIMINATION', 'DOUBLE_ELIMINATION', 'GROUPS']),
@@ -20,6 +25,20 @@ export const competitionCreateFields = {
 export const competitionActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('competition.create'), ...competitionCreateFields }),
   z.object({ type: z.literal('competition.preview'), ...competitionCreateFields }),
+  z.object({
+    type: z.literal('competition.lifecycle.preview'),
+    ...base,
+    operation: z.enum(['delete', 'regenerate', 'missing']),
+    nodeId: id.optional(),
+  }),
+  z.object({
+    type: z.literal('competition.delete'),
+    ...lifecycle,
+    confirmation: z.string().max(100),
+    acknowledgeHistory: z.boolean().default(false),
+  }),
+  z.object({ type: z.literal('competition.regenerate'), ...lifecycle, nodeId: id }),
+  z.object({ type: z.literal('competition.regenerate-missing'), ...lifecycle }),
   z.object({ type: z.literal('competition.publish'), ...base, published: z.boolean() }),
   z.object({
     type: z.literal('competition.rounds.stage'),

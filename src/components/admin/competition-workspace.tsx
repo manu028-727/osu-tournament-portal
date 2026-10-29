@@ -2,7 +2,7 @@
 import { humanizeCode } from '@/lib/i18n';
 import { Feedback, useT } from '@/components/locale';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
@@ -14,6 +14,9 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  RotateCcw,
+  Trash2,
+  X,
 } from 'lucide-react';
 import Link, { scopedHref, useTournamentScope } from '@/components/tournament-scope';
 import { CompetitionBracket } from '@/components/competition-bracket';
@@ -30,6 +33,12 @@ import type {
 import { action, Field, LoadingState, Modal, usePolling, useResource, useTask } from './shared';
 import { BracketRoundTools } from './bracket-rounds';
 import { OrganizerMatchResult } from './organizer-match-result';
+import { BracketLifecycle } from './bracket-lifecycle';
+import { DeleteMatchDialog } from './delete-match-dialog';
+import { MatchInlineSchedule, type InlineMatchEdit } from './match-inline-schedule';
+import { localDateTimeInput } from '@/lib/utils';
+import type { MatchView, RefereeProfile } from '@/lib/matches-types';
+import { useUnsaved } from './shared';
 
 export function CompetitionWorkspace({ actor }: { actor: Actor }) {
   const tr = useT();
@@ -39,13 +48,31 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
     [creating, setCreating] = useState(false),
     [editing, setEditing] = useState<string | null>(null);
   const [approve, setApprove] = useState(false);
-  const [resultId, setResultId] = useState<string | null>(null);
+  const [inspectorState, setInspectorState] = useState({ dirty: false, busy: false });
+  const [initial, setInitial] = useState<CompetitionCreate | undefined>();
+  const [lifecycle, setLifecycle] = useState<{
+    operation: 'delete' | 'regenerate' | 'missing';
+    nodeId?: string;
+    rebuild?: boolean;
+  } | null>(null);
   const [editPositions, setEditPositions] = useState(false);
   const [reviewingTies, setReviewingTies] = useState(false);
+  const opener = useRef<HTMLElement | null>(null);
   const { run, busy } = useTask();
-  usePolling(reload, 10000, !creating && !editing && !reviewingTies && !resultId);
+  usePolling(reload, 10000, !creating && !editing && !reviewingTies && !lifecycle);
   if (!data) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
-  const bracket = data.brackets.find((b) => b.id === selected) || data.brackets[0];
+  const brackets = data.brackets;
+  const bracket = brackets.find((b) => b.id === selected) || brackets[0];
+  const guard = () =>
+    !inspectorState.busy &&
+    (!inspectorState.dirty || window.confirm(tr('Discard unsaved changes?')));
+  const closeInspector = () => {
+    if (guard()) {
+      setEditing(null);
+      setInspectorState({ dirty: false, busy: false });
+      opener.current?.focus({ preventScroll: true });
+    }
+  };
   const editable = can(actor, 'matches.manage');
   const save = async (input: CompetitionAction) => {
     const result = await action<{ id: string }>(input);
@@ -60,12 +87,14 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
           className="min-w-0 max-w-full md:max-w-80"
           value={bracket?.id || ''}
           onChange={(e) => {
+            if (!guard()) return;
             setSelected(e.target.value);
+            setEditing(null);
             setApprove(false);
           }}
         >
-          {!data.brackets.length && <option value="">{tr('No brackets')}</option>}
-          {data.brackets.map((b) => (
+          {!brackets.length && <option value="">{tr('No brackets')}</option>}
+          {brackets.map((b) => (
             <option key={b.id} value={b.id}>
               {b.name}
             </option>
@@ -75,12 +104,14 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
           {editable && bracket && (
             <>
               {data.options && (
-                <BracketRoundTools
-                  key={bracket.id}
-                  bracket={bracket}
-                  options={data.options}
-                  save={save}
-                />
+                <fieldset disabled={!!editing || !!lifecycle}>
+                  <BracketRoundTools
+                    key={bracket.id}
+                    bracket={bracket}
+                    options={data.options}
+                    save={save}
+                  />
+                </fieldset>
               )}
               {bracket.format === 'GROUPS' && bracket.standings?.some((row) => row.tied) && (
                 <Button
@@ -111,11 +142,43 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
                 <Pencil size={18} />
               </Button>
               <Button
+                variant="outline"
+                size="sm"
+                disabled={busy || !!editing || !!lifecycle}
+                onClick={() => setLifecycle({ operation: 'missing' })}
+              >
+                <RotateCcw size={16} />
+                {tr('Generate missing matches')}
+              </Button>
+              {can(actor, 'matches.delete') && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy || !!editing || !!lifecycle}
+                    onClick={() => setLifecycle({ operation: 'delete', rebuild: true })}
+                  >
+                    <RefreshCw size={16} />
+                    {tr('Rebuild bracket')}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    title={tr('Delete bracket')}
+                    aria-label={tr('Delete bracket')}
+                    disabled={busy || !!editing || !!lifecycle}
+                    onClick={() => setLifecycle({ operation: 'delete' })}
+                  >
+                    <Trash2 size={18} />
+                  </Button>
+                </>
+              )}
+              <Button
                 variant="ghost"
                 size="icon"
                 title={bracket.published ? tr('Unpublish bracket') : tr('Publish bracket')}
                 aria-label={bracket.published ? tr('Unpublish bracket') : tr('Publish bracket')}
-                disabled={busy}
+                disabled={busy || !!editing || !!lifecycle}
                 onClick={() =>
                   void run(() =>
                     save({
@@ -134,7 +197,7 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
                 size="icon"
                 title={tr('Recalculate progression')}
                 aria-label={tr('Recalculate progression')}
-                disabled={busy}
+                disabled={busy || !!editing || !!lifecycle}
                 onClick={() =>
                   void run(() =>
                     save({
@@ -151,7 +214,14 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
             </>
           )}
           {editable && data.options && (
-            <Button size="sm" onClick={() => setCreating(true)}>
+            <Button
+              size="sm"
+              disabled={!!editing}
+              onClick={() => {
+                setInitial(undefined);
+                setCreating(true);
+              }}
+            >
               <Plus size={16} />
               {tr('Create bracket')}
             </Button>
@@ -169,36 +239,65 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
           {tr('Approve corrections to unstarted downstream fixtures')}
         </label>
       )}
-      {resultId && (
-        <OrganizerMatchResult
-          key={resultId}
-          id={resultId}
-          onClose={() => setResultId(null)}
-          onSaved={reload}
-        />
-      )}
       {bracket ? (
-        <CompetitionBracket
-          bracket={bracket}
-          onSelectNode={
-            editable && !resultId
-              ? (id) => {
-                  const node = bracket.nodes.find((n) => n.id === id);
-                  if (node?.matchId && !editPositions) setResultId(node.matchId);
-                  else setEditing(id);
-                }
-              : undefined
+        <div
+          className={
+            editing
+              ? 'grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]'
+              : 'min-w-0'
           }
-          onOpenMatch={
-            resultId
-              ? undefined
-              : (id) => {
-                  const number = bracket.nodes.find((node) => node.matchId === id)?.matchNumber;
-                  if (!number) return;
-                  window.location.href = scopedHref(`/admin/referee/${number}`, scope);
-                }
-          }
-        />
+        >
+          <CompetitionBracket
+            bracket={bracket}
+            selectedNodeId={editing || undefined}
+            onRegenerateNode={
+              editable && !editing
+                ? (nodeId) => setLifecycle({ operation: 'regenerate', nodeId })
+                : undefined
+            }
+            onSelectNode={
+              editable
+                ? (id) => {
+                    if (id !== editing && guard()) {
+                      opener.current =
+                        document.activeElement instanceof HTMLElement
+                          ? document.activeElement
+                          : null;
+                      setEditing(id);
+                      setInspectorState({ dirty: false, busy: false });
+                    }
+                  }
+                : undefined
+            }
+            onOpenMatch={
+              editing
+                ? undefined
+                : (id) => {
+                    const number = bracket.nodes.find((node) => node.matchId === id)?.matchNumber;
+                    if (!number) return;
+                    window.location.href = scopedHref(`/admin/referee/${number}`, scope);
+                  }
+            }
+          />
+          {editing && bracket.nodes.some((node) => node.id === editing) && (
+            <BracketMatchPanel
+              key={editing}
+              actor={actor}
+              node={bracket.nodes.find((node) => node.id === editing)!}
+              bracket={bracket}
+              brackets={data.brackets}
+              options={data.options}
+              positionFirst={editPositions}
+              close={closeInspector}
+              save={save}
+              reload={reload}
+              stateChanged={setInspectorState}
+              regenerate={() => {
+                if (guard()) setLifecycle({ operation: 'regenerate', nodeId: editing });
+              }}
+            />
+          )}
+        </div>
       ) : (
         <div className="flex min-h-48 items-center justify-center gap-3 text-sm text-muted">
           <GitBranch size={20} />
@@ -207,6 +306,7 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
       )}
       {creating && data.options && (
         <CreateCompetition
+          initial={initial}
           options={data.options}
           close={() => setCreating(false)}
           save={async (input) => {
@@ -216,14 +316,24 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
           }}
         />
       )}
-      {editing && bracket && (
-        <EditCompetitionNode
-          node={bracket.nodes.find((n) => n.id === editing)!}
+      {lifecycle && bracket && (
+        <BracketLifecycle
+          key={`${bracket.id}-${lifecycle.nodeId || lifecycle.operation}`}
           bracket={bracket}
-          brackets={data.brackets}
-          options={data.options}
-          close={() => setEditing(null)}
-          save={save}
+          operation={lifecycle.operation}
+          nodeId={lifecycle.nodeId}
+          close={() => setLifecycle(null)}
+          saved={async () => {
+            setEditing(null);
+            setInspectorState({ dirty: false, busy: false });
+            await reload();
+            if (lifecycle.operation === 'delete') {
+              if (lifecycle.rebuild && bracket.configuration) {
+                setInitial({ ...bracket.configuration, generationKey: crypto.randomUUID() });
+                setCreating(true);
+              }
+            }
+          }}
         />
       )}
       {reviewingTies && bracket && (
@@ -232,33 +342,357 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
     </div>
   );
 }
-// Alias retained for consumers that adopted the initial worker contract.
-export const CompetitionManager = CompetitionWorkspace;
+function BracketMatchPanel({
+  actor,
+  node,
+  bracket,
+  brackets,
+  options,
+  positionFirst,
+  close,
+  save,
+  reload,
+  stateChanged,
+  regenerate,
+}: {
+  actor: Actor;
+  node: CompetitionNode;
+  bracket: CompetitionBracketData;
+  brackets: CompetitionBracketData[];
+  options: CompetitionOptions | null;
+  positionFirst: boolean;
+  close: () => void;
+  save: (input: CompetitionAction) => Promise<unknown>;
+  reload: () => Promise<unknown>;
+  stateChanged: (state: { dirty: boolean; busy: boolean }) => void;
+  regenerate: () => void;
+}) {
+  const tr = useT();
+  const root = useRef<HTMLElement>(null);
+  const [tab, setTab] = useState(positionFirst || !node.matchId ? 'positions' : 'match');
+  const [dirty, setDirty] = useState(false);
+  const [child, setChild] = useState({ dirty: false, busy: false });
+  const [deleting, setDeleting] = useState(false);
+  useUnsaved(dirty || child.dirty);
+  useEffect(() => {
+    stateChanged({ dirty: dirty || child.dirty, busy: child.busy });
+    return () => stateChanged({ dirty: false, busy: false });
+  }, [dirty, child.dirty, child.busy, stateChanged]);
+  useEffect(() => {
+    root.current?.focus({ preventScroll: true });
+    if (window.innerWidth < 1280) root.current?.scrollIntoView({ block: 'start' });
+  }, []);
+  const deleted = !!node.match?.deletedAt;
+  const round = bracket.rounds.find((round) => round.id === node.roundId);
+  const title =
+    node.matchNumber || node.match?.matchNumber
+      ? tr('Match {0}', node.match?.matchNumber || node.matchNumber)
+      : tr('Bracket position {0}', node.position);
+  return (
+    <aside
+      ref={root}
+      tabIndex={-1}
+      aria-label={tr('Bracket match editor')}
+      className="min-w-0 space-y-4 rounded-2xl border border-[var(--accent-border)] bg-card p-4 xl:sticky xl:top-4 [overflow-wrap:anywhere]"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-xs text-muted">
+            {round?.name} · {options?.stages.find((stage) => stage.id === round?.stageId)?.name}
+          </p>
+          <h2 className="text-lg font-semibold">{title}</h2>
+        </div>
+        <Button size="icon" variant="ghost" aria-label={tr('Close bracket editor')} onClick={close}>
+          <X size={18} />
+        </Button>
+      </div>
+      <div className="space-y-1 border-y py-2">
+        {(['A', 'B'] as const).map((side) => (
+          <div key={side} className="flex gap-2 text-sm">
+            <span className="text-muted">{side}</span>
+            <span>
+              {bracket.entries.find(
+                (entry) => entry.teamId === node.slots.find((slot) => slot.side === side)?.teamId,
+              )?.team.name || tr('Pending')}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div role="tablist" aria-label={tr('Match controls')} className="flex flex-wrap gap-1">
+        {['match', 'positions'].map((value) => (
+          <Button
+            role="tab"
+            key={value}
+            size="sm"
+            variant={tab === value ? 'default' : 'ghost'}
+            aria-selected={tab === value}
+            disabled={child.busy}
+            onClick={() => {
+              if (tab === value) return;
+              if ((dirty || child.dirty) && !window.confirm(tr('Discard unsaved changes?'))) return;
+              setDirty(false);
+              setChild({ dirty: false, busy: false });
+              setTab(value);
+            }}
+          >
+            {tr(value === 'match' ? 'Match' : 'Positions')}
+          </Button>
+        ))}
+      </div>
+      {tab === 'positions' ? (
+        <EditCompetitionNode
+          key={`${node.id}-${bracket.version}`}
+          node={node}
+          bracket={bracket}
+          brackets={brackets}
+          options={options}
+          close={() => {
+            setDirty(false);
+            setChild({ dirty: false, busy: false });
+            setTab('match');
+          }}
+          save={save}
+          stateChanged={setChild}
+        />
+      ) : node.matchId ? (
+        <BracketMatchTools
+          key={node.matchId}
+          actor={actor}
+          id={node.matchId}
+          deleted={deleted}
+          stateChanged={setChild}
+          reload={reload}
+          deleteMatch={() => setDeleting(true)}
+        />
+      ) : (
+        <p className="text-sm text-muted">
+          {tr(
+            'This position waits for confirmed participants. Assign participants or edit progression in Positions.',
+          )}
+        </p>
+      )}
+      {deleted && (
+        <Button className="w-full" disabled={child.busy} onClick={regenerate}>
+          <RotateCcw size={16} />
+          {tr('Regenerate Match')}
+        </Button>
+      )}
+      {!node.matchId && node.state === 'READY' && (
+        <Button className="w-full" onClick={regenerate}>
+          <Plus size={16} />
+          {tr('Generate match')}
+        </Button>
+      )}
+      <DeleteMatchDialog
+        match={
+          deleting && node.match
+            ? {
+                id: node.match.id,
+                code: String(node.match.matchNumber || node.matchNumber),
+                version: node.match.version,
+              }
+            : null
+        }
+        onClose={() => setDeleting(false)}
+        onDeleted={async () => {
+          await reload();
+          close();
+        }}
+      />
+    </aside>
+  );
+}
+function BracketMatchTools({
+  actor,
+  id,
+  deleted,
+  stateChanged,
+  reload,
+  deleteMatch,
+}: {
+  actor: Actor;
+  id: string;
+  deleted: boolean;
+  stateChanged: (state: { dirty: boolean; busy: boolean }) => void;
+  reload: () => Promise<unknown>;
+  deleteMatch: () => void;
+}) {
+  const tr = useT();
+  const {
+    data,
+    error,
+    reload: reloadMatch,
+  } = useResource<{ match: MatchView }>(`match&id=${encodeURIComponent(id)}`);
+  const { data: referees } = useResource<RefereeProfile[]>('referees');
+  const [inline, setInline] = useState<InlineMatchEdit | null>(null),
+    [result, setResult] = useState(false);
+  const { busy, run } = useTask();
+  useUnsaved(!!inline);
+  useEffect(() => {
+    if (!result) stateChanged({ dirty: !!inline, busy });
+    return () => {
+      if (!result) stateChanged({ dirty: false, busy: false });
+    };
+  }, [inline, busy, result, stateChanged]);
+  if (!data) return <LoadingState error={error} retry={() => void reloadMatch()} />;
+  const m = data.match;
+  const saved = async () => {
+    await reloadMatch();
+    await reload();
+  };
+  return (
+    <div className="space-y-3">
+      <Button asChild size="sm" variant="outline">
+        <Link href={`/admin/referee/${m.matchNumber}`}>
+          <ExternalLink size={16} />
+          {tr(deleted ? 'View history' : 'Referee')}
+        </Link>
+      </Button>
+      {deleted ? (
+        <p className="text-sm text-muted">
+          {tr(
+            'This match is retained as history. Regenerate it to return it to active competition.',
+          )}
+        </p>
+      ) : (
+        <>
+          {result ? (
+            <OrganizerMatchResult
+              embedded
+              id={id}
+              onSaved={saved}
+              onClose={() => setResult(false)}
+              onStateChange={stateChanged}
+            />
+          ) : (
+            <>
+              <button
+                type="button"
+                className="flex min-h-14 w-full items-center justify-between rounded-xl border border-[var(--accent-border)] bg-primary/5 px-4"
+                disabled={
+                  !!inline ||
+                  busy ||
+                  !m.participants.A.id ||
+                  !m.participants.B.id ||
+                  m.status === 'CANCELLED'
+                }
+                aria-label={tr('Edit result for match {0}', m.matchNumber)}
+                onClick={() => setResult(true)}
+              >
+                <span className="text-sm">{tr('Result')}</span>
+                <strong className="text-xl tabular-nums">
+                  {m.forfeitSide === 'A' ? tr('FF') : m.scoreA} :{' '}
+                  {m.forfeitSide === 'B' ? tr('FF') : m.scoreB}
+                </strong>
+                <Pencil size={15} />
+              </button>
+              {(['time', 'referees'] as const).map((kind) => (
+                <div key={kind}>
+                  <MatchInlineSchedule
+                    match={m}
+                    kind={kind}
+                    edit={inline}
+                    referees={referees || []}
+                    busy={busy}
+                    onStart={() =>
+                      setInline({
+                        id,
+                        version: m.version,
+                        kind,
+                        time: localDateTimeInput(m.scheduledAt),
+                        referees: m.assignments.map((row) => row.userId),
+                      })
+                    }
+                    onChange={setInline}
+                    onCancel={() => setInline(null)}
+                    onSave={() =>
+                      void run(async () => {
+                        if (!inline) return;
+                        await action({
+                          type: 'match.schedule',
+                          id,
+                          baseVersion: inline.version,
+                          scheduledAt:
+                            kind === 'time'
+                              ? inline.time
+                                ? new Date(inline.time).toISOString()
+                                : null
+                              : m.scheduledAt,
+                          refereeIds:
+                            kind === 'referees'
+                              ? inline.referees
+                              : m.assignments.map((row) => row.userId),
+                          notes: m.notes,
+                        });
+                        setInline(null);
+                        await saved();
+                      }, tr('Schedule updated.'))
+                    }
+                  />
+                </div>
+              ))}
+              {!!m.assignments.length && (
+                <p className="text-xs text-muted">
+                  {m.assignments.map((row) => row.user.username).join(', ')}
+                </p>
+              )}
+              {can(actor, 'matches.delete') && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={!!inline || busy}
+                  onClick={deleteMatch}
+                >
+                  <Trash2 size={15} />
+                  {tr('Delete match')}
+                </Button>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 function CreateCompetition({
   options,
   close,
   save,
+  initial,
 }: {
   options: CompetitionOptions;
   close: () => void;
   save: (action: CompetitionCreate) => Promise<void>;
+  initial?: CompetitionCreate;
 }) {
   const tr = useT();
-  const [form, setForm] = useState<CompetitionCreate>(() => ({
-    type: 'competition.create',
-    name: 'Main bracket',
-    format: 'SINGLE_ELIMINATION',
-    generationKey: crypto.randomUUID(),
-    stageId: options.stages[0]?.id || '',
-    teamIds: options.teams.map((t) => t.id),
-    thirdPlace: false,
-    grandFinalReset: true,
-    groupCount: 1,
-    advancePerGroup: 2,
-    roundStages: {},
-    manualMatches: false,
-  }));
+  const [form, setForm] = useState<CompetitionCreate>(() =>
+    initial
+      ? {
+          ...initial,
+          teamIds:
+            initial.sourceStandingId || initial.sourceBracketId
+              ? initial.teamIds.filter((id) => options.teams.some((team) => team.id === id))
+              : options.teams
+                  .filter((team) => initial.teamIds.includes(team.id))
+                  .map((team) => team.id),
+        }
+      : {
+          type: 'competition.create',
+          name: 'Main bracket',
+          format: 'SINGLE_ELIMINATION',
+          generationKey: crypto.randomUUID(),
+          stageId: options.stages[0]?.id || '',
+          teamIds: options.teams.map((t) => t.id),
+          thirdPlace: false,
+          grandFinalReset: true,
+          groupCount: 1,
+          advancePerGroup: 2,
+          roundStages: {},
+          manualMatches: false,
+        },
+  );
   const [plan, setPlan] = useState<CompetitionPlan | null>(null),
     [cutoff, setCutoff] = useState(16);
   const { run, busy } = useTask();
@@ -302,7 +736,7 @@ function CreateCompetition({
   };
   return (
     <Modal
-      title={tr('Create bracket')}
+      title={tr(initial ? 'Rebuild bracket' : 'Create bracket')}
       open
       onOpenChange={(open) => {
         if (!open) close();
@@ -466,7 +900,9 @@ function CreateCompetition({
                   .map((id) => options.teams.find((t) => t.id === id))
                   .filter((t): t is CompetitionOptions['teams'][number] => !!t)
               : [
-                  ...form.teamIds.map((id) => options.teams.find((t) => t.id === id)!),
+                  ...form.teamIds
+                    .map((id) => options.teams.find((t) => t.id === id))
+                    .filter((team): team is CompetitionOptions['teams'][number] => !!team),
                   ...options.teams.filter((t) => !form.teamIds.includes(t.id)),
                 ]
             ).map((team) => {
@@ -677,6 +1113,7 @@ function EditCompetitionNode({
   options,
   close,
   save,
+  stateChanged,
 }: {
   node: CompetitionNode;
   bracket: CompetitionBracketData;
@@ -684,6 +1121,7 @@ function EditCompetitionNode({
   options: CompetitionOptions | null;
   close: () => void;
   save: (action: CompetitionAction) => Promise<unknown>;
+  stateChanged: (state: { dirty: boolean; busy: boolean }) => void;
 }) {
   const tr = useT();
   const [side, setSide] = useState<'A' | 'B'>('A'),
@@ -698,7 +1136,13 @@ function EditCompetitionNode({
     [allow, setAllow] = useState(false),
     [reason, setReason] = useState('');
   const [existingMatchId, setExistingMatchId] = useState('');
+  const [dirty, setDirty] = useState(false);
   const { run, busy } = useTask();
+  useUnsaved(dirty);
+  useEffect(() => {
+    stateChanged({ dirty, busy });
+    return () => stateChanged({ dirty: false, busy: false });
+  }, [dirty, busy, stateChanged]);
   const protectedMatch =
     !!node.match && (node.match.status !== 'SCHEDULED' || !!node.match.startedAt);
   const base = { id: bracket.id, baseVersion: bracket.version, nodeId: node.id, side };
@@ -713,216 +1157,191 @@ function EditCompetitionNode({
   );
   const selectedMatch = linkableMatches.find((match) => match.id === existingMatchId);
   return (
-    <Modal
-      title={
-        node.match
-          ? tr('Match {0}', node.match.matchNumber)
-          : node.matchNumber
-            ? tr('Match {0}', node.matchNumber)
-            : node.key
-      }
-      open
-      onOpenChange={(open) => {
-        if (!open) close();
-      }}
-    >
-      <div className="space-y-4">
-        {node.matchId && (
-          <Button asChild variant="outline">
-            <Link href={`/admin/referee/${node.match?.matchNumber || node.matchNumber}`}>
-              <ExternalLink size={16} />
-              {tr('Open match')}
-            </Link>
-          </Button>
-        )}
-        {bracket.manualMatches && !node.matchId && node.state === 'READY' && (
-          <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
-            <Field label={tr('Existing match')}>
-              <select
-                value={existingMatchId}
-                onChange={(event) => setExistingMatchId(event.target.value)}
-              >
-                <option value="">{tr('Choose an unlinked match')}</option>
-                {linkableMatches.map((match) => (
-                  <option key={match.id} value={match.id}>
-                    {tr('Match')} {match.matchNumber} · {match.teamAName} {tr('vs')}{' '}
-                    {match.teamBName} · {tr(humanizeCode(match.status))} · {match.scoreA}-
-                    {match.scoreB}
-                    {match.teamAId !== slotA?.teamId ? tr(' · reversed sides') : ''}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            {selectedMatch && selectedMatch.teamAId !== slotA?.teamId && (
-              <p className="text-xs text-muted">
-                {tr('Bracket sides will be swapped to match the original red and blue teams.')}
-              </p>
-            )}
-            {linkableMatches.length ? (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={busy || !selectedMatch}
-                onClick={() =>
-                  void run(async () => {
-                    await save({
-                      type: 'competition.link-match',
-                      id: bracket.id,
-                      baseVersion: bracket.version,
-                      nodeId: node.id,
-                      matchId: existingMatchId,
-                      matchVersion: selectedMatch!.version,
-                      reverseSides: selectedMatch!.teamAId !== slotA?.teamId,
-                    });
-                    close();
-                  })
-                }
-              >
-                {tr('Link existing match')}
-              </Button>
-            ) : (
-              <p className="text-xs text-muted">
-                {tr('No unlinked matches have this stage and these participants.')}
-              </p>
-            )}
-          </div>
-        )}
-        {protectedMatch ? (
-          <p className="text-sm text-muted">
-            {tr('Participants are protected after a match starts.')}
-          </p>
-        ) : (
-          <>
-            <Field label={tr('Position')}>
-              <select
-                value={side}
-                onChange={(e) => {
-                  const value = e.target.value as 'A' | 'B';
-                  setSide(value);
-                  const slot = node.slots.find((s) => s.side === value)!;
-                  setTeam(slot.teamId || '');
-                  setSource(slot.sourceNodeId || '');
-                  setMode(slot.mode as 'AUTO' | 'MANUAL' | 'LOCKED');
-                  setOutcome(slot.outcome === 'LOSER' ? 'LOSER' : 'WINNER');
-                }}
-              >
-                <option value="A">{tr('Side A')}</option>
-                <option value="B">{tr('Side B')}</option>
-              </select>
-            </Field>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label={tr('Assignment')}>
-                <select value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
-                  <option value="AUTO">{tr('Automatic')}</option>
-                  <option value="MANUAL">{tr('Manual')}</option>
-                  <option value="LOCKED">{tr('Locked')}</option>
-                </select>
-              </Field>
-              <Field label={tr('Participant')}>
-                <select
-                  disabled={mode === 'AUTO'}
-                  value={teamId}
-                  onChange={(e) => setTeam(e.target.value)}
-                >
-                  <option value="">{tr('Bye')}</option>
-                  {(
-                    options?.teams ||
-                    bracket.entries.map((e) => ({ id: e.teamId, name: e.team.name }))
-                  ).map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={allow} onChange={(e) => setAllow(e.target.checked)} />
-              {tr('Allow ineligible participant')}
-            </label>
-            {allow && (
-              <Field label={tr('Override reason')}>
-                <input
-                  value={reason}
-                  minLength={3}
-                  maxLength={1000}
-                  onChange={(e) => setReason(e.target.value)}
-                />
-              </Field>
-            )}
+    <div className="space-y-4" onChangeCapture={() => setDirty(true)}>
+      {bracket.manualMatches && !node.matchId && node.state === 'READY' && (
+        <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
+          <Field label={tr('Existing match')}>
+            <select
+              value={existingMatchId}
+              onChange={(event) => setExistingMatchId(event.target.value)}
+            >
+              <option value="">{tr('Choose an unlinked match')}</option>
+              {linkableMatches.map((match) => (
+                <option key={match.id} value={match.id}>
+                  {tr('Match')} {match.matchNumber} · {match.teamAName} {tr('vs')} {match.teamBName}{' '}
+                  · {tr(humanizeCode(match.status))} · {match.scoreA}-{match.scoreB}
+                  {match.teamAId !== slotA?.teamId ? tr(' · reversed sides') : ''}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {selectedMatch && selectedMatch.teamAId !== slotA?.teamId && (
+            <p className="text-xs text-muted">
+              {tr('Bracket sides will be swapped to match the original red and blue teams.')}
+            </p>
+          )}
+          {linkableMatches.length ? (
             <Button
-              disabled={busy || (allow && reason.trim().length < 3)}
+              size="sm"
+              variant="outline"
+              disabled={busy || !selectedMatch}
               onClick={() =>
                 void run(async () => {
                   await save({
-                    type: 'competition.slot',
-                    ...base,
-                    teamId: teamId || null,
-                    mode,
-                    allowIneligible: allow,
-                    reason,
+                    type: 'competition.link-match',
+                    id: bracket.id,
+                    baseVersion: bracket.version,
+                    nodeId: node.id,
+                    matchId: existingMatchId,
+                    matchVersion: selectedMatch!.version,
+                    reverseSides: selectedMatch!.teamAId !== slotA?.teamId,
                   });
                   close();
                 })
               }
             >
-              {tr('Save position')}
+              {tr('Link existing match')}
             </Button>
-            <details className="border-t border-border pt-3">
-              <summary className="cursor-pointer text-sm font-semibold">
-                {tr('Progression')}
-              </summary>
-              <div className="mt-3 space-y-3">
-                <Field label={tr('Source match')}>
-                  <select value={sourceNodeId} onChange={(e) => setSource(e.target.value)}>
-                    <option value="">{tr('No source')}</option>
-                    {brackets.flatMap((b) =>
-                      b.nodes
-                        .filter((n) => n.id !== node.id)
-                        .map((n) => (
-                          <option key={n.id} value={n.id}>
-                            {b.name} /{' '}
-                            {n.match
-                              ? tr('Match {0}', n.match.matchNumber)
-                              : n.matchNumber
-                                ? tr('Match {0}', n.matchNumber)
-                                : n.key}
-                          </option>
-                        )),
-                    )}
-                  </select>
-                </Field>
-                <Field label={tr('Advancing result')}>
-                  <select
-                    value={outcome}
-                    onChange={(e) => setOutcome(e.target.value as typeof outcome)}
-                  >
-                    <option value="WINNER">{tr('Winner')}</option>
-                    <option value="LOSER">{tr('Loser')}</option>
-                  </select>
-                </Field>
-                <Button
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () => {
-                      await save({
-                        type: 'competition.route',
-                        ...base,
-                        sourceNodeId: sourceNodeId || null,
-                        outcome: sourceNodeId ? outcome : null,
-                      });
-                      close();
-                    })
-                  }
+          ) : (
+            <p className="text-xs text-muted">
+              {tr('No unlinked matches have this stage and these participants.')}
+            </p>
+          )}
+        </div>
+      )}
+      {protectedMatch ? (
+        <p className="text-sm text-muted">
+          {tr('Participants are protected after a match starts.')}
+        </p>
+      ) : (
+        <>
+          <Field label={tr('Position')}>
+            <select
+              value={side}
+              onChange={(e) => {
+                const value = e.target.value as 'A' | 'B';
+                setSide(value);
+                const slot = node.slots.find((s) => s.side === value)!;
+                setTeam(slot.teamId || '');
+                setSource(slot.sourceNodeId || '');
+                setMode(slot.mode as 'AUTO' | 'MANUAL' | 'LOCKED');
+                setOutcome(slot.outcome === 'LOSER' ? 'LOSER' : 'WINNER');
+              }}
+            >
+              <option value="A">{tr('Side A')}</option>
+              <option value="B">{tr('Side B')}</option>
+            </select>
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={tr('Assignment')}>
+              <select value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
+                <option value="AUTO">{tr('Automatic')}</option>
+                <option value="MANUAL">{tr('Manual')}</option>
+                <option value="LOCKED">{tr('Locked')}</option>
+              </select>
+            </Field>
+            <Field label={tr('Participant')}>
+              <select
+                disabled={mode === 'AUTO'}
+                value={teamId}
+                onChange={(e) => setTeam(e.target.value)}
+              >
+                <option value="">{tr('Bye')}</option>
+                {(
+                  options?.teams ||
+                  bracket.entries.map((e) => ({ id: e.teamId, name: e.team.name }))
+                ).map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={allow} onChange={(e) => setAllow(e.target.checked)} />
+            {tr('Allow ineligible participant')}
+          </label>
+          {allow && (
+            <Field label={tr('Override reason')}>
+              <input
+                value={reason}
+                minLength={3}
+                maxLength={1000}
+                onChange={(e) => setReason(e.target.value)}
+              />
+            </Field>
+          )}
+          <Button
+            disabled={busy || (allow && reason.trim().length < 3)}
+            onClick={() =>
+              void run(async () => {
+                await save({
+                  type: 'competition.slot',
+                  ...base,
+                  teamId: teamId || null,
+                  mode,
+                  allowIneligible: allow,
+                  reason,
+                });
+                close();
+              })
+            }
+          >
+            {tr('Save position')}
+          </Button>
+          <details className="border-t border-border pt-3">
+            <summary className="cursor-pointer text-sm font-semibold">{tr('Progression')}</summary>
+            <div className="mt-3 space-y-3">
+              <Field label={tr('Source match')}>
+                <select value={sourceNodeId} onChange={(e) => setSource(e.target.value)}>
+                  <option value="">{tr('No source')}</option>
+                  {brackets.flatMap((b) =>
+                    b.nodes
+                      .filter((n) => n.id !== node.id)
+                      .map((n) => (
+                        <option key={n.id} value={n.id}>
+                          {b.name} /{' '}
+                          {n.match
+                            ? tr('Match {0}', n.match.matchNumber)
+                            : n.matchNumber
+                              ? tr('Match {0}', n.matchNumber)
+                              : n.key}
+                        </option>
+                      )),
+                  )}
+                </select>
+              </Field>
+              <Field label={tr('Advancing result')}>
+                <select
+                  value={outcome}
+                  onChange={(e) => setOutcome(e.target.value as typeof outcome)}
                 >
-                  {tr('Save progression')}
-                </Button>
-              </div>
-            </details>
-          </>
-        )}
-      </div>
-    </Modal>
+                  <option value="WINNER">{tr('Winner')}</option>
+                  <option value="LOSER">{tr('Loser')}</option>
+                </select>
+              </Field>
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await save({
+                      type: 'competition.route',
+                      ...base,
+                      sourceNodeId: sourceNodeId || null,
+                      outcome: sourceNodeId ? outcome : null,
+                    });
+                    close();
+                  })
+                }
+              >
+                {tr('Save progression')}
+              </Button>
+            </div>
+          </details>
+        </>
+      )}
+    </div>
   );
 }

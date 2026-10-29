@@ -222,6 +222,31 @@ and their bracket number. Deleted matches remain available through the history
 filter; their bracket position visibly pauses. Keep standalone permanent deletion
 distinct in its confirmation copy.
 
+Bracket cards use rounded surfaces, compact state headers, seed labels, red/blue
+side rails, clear winning scores and a schedule/progression footer. Connected rounds
+have readable labels; selection uses the configured accent. Keep search by number
+or participant above the canvas, keyboard-operable round/zoom/fit controls, contained
+drag scrolling and a round list on mobile. Search Enter selects the first match.
+
+Selecting a position opens a persistent editor beside the canvas on wide screens
+and below it on narrower screens. Match and Positions tabs expose existing inline
+time/referee/result controls and guarded participant/route editing. Results and
+imports size their fields to the editor container. Changes of match, tab or bracket
+respect dirty/busy state; close returns focus to the selected card. Referee Mode
+stays an explicit link with its existing composition.
+
+Deleted cards offer **Regenerate Match** directly. Its review explains that the
+same number and history return, and lists downstream changes when approval is
+required. **Generate missing matches** explicitly excludes intentional deletions.
+Whole-bracket deletion explicitly says that all matches, scores and referee
+histories will be permanently erased. It requires the exact bracket name and an
+additional acknowledgement for played histories. Its preview states whether the
+next bracket starts at match 1 or other matches/reservations require continued
+numbering. Rebuild uses that deletion review, then the established generation
+preview with editable seeds and round stages. Deleted brackets have no placeholder
+or retained-history view. Empty, blocked, stale and failed operations show real
+feedback rather than an apparently successful reset.
+
 Suggestions open contextually from the mappool toolbar, with compact metadata rows,
 search/category/status/skillset filters, stage scope and expandable map/feedback
 details. Slot assignment stays beside the preview and uses existing acceptance,

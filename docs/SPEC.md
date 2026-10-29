@@ -167,7 +167,7 @@ uses explicit clearing. Stale/foreign selections and resource conflicts reject
 unsafe batches. Bracket round stage assignment preserves started history.
 
 Each match has an immutable positive tournament-local number distinct from database
-ID and source code. Numbers are unique, never recycled, and reserved in bracket
+ID and source code. Numbers are unique, stable while retained, and reserved in bracket
 round order before lazy match creation. Public numeric links resolve those numbers.
 Generated database/source identifiers are not displayed. Organizer and public
 match labels, bracket controls, lobby commands and deletion confirmation use match
@@ -204,6 +204,40 @@ matches, frozen seed snapshots, stale forms and pending/uncertain room creation
 remain protected. The Deleted matches filter exposes retained history. Authorized
 reopening restores the same record and number. Standalone permanent deletion
 retains its explicit confirmation and dependency checks.
+
+Bracket positions expose **Regenerate Match** for intentionally deleted fixtures.
+Restoration reuses the retained record, number, stage, frozen rules and referee
+history, restores its prior lifecycle state and recalculates current progression.
+Played rosters and started downstream matches stay protected; affected unstarted
+fixtures require a reviewed approval. Generating missing matches repairs ready
+positions without records and never restores intentional deletions automatically.
+
+The bracket is an organizer workspace: a selected match opens an adjacent editor
+for inline scores/winner/FF, time, referees, participant slots and advancement
+routes, with an explicit Referee/history link. Search by match number or entrant,
+round navigation, contained panning/zoom/fit and a mobile round list keep large
+brackets usable. Dirty edits survive responsive changes and guard selection changes.
+
+Organizers with match-management and deletion permissions can permanently delete a
+complete bracket and all its linked fixtures with exact-name confirmation.
+This explicitly erases scores, map/player results, multiplayer evidence, referee
+actions, events, revisions, assignments and the bracket graph. Completed matches
+require an additional acknowledgement of permanent history loss. Active gameplay,
+uncertain lobby creation and external match/progression/seed dependencies block
+deletion. Only a minimal deletion receipt remains; associated match audit records
+are removed and shared scheduling receipts retain only unaffected entries.
+
+When no matches or bracket number reservations remain in the tournament, this
+explicit deletion resets numbering so recreation starts at **match 1**. Unrelated
+matches and reservations keep their numbers and prevent that reset; the preview
+states which behavior applies. This is the sole intentional reuse exception.
+Rebuild performs the permanent deletion review, then opens the existing generation
+preview with the old configuration and editable participant/seeding selection.
+Registration-based seed order is refreshed before that preview; qualified-source
+brackets keep their reviewed source selection and validation.
+Creation makes a fresh unpublished graph with fresh database identities. If
+generation is canceled or fails after deletion, the deleted history stays erased;
+the generation form remains available for retry.
 
 Native single elimination, double elimination/reset and groups support deterministic
 seeding, byes, previews, configurable round/stage assignments, manual/locked slots,

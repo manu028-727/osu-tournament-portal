@@ -18,7 +18,7 @@ import {
   stable,
 } from './competition-groups';
 import { allNodes, tenant } from './competition-queries';
-import type { CompetitionNode } from './competition-types';
+import type { CompetitionNode, CompetitionLifecyclePreview } from './competition-types';
 import {
   competitionActionSchema,
   type CompetitionAction,
@@ -29,17 +29,21 @@ import { allocateMatchNumber, reserveBracketMatchNumbers } from './match-numberi
 import { matchRulesSchema } from './match-rules';
 import { AppError, assertPermission, type Actor, type PermissionKey } from './permissions';
 import { finalizedQualifierSeeds } from './qualifier-standings-service';
+import { assertScheduleAvailability } from './schedule-availability';
 
 const json = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value));
-export function competitionPermission(_action: CompetitionAction): PermissionKey {
-  void _action;
-  return 'matches.manage';
+export function competitionPermission(action: CompetitionAction): PermissionKey {
+  return action.type === 'competition.delete' ||
+    (action.type === 'competition.lifecycle.preview' && action.operation === 'delete')
+    ? 'matches.delete'
+    : 'matches.manage';
 }
 export function assertCompetitionPermission(
   actor: Actor | null,
   action: CompetitionAction,
 ): asserts actor is Actor {
   assertPermission(actor, competitionPermission(action));
+  assertPermission(actor, 'matches.manage');
 }
 async function lock(tx: Prisma.TransactionClient) {
   // Match actions use this same transaction lock, including direct referee mutations.
@@ -176,6 +180,7 @@ async function persistRecalculation(
   after: CompetitionNode[],
   actorId: string | null,
   approveCorrections: boolean,
+  forceNodes: string[] = [],
 ) {
   const changes = competitionChanges(before, after);
   if (changes.some((c) => c.protected))
@@ -279,12 +284,30 @@ async function persistRecalculation(
     }
     const bracket = brackets.find((b) => b.id === node.bracketId)!;
     const manualMatches = (bracket.config as { manualMatches?: boolean }).manualMatches;
-    if (!node.matchId && node.state === 'READY' && !manualMatches) {
+    if (
+      !node.matchId &&
+      node.state === 'READY' &&
+      (!manualMatches || forceNodes.includes(node.id))
+    ) {
       const round = rounds.find((r) => r.id === node.roundId)!;
+      if (round.stage.archivedAt || ['QUALIFIERS', 'QUALIFIER'].includes(round.stage.kind))
+        throw new AppError('Choose an active head-to-head stage.');
       const rules = matchRulesSchema.parse({
         ...inheritedRules(round.stage.matchRules || settings.matchRules, settings.gameplayScoring),
         gameMode: tournament.gameMode,
       });
+      for (const teamId of [a.teamId!, b.teamId!]) {
+        const snapshot = snapshots.get(teamId);
+        if (
+          !snapshot ||
+          snapshot.members.filter((member) => !member.substitute).length < rules.teamSize ||
+          !(await tx.team.count({ where: { id: teamId, tournamentId, status: 'APPROVED' } }))
+        )
+          throw new AppError(
+            'Bracket participants must have approved registrations and sufficient starting players.',
+            409,
+          );
+      }
       const matchNumber = node.matchNumber ?? (await allocateMatchNumber(tx, tournamentId));
       if (node.matchNumber == null) {
         await tx.bracketNode.updateMany({
@@ -337,6 +360,369 @@ async function persistRecalculation(
     });
   return changes;
 }
+const restoredStatus = z.object({
+  before: z.object({
+    status: z.enum([
+      'SCHEDULED',
+      'IN_PROGRESS',
+      'AWAITING_CONFIRMATION',
+      'COMPLETED',
+      'DISPUTED',
+      'CANCELLED',
+    ]),
+  }),
+});
+
+// Previews and writes share the global competition lock and the same reviewed witness.
+async function lifecyclePlan(
+  tx: Prisma.TransactionClient,
+  actor: Actor,
+  request: {
+    id: string;
+    baseVersion: number;
+    operation: 'delete' | 'regenerate' | 'missing';
+    nodeId?: string;
+  },
+) {
+  const tournamentId = tenant(actor);
+  const bracket = await tx.bracket.findFirst({ where: { id: request.id, tournamentId } });
+  if (!bracket) throw new AppError('Bracket not found.', 404);
+  if (bracket.version !== request.baseVersion)
+    throw new AppError('The bracket changed. Reload before saving.', 409);
+  const counters = await tx.$queryRaw<{ matchNumberSequence: number }[]>`
+    SELECT "matchNumberSequence" FROM "Tournament" WHERE "id" = ${tournamentId} FOR UPDATE
+  `;
+  const before = (await allNodes(tx, tournamentId)).sort((a, b) => a.id.localeCompare(b.id));
+  const own = before.filter((node) => node.bracketId === bracket.id);
+  const matches = await tx.match.findMany({
+    where: { tournamentId, bracketNode: { bracketId: bracket.id } },
+    include: {
+      assignments: true,
+      _count: { select: { actions: true, results: true, revisions: true } },
+    },
+    orderBy: { matchNumber: 'asc' },
+  });
+  const reasons: string[] = [];
+  const targets =
+    request.operation === 'regenerate'
+      ? own.filter((node) => node.id === request.nodeId)
+      : request.operation === 'missing'
+        ? own.filter((node) => !node.matchId)
+        : own;
+  if (request.operation === 'regenerate' && targets.length !== 1)
+    throw new AppError('Bracket position not found.', 404);
+  if (
+    request.operation === 'missing' &&
+    (bracket.config as { manualMatches?: boolean }).manualMatches
+  )
+    reasons.push('Link existing matches individually in a manual-match bracket.');
+  const related = await tx.bracket.findMany({ where: { tournamentId }, orderBy: { id: 'asc' } });
+  const dependencies = related.filter(
+    (candidate) =>
+      candidate.id !== bracket.id &&
+      (candidate.config as GroupConfig).sourceBracketId === bracket.id,
+  );
+  if (request.operation === 'delete') {
+    if (dependencies.length)
+      reasons.push('Delete dependent brackets before deleting their seed source.');
+    if (
+      before.some(
+        (node) =>
+          node.bracketId !== bracket.id &&
+          node.slots.some((slot) => own.some((source) => source.id === slot.sourceNodeId)),
+      )
+    )
+      reasons.push('Another active bracket uses progression from this bracket.');
+    const external = await tx.match.findFirst({
+      where: {
+        tournamentId,
+        id: { notIn: matches.map((match) => match.id) },
+        OR: matches.flatMap((match) => [
+          ...(['A', 'B'] as const).flatMap((side) =>
+            ['W', 'L'].map((prefix) => ({
+              participants: { path: [side, 'name'], equals: `${prefix}${match.code}` },
+            })),
+          ),
+          {
+            events: {
+              some: { kind: 'match.resolve', data: { path: ['sourceMatchId'], equals: match.id } },
+            },
+          },
+        ]),
+      },
+      select: { id: true },
+    });
+    if (external) reasons.push('An external match depends on this bracket.');
+    if (
+      matches.some(
+        (match) =>
+          !match.deletedAt &&
+          ['IN_PROGRESS', 'AWAITING_CONFIRMATION', 'DISPUTED'].includes(match.status),
+      )
+    )
+      reasons.push('Finish or cancel active matches before deleting this bracket.');
+  }
+  const requestedMatches =
+    request.operation === 'delete'
+      ? matches
+      : matches.filter((match) => targets.some((node) => node.matchId === match.id));
+  const pending = await tx.ircLobbyRequest.findMany({
+    where: {
+      matchId: { in: requestedMatches.map((match) => match.id) },
+      status: { in: ['PENDING', 'UNKNOWN'] },
+    },
+    select: { id: true, status: true },
+  });
+  if (pending.length)
+    reasons.push('Resolve pending or uncertain lobby creation before changing this bracket.');
+  const after = structuredClone(before);
+  const restorations: { id: string; status: z.infer<typeof restoredStatus>['before']['status'] }[] =
+    [];
+  for (const target of request.operation === 'delete' ? [] : targets) {
+    const simulated = after.find((node) => node.id === target.id)!;
+    if (target.match?.deletedAt) {
+      const event = await tx.matchEvent.findFirst({
+        where: { matchId: target.match.id, kind: 'match.delete' },
+        orderBy: { version: 'desc' },
+        select: { data: true },
+      });
+      const witness = restoredStatus.safeParse(event?.data);
+      if (!witness.success) {
+        reasons.push('The deleted match has no valid restoration witness. Review its history.');
+        continue;
+      }
+      simulated.match!.deletedAt = null;
+      simulated.match!.status = witness.data.before.status;
+      restorations.push({ id: target.match.id, status: witness.data.before.status });
+    }
+  }
+  const computed = recalculateCompetition(after);
+  for (const restoration of restorations) {
+    const node = computed.find((node) => node.matchId === restoration.id)!;
+    const match = matches.find((match) => match.id === restoration.id)!;
+    if (
+      (match.startedAt ||
+        match._count.actions ||
+        match._count.results ||
+        match.scoreA ||
+        match.scoreB) &&
+      node.slots.some((slot) => slot.teamId !== (slot.side === 'A' ? match.teamAId : match.teamBId))
+    )
+      reasons.push('Restoring this match would replace participants in recorded history.');
+  }
+  const affected = request.operation === 'delete' ? [] : competitionChanges(before, computed);
+  if (affected.some((change) => change.protected))
+    reasons.push('Restoring this match would change started downstream matches.');
+  if (restorations.length && dependencies.length)
+    reasons.push('Frozen downstream seed snapshots protect this bracket.');
+  const settings = await tx.tournamentSettings.findUniqueOrThrow({ where: { tournamentId } });
+  const remainingMatches = await tx.match.count({
+    where: { tournamentId, id: { notIn: matches.map((match) => match.id) } },
+  });
+  const remainingReservations = before.filter(
+    (node) => node.bracketId !== bracket.id && node.matchNumber != null,
+  ).length;
+  const stages = await tx.tournamentStage.findMany({
+    where: { tournamentId },
+    include: { mappool: { select: { state: true, publishedRevisionId: true } } },
+    orderBy: { id: 'asc' },
+  });
+  const preview: CompetitionLifecyclePreview = {
+    hash: createHash('sha256')
+      .update(
+        stable({
+          request,
+          bracket,
+          before,
+          matches,
+          related,
+          pending,
+          settings,
+          stages,
+          counters,
+          remainingMatches,
+          remainingReservations,
+        }),
+      )
+      .digest('hex'),
+    blocked: reasons.length > 0,
+    reasons: [...new Set(reasons)],
+    matches: requestedMatches.map((match) => ({
+      matchNumber: match.matchNumber,
+      status: match.status,
+    })),
+    historical: requestedMatches.filter(
+      (match) =>
+        match.startedAt ||
+        match._count.actions ||
+        match._count.results ||
+        match.status === 'COMPLETED',
+    ).length,
+    numberingRestarts: remainingMatches === 0 && remainingReservations === 0,
+    affected: affected.map((change) => ({
+      matchNumber: change.matchNumber,
+      protected: change.protected,
+    })),
+  };
+  return { preview, bracket, before, computed, restorations, matches, targets };
+}
+
+async function applyLifecycle(
+  tx: Prisma.TransactionClient,
+  actor: Actor,
+  a: Extract<
+    CompetitionAction,
+    {
+      type:
+        | 'competition.lifecycle.preview'
+        | 'competition.delete'
+        | 'competition.regenerate'
+        | 'competition.regenerate-missing';
+    }
+  >,
+) {
+  const tournamentId = tenant(actor);
+  const operation =
+    a.type === 'competition.lifecycle.preview'
+      ? a.operation
+      : a.type === 'competition.delete'
+        ? 'delete'
+        : a.type === 'competition.regenerate'
+          ? 'regenerate'
+          : 'missing';
+  const request = {
+    id: a.id,
+    baseVersion: a.baseVersion,
+    operation,
+    ...('nodeId' in a && a.nodeId ? { nodeId: a.nodeId } : {}),
+  };
+  const plan = await lifecyclePlan(tx, actor, request);
+  if (a.type === 'competition.lifecycle.preview') return plan.preview;
+  if (a.reviewHash !== plan.preview.hash)
+    throw new AppError('The bracket or its matches changed. Review the operation again.', 409);
+  if (plan.preview.blocked) throw new AppError(plan.preview.reasons[0], 409);
+  if (plan.preview.affected.length && !a.approveCorrections)
+    throw new AppError('Review and approve the downstream fixture changes.', 409);
+  if (a.type === 'competition.delete') {
+    if (a.confirmation !== plan.bracket.name)
+      throw new AppError('Type the exact bracket name to confirm deletion.');
+    if (plan.preview.historical && !a.acknowledgeHistory)
+      throw new AppError('Confirm permanent removal of completed matches and referee histories.');
+    const matchIds = plan.matches.map((match) => match.id);
+    const nodeIds = plan.before.filter((node) => node.bracketId === a.id).map((node) => node.id);
+    await tx.bracketSlot.deleteMany({ where: { tournamentId, nodeId: { in: nodeIds } } });
+    await tx.bracketNode.deleteMany({ where: { tournamentId, bracketId: a.id } });
+    await tx.bracketEntry.deleteMany({ where: { tournamentId, bracketId: a.id } });
+    await tx.bracketRound.deleteMany({ where: { tournamentId, bracketId: a.id } });
+    await tx.bracket.deleteMany({ where: { tournamentId, id: a.id, version: a.baseVersion } });
+    await tx.multiplayerGame.deleteMany({ where: { matchId: { in: matchIds } } });
+    await tx.match.deleteMany({ where: { tournamentId, id: { in: matchIds } } });
+    await tx.auditLog.deleteMany({
+      where: { tournamentId, entityId: { in: [a.id, ...nodeIds, ...matchIds] } },
+    });
+    // Bulk schedule receipts can contain several matches. Remove only the purged entries.
+    const bulkAudits = await tx.auditLog.findMany({
+      where: { tournamentId, action: { in: ['matches.bulk.schedule', 'matches.batch.schedule'] } },
+    });
+    const purgeIds = new Set(matchIds);
+    const scrub = (value: Prisma.JsonValue): Prisma.JsonValue | undefined => {
+      if (Array.isArray(value))
+        return value.flatMap((entry) => {
+          const clean = scrub(entry);
+          return clean === undefined ? [] : [clean];
+        });
+      if (value && typeof value === 'object') {
+        if (Object.values(value).some((field) => typeof field === 'string' && purgeIds.has(field)))
+          return undefined;
+        return Object.fromEntries(
+          Object.entries(value).flatMap(([key, entry]) => {
+            const clean = scrub(entry!);
+            return clean === undefined ? [] : [[key, clean]];
+          }),
+        );
+      }
+      return value;
+    };
+    for (const entry of bulkAudits) {
+      const cleaned = scrub(entry.details);
+      if (stable(cleaned) === stable(entry.details)) continue;
+      if (cleaned === undefined)
+        await tx.auditLog.deleteMany({ where: { id: entry.id, tournamentId } });
+      else await tx.auditLog.update({ where: { id: entry.id }, data: { details: json(cleaned) } });
+    }
+    if (plan.preview.numberingRestarts)
+      await tx.tournament.update({ where: { id: tournamentId }, data: { matchNumberSequence: 0 } });
+    await audit(tx, tournamentId, actor.id, a.type, a.id, {
+      deletedMatches: matchIds.length,
+      numberingRestarted: plan.preview.numberingRestarts,
+    });
+    return { id: a.id, numberingRestarted: plan.preview.numberingRestarts };
+  } else {
+    await assertScheduleAvailability(
+      tx,
+      tournamentId,
+      plan.matches
+        .filter((match) => plan.restorations.some((row) => row.id === match.id))
+        .filter(
+          (match) => plan.restorations.find((row) => row.id === match.id)!.status !== 'COMPLETED',
+        )
+        .map((match) => ({
+          label: `Match ${match.matchNumber}`,
+          scheduledAt: match.scheduledAt,
+          refereeIds: match.assignments.map((assignment) => assignment.userId),
+          participants: match.participants,
+          teamIds: [match.teamAId, match.teamBId],
+        })),
+      { matchIds: plan.restorations.map((row) => row.id) },
+    );
+    for (const restoration of plan.restorations) {
+      const saved = await tx.match.update({
+        where: { id: restoration.id },
+        data: {
+          deletedAt: null,
+          status: restoration.status,
+          published: plan.bracket.published,
+          version: { increment: 1 },
+        },
+      });
+      await tx.matchEvent.create({
+        data: {
+          matchId: saved.id,
+          version: saved.version,
+          actorId: actor.id,
+          kind: a.type,
+          data: json({
+            bracketId: a.id,
+            nodeId: plan.targets.find((node) => node.matchId === saved.id)!.id,
+          }),
+        },
+      });
+      await tx.matchResultRevision.create({
+        data: {
+          matchId: saved.id,
+          version: saved.version,
+          createdBy: actor.id,
+          kind: a.type,
+          reason: 'Explicitly restored from the bracket.',
+          snapshot: json(saved),
+        },
+      });
+    }
+    const current = await allNodes(tx, tournamentId);
+    await persistRecalculation(
+      tx,
+      tournamentId,
+      plan.before,
+      recalculateCompetition(current),
+      actor.id,
+      true,
+      operation === 'regenerate' ? plan.targets.map((node) => node.id) : [],
+    );
+    await tx.bracket.update({ where: { id: a.id }, data: { version: { increment: 1 } } });
+  }
+  await audit(tx, tournamentId, actor.id, a.type, a.id, { ...a, matches: plan.preview.matches });
+  return { id: a.id };
+}
 export async function applyCompetitionAction(
   tx: Prisma.TransactionClient,
   actor: Actor,
@@ -346,6 +732,13 @@ export async function applyCompetitionAction(
     tournamentId = tenant(actor);
   assertCompetitionPermission(actor, a);
   await lock(tx);
+  if (
+    a.type === 'competition.lifecycle.preview' ||
+    a.type === 'competition.delete' ||
+    a.type === 'competition.regenerate' ||
+    a.type === 'competition.regenerate-missing'
+  )
+    return applyLifecycle(tx, actor, a);
   if (a.type === 'competition.preview') return checkedPlan(tx, tournamentId, a);
   if (a.type === 'competition.create') {
     const existing = await tx.bracket.findFirst({
@@ -692,7 +1085,7 @@ export async function applyCompetitionAction(
           throw new AppError('Unlock this position before changing its progression.', 409);
         if (!!a.sourceNodeId !== !!a.outcome)
           throw new AppError('Choose both a source match and an outcome.');
-        if (a.sourceNodeId && !before.some((n) => n.id === a.sourceNodeId))
+        if (a.sourceNodeId && !before.some((n) => n.id === a.sourceNodeId && !n.match?.deletedAt))
           throw new AppError('Progression source not found.', 404);
         Object.assign(slot, {
           sourceNodeId: a.sourceNodeId,
@@ -922,7 +1315,10 @@ export async function previewCompetitionCorrection(
     target = before.find((n) => n.matchId === matchId);
   if (!target?.match) return { affected: [], blocked: false, hash: '', seededBrackets: [] };
   const seededBrackets = await tx.bracket.findMany({
-    where: { tournamentId, config: { path: ['sourceBracketId'], equals: target.bracketId } },
+    where: {
+      tournamentId,
+      config: { path: ['sourceBracketId'], equals: target.bracketId },
+    },
     select: { id: true, name: true, version: true },
   });
   const simulated = structuredClone(before),
