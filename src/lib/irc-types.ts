@@ -1,4 +1,5 @@
 export type IrcIdentity = {
+  kind?: 'match' | 'qualifier';
   userId: string;
   username: string;
   sessionHash: string;
@@ -22,6 +23,7 @@ export type IrcDelivery = {
   note?: string;
 };
 export type IrcLobby = {
+  kind?: 'match' | 'qualifier';
   requestId: string;
   matchId: string;
   tournamentId: string;

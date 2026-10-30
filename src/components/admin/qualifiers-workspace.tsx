@@ -5,7 +5,7 @@ import { localDateTimeInput } from '@/lib/utils';
 import { Feedback, useLocale, useT } from '@/components/locale';
 
 import Link from '@/components/tournament-scope';
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Copy, Plus, Save, CalendarClock, ArrowLeft, ExternalLink, Trash2 } from 'lucide-react';
 import type { Actor } from '@/lib/permissions';
 import type { QualifierData } from '@/lib/qualifiers-types';
@@ -23,6 +23,7 @@ import {
   useResource,
   useTask,
   usePolling,
+  api,
 } from './shared';
 import { RefereePool } from './referee-pool';
 import { FreeModCalculator } from './freemod-calculator';
@@ -30,15 +31,21 @@ import { MATCH_STATUS_LABELS } from '@/lib/match-display';
 import { useTournamentTime } from '@/components/tournament-scope';
 import { QualifierCaptureDialog } from './qualifier-capture';
 import { QualifierLobbyList } from './qualifier-bulk-tools';
+import { qualifierProgress } from '@/lib/qualifier-progress';
+import { QualifierMapBoard } from './qualifier-map-board';
+import { IrcPanel } from './irc-panel';
+import { QualifierSessionAssignments } from './qualifier-session-assignments';
 type StatusCommand = Extract<QualifierAction, { type: 'qualifier.status' }>['command'];
 export function QualifiersWorkspace({
   actor,
   acronym,
   id,
+  ircEnabled = false,
 }: {
   actor: Actor;
   acronym: string;
   id?: string;
+  ircEnabled?: boolean;
 }) {
   const language = useLocale();
   const tr = useT();
@@ -82,6 +89,53 @@ export function QualifiersWorkspace({
     baseVersion: number;
     reason: string;
   } | null>(null);
+  const [syncError, setSyncError] = useState('');
+  const [scoreDirty, setScoreDirty] = useState(false);
+  const retainedMap = useRef<{ id: string; run: number; slotName: string } | null>(null);
+  const dirtyChanged = useCallback((value: boolean) => setScoreDirty(value), []);
+  const session = id ? data?.lobbies[0] : null;
+  useEffect(() => {
+    if (
+      !session?.access.score ||
+      session.status !== 'IN_PROGRESS' ||
+      !session.lobbyUrl ||
+      session.gameplayScoring === 'LAZER'
+    )
+      return;
+    let current = true,
+      pending = false;
+    const sync = async () => {
+      if (pending || document.visibilityState === 'hidden') return;
+      pending = true;
+      try {
+        await api('/api/admin/qualifier-multiplayer', {
+          method: 'POST',
+          body: JSON.stringify({ id: session.id, sync: true }),
+        });
+        if (current) {
+          setSyncError('');
+          await reload();
+        }
+      } catch (error) {
+        if (current) setSyncError((error as Error).message);
+      } finally {
+        pending = false;
+      }
+    };
+    void sync();
+    const timer = setInterval(() => void sync(), 20000);
+    return () => {
+      current = false;
+      clearInterval(timer);
+    };
+  }, [
+    session?.id,
+    session?.status,
+    session?.lobbyUrl,
+    session?.access.score,
+    session?.gameplayScoring,
+    reload,
+  ]);
   usePolling(reload);
   if (!data) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
   const m = id ? data.lobbies[0] : null;
@@ -121,25 +175,35 @@ export function QualifiersWorkspace({
 
   const roster =
     m?.participants.flatMap((team) => team.members.map((p) => ({ ...p, team: team.name }))) || [];
-  const next = m
-    ? Array.from({ length: m.policy.runs }, (_, i) => i + 1)
-        .flatMap((run) =>
-          m.poolRevision.slots.flatMap((slot) =>
-            m.participants.map((team) => ({
-              run,
-              slot,
-              team,
-              scores: m.scores.filter(
-                (s) =>
-                  s.run === run &&
-                  s.slotName === slot.name &&
-                  team.members.some((p) => p.osuId === s.osuId),
-              ),
-            })),
-          ),
+  const next = m ? qualifierProgress(m).find((item) => !item.complete) : null;
+  const selection = (m?.selection ||
+    m?.events.find((event) => event.kind === 'qualifier.map')?.data) as
+    { run?: number; slotName?: string; warmup?: boolean } | undefined;
+  const progress = m ? qualifierProgress(m) : [];
+  const current =
+    (scoreDirty && retainedMap.current?.id === m?.id
+      ? progress.find(
+          (item) =>
+            item.run === retainedMap.current?.run &&
+            item.slot.name === retainedMap.current?.slotName,
         )
-        .find((item) => item.scores.length < m.policy.requiredPlayers)
-    : null;
+      : null) ||
+    progress.find(
+      (item) => item.run === selection?.run && item.slot.name === selection?.slotName,
+    ) ||
+    next ||
+    progress.at(-1);
+  if (!scoreDirty && m && current)
+    retainedMap.current = { id: m.id, run: current.run, slotName: current.slot.name };
+  const nextTeam = current?.teams.find((team) => !team.complete);
+  const selectMap = (run: number, slotName: string, warmup = false) => {
+    if (scoreDirty && !window.confirm(tr('Discard unsaved changes?'))) return;
+    setScoreDirty(false);
+    void post(
+      { type: 'qualifier.map', id: m!.id, baseVersion: m!.version, run, slotName, warmup },
+      tr('Qualifier map selected.'),
+    );
+  };
   const command = m
     ? lobbyCommands(
         m.rules,
@@ -149,8 +213,8 @@ export function QualifiersWorkspace({
           teamA: 'Qualifiers',
           teamB: `Lobby ${m.code}`,
         },
-        undefined,
-        { qualifierPlayers: Math.min(m.participants.length * m.policy.requiredPlayers, 16) },
+        current?.slot,
+        { qualifierPlayers: m.capacity || 16 },
       )
     : null;
   const qualifierSetup =
@@ -251,6 +315,7 @@ export function QualifiersWorkspace({
               )}
               {m.status === 'SCHEDULED' && m.access.operate && (
                 <Button
+                  disabled={!m.participants.length}
                   onClick={() =>
                     setDecision({ command: 'START', baseVersion: m.version, reason: '' })
                   }
@@ -267,13 +332,13 @@ export function QualifiersWorkspace({
                     setScore({
                       baseVersion: m.version,
                       osuId:
-                        next?.team.members.find(
-                          (p) => !next.scores.some((s) => s.osuId === p.osuId),
+                        nextTeam?.team.members.find(
+                          (p) => !nextTeam.scores.some((s) => s.osuId === p.osuId),
                         )?.osuId ||
                         roster[0]?.osuId ||
                         0,
-                      slotName: next?.slot.name || m.poolRevision.slots[0]?.name || '',
-                      run: next?.run || 1,
+                      slotName: current?.slot.name || m.poolRevision.slots[0]?.name || '',
+                      run: current?.run || 1,
                       raw: 0,
                       mods: m.rules.enforceNoFail ? ['NF'] : [],
                       reason: '',
@@ -326,7 +391,7 @@ export function QualifiersWorkspace({
             </div>
           </header>
           <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-            <div className="min-w-0 xl:sticky xl:top-5">
+            <div className="min-w-0">
               <p className="mb-3 text-sm text-muted">
                 {m.rules.gameplayScoring === 'LAZER'
                   ? tr('osu!lazer')
@@ -337,14 +402,134 @@ export function QualifiersWorkspace({
                 {tr(QUALIFIER_METHOD_LABELS[m.policy.method])}
               </p>
               <p className="mb-3 text-sm font-semibold" role="status">
-                {next
-                  ? tr('Next: Run {0} · {1} · {2}', next.run, next.slot.name, next.team.name)
-                  : tr('All configured map scores recorded')}
+                {!m.participants.length
+                  ? tr('No entrants assigned yet')
+                  : next && current
+                    ? tr('Shared lobby: Run {0} · {1}', current.run, current.slot.name)
+                    : m.participants.length
+                      ? tr('All configured map scores recorded')
+                      : tr('No entrants assigned yet')}
               </p>
-              <RefereePool slots={m.poolRevision.slots} rules={m.rules} copy={copy} />
+              <div className="mb-3 flex flex-wrap items-end gap-2">
+                {current && (
+                  <label className="flex min-h-11 items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={!!selection?.warmup}
+                      disabled={!m.access.operate}
+                      onChange={(event) =>
+                        selectMap(current.run, current.slot.name, event.target.checked)
+                      }
+                    />
+                    {tr('Warmup (exclude scores)')}
+                  </label>
+                )}
+                <Field label={tr('Qualifier run')}>
+                  <select
+                    value={current?.run || 1}
+                    onChange={(event) =>
+                      selectMap(
+                        Number(event.target.value),
+                        current?.slot.name || m.poolRevision.slots[0].name,
+                      )
+                    }
+                    disabled={!m.access.operate}
+                  >
+                    {Array.from({ length: m.policy.runs }, (_, i) => (
+                      <option key={i} value={i + 1}>
+                        {tr('Run {0}', i + 1)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {current && progress[progress.indexOf(current) + 1] && (
+                  <Button
+                    variant="outline"
+                    disabled={!m.access.operate}
+                    onClick={() => {
+                      const item = progress[progress.indexOf(current) + 1];
+                      selectMap(item.run, item.slot.name);
+                    }}
+                  >
+                    {tr('Next map')}
+                  </Button>
+                )}
+              </div>
+              <RefereePool
+                textActions
+                slots={m.poolRevision.slots}
+                rules={m.rules}
+                copy={copy}
+                label={tr('Qualifier mappool')}
+                state={(slot) =>
+                  slot.name === current?.slot.name ? tr('Selected map') : tr('Full qualifier pool')
+                }
+                action={(slot) => (
+                  <Button
+                    style={{ width: 'auto', minWidth: 56 }}
+                    size="sm"
+                    variant={slot.name === current?.slot.name ? 'default' : 'ghost'}
+                    disabled={!m.access.operate}
+                    onClick={() => selectMap(current?.run || 1, slot.name)}
+                    aria-label={tr('Select qualifier map {0}', slot.name)}
+                  >
+                    {tr('Select')}
+                  </Button>
+                )}
+              />
+              {current && (
+                <div className="mt-4">
+                  <QualifierMapBoard
+                    key={`${current.run}-${current.slot.name}`}
+                    lobby={m}
+                    selected={{ run: current.run, slotName: current.slot.name }}
+                    onChanged={reload}
+                    onDirty={dirtyChanged}
+                  />
+                </div>
+              )}
+              {command && (
+                <IrcPanel
+                  match={{
+                    ...m,
+                    multiplayerId: Number(m.lobbyUrl.match(/\/(\d+)\/?$/)?.[1]) || null,
+                  }}
+                  kind="qualifier"
+                  commands={command}
+                  editable={m.access.operate}
+                  enabled={ircEnabled}
+                  onLinked={reload}
+                />
+              )}
+              <p className="mt-3 text-xs text-muted">
+                {tr(
+                  'Scores synchronize automatically from osu! while this session is running. Missing or ambiguous evidence requires review.',
+                )}
+              </p>
+              {(syncError || m.multiplayerError) && (
+                <p role="alert" className="mt-2 text-sm text-red-300">
+                  <Feedback message={syncError || m.multiplayerError!} />
+                </p>
+              )}
+              {m.multiplayerSyncedAt && (
+                <p className="mt-2 text-xs text-muted">
+                  {tr('Last osu! synchronization: {0}', matchTime(m.multiplayerSyncedAt))}
+                </p>
+              )}
+              {m.games.some((game) => game.status === 'PENDING') && (
+                <p role="status" className="mt-2 text-sm font-semibold">
+                  {tr(
+                    'Games requiring review: {0}',
+                    m.games.filter((game) => game.status === 'PENDING').length,
+                  )}
+                </p>
+              )}
               <FreeModCalculator rules={m.rules} />
             </div>
             <div className="min-w-0 space-y-5">
+              {m.access.operate && (
+                <QualifierSessionAssignments lobby={m} manager={manager} onChanged={reload} />
+              )}
               <section className="space-y-3">
                 <h2 className="font-semibold">{tr('Lobby preparation')}</h2>
                 {m.lobbyUrl && (

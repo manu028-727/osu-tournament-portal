@@ -149,22 +149,23 @@ model Tournament {
 }
 
 model TournamentSettings {
-  gameplayScoring String?
-  tournamentId    String     @id
-  tournament      Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  logo            String     @default("")
-  favicon         String     @default("")
-  banner          String     @default("/artwork.svg")
-  primaryColor    String     @default("#e89caa")
-  accentColor     String     @default("#b6a0e5")
-  registrationUrl String     @default("https://osu.ppy.sh/community/forums/55")
-  socialLinks     Json
-  importantDates  Json
-  navigation      Json
-  footer          String
-  copy            Json       @default("{}")
-  matchRules      Json       @default("{}")
-  updatedAt       DateTime   @updatedAt
+  registrationPolicy Json?
+  gameplayScoring    String?
+  tournamentId       String     @id
+  tournament         Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  logo               String     @default("")
+  favicon            String     @default("")
+  banner             String     @default("/artwork.svg")
+  primaryColor       String     @default("#e89caa")
+  accentColor        String     @default("#b6a0e5")
+  registrationUrl    String     @default("https://osu.ppy.sh/community/forums/55")
+  socialLinks        Json
+  importantDates     Json
+  navigation         Json
+  footer             String
+  copy               Json       @default("{}")
+  matchRules         Json       @default("{}")
+  updatedAt          DateTime   @updatedAt
 }
 
 model Page {
@@ -524,31 +525,34 @@ model Participant {
 }
 
 model Team {
-  id               String             @id @default(cuid())
-  tournamentId     String             @default("main")
-  tournament       Tournament         @relation(fields: [tournamentId], references: [id], onDelete: Restrict)
-  name             String
-  slug             String
-  description      String             @default("")
-  format           TeamFormat         @default(TEAM)
-  logoImageId      String?
-  logoImage        MediaAsset?        @relation("TeamLogo", fields: [logoImageId, tournamentId], references: [id, tournamentId], onDelete: Restrict)
-  seed             Int?
-  rankSum          Int?
-  qualifierPlayed  Boolean?
-  sourceKey        String?            @unique
-  position         Int                @default(0)
-  status           RegistrationStatus @default(PENDING)
-  published        Boolean            @default(false)
-  version          Int                @default(1)
-  members          TeamMember[]
-  matchesA         Match[]            @relation("MatchTeamA")
-  matchesB         Match[]            @relation("MatchTeamB")
-  qualifierEntries QualifierEntry[]
-  bracketEntries   BracketEntry[]
-  bracketSlots     BracketSlot[]
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  rejectionReason     String             @default("")
+  adminNotes          String             @default("")
+  registrationAnswers Json?
+  id                  String             @id @default(cuid())
+  tournamentId        String             @default("main")
+  tournament          Tournament         @relation(fields: [tournamentId], references: [id], onDelete: Restrict)
+  name                String
+  slug                String
+  description         String             @default("")
+  format              TeamFormat         @default(TEAM)
+  logoImageId         String?
+  logoImage           MediaAsset?        @relation("TeamLogo", fields: [logoImageId, tournamentId], references: [id, tournamentId], onDelete: Restrict)
+  seed                Int?
+  rankSum             Int?
+  qualifierPlayed     Boolean?
+  sourceKey           String?            @unique
+  position            Int                @default(0)
+  status              RegistrationStatus @default(PENDING)
+  published           Boolean            @default(false)
+  version             Int                @default(1)
+  members             TeamMember[]
+  matchesA            Match[]            @relation("MatchTeamA")
+  matchesB            Match[]            @relation("MatchTeamB")
+  qualifierEntries    QualifierEntry[]
+  bracketEntries      BracketEntry[]
+  bracketSlots        BracketSlot[]
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
 
   @@unique([tournamentId, slug])
   @@unique([id, tournamentId])
@@ -614,28 +618,36 @@ enum MatchResultMode {
 }
 
 model QualifierLobby {
-  policy          Json?
-  gameplayScoring String?
-  tournamentId    String                @default("main")
-  id              String                @id @default(cuid())
-  code            String
-  stageId         String
-  stage           TournamentStage       @relation(fields: [stageId, tournamentId], references: [id, tournamentId], onDelete: Restrict)
-  poolRevisionId  String
-  poolRevision    MappoolRevision       @relation(fields: [poolRevisionId, tournamentId], references: [id, tournamentId], onDelete: Restrict)
-  rules           Json
-  participants    Json
-  scheduledAt     DateTime?
-  status          MatchStatus           @default(SCHEDULED)
-  lobbyUrl        String                @default("")
-  notes           String                @default("")
-  version         Int                   @default(1)
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
-  entries         QualifierEntry[]
-  assignments     QualifierAssignment[]
-  scores          QualifierScore[]
-  events          QualifierEvent[]
+  multiplayerSync     Json?
+  capacity            Int                   @default(16)
+  bookingOpen         Boolean               @default(true)
+  bookingClosesAt     DateTime?
+  multiplayerSyncedAt DateTime?
+  multiplayerError    String?
+  games               QualifierGame[]
+  ircLobbyRequests    IrcLobbyRequest[]
+  policy              Json?
+  gameplayScoring     String?
+  tournamentId        String                @default("main")
+  id                  String                @id @default(cuid())
+  code                String
+  stageId             String
+  stage               TournamentStage       @relation(fields: [stageId, tournamentId], references: [id, tournamentId], onDelete: Restrict)
+  poolRevisionId      String
+  poolRevision        MappoolRevision       @relation(fields: [poolRevisionId, tournamentId], references: [id, tournamentId], onDelete: Restrict)
+  rules               Json
+  participants        Json
+  scheduledAt         DateTime?
+  status              MatchStatus           @default(SCHEDULED)
+  lobbyUrl            String                @default("")
+  notes               String                @default("")
+  version             Int                   @default(1)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  entries             QualifierEntry[]
+  assignments         QualifierAssignment[]
+  scores              QualifierScore[]
+  events              QualifierEvent[]
 
   @@unique([tournamentId, code])
   @@unique([id, tournamentId])
@@ -652,6 +664,25 @@ model QualifierEntry {
 
   @@id([lobbyId, teamId])
   @@unique([lobbyId, position])
+}
+
+model QualifierGame {
+  id            String         @id @default(cuid())
+  lobbyId       String
+  lobby         QualifierLobby @relation(fields: [lobbyId], references: [id], onDelete: Cascade)
+  multiplayerId Int
+  gameId        String
+  run           Int?
+  slotName      String?
+  startedAt     DateTime?
+  evidence      Json
+  status        String         @default("PENDING")
+  reason        String         @default("")
+  version       Int            @default(1)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([lobbyId, multiplayerId, gameId])
 }
 
 model QualifierAssignment {
@@ -864,28 +895,31 @@ model Match {
   ircLobbyRequests      IrcLobbyRequest[]
   bracketNode           BracketNode?
 
-  // Active fixture uniqueness is a SQL partial index; retained deleted history is excluded.
-  @@index([stageId, teamAId, teamBId, scheduledAt])
   @@unique([tournamentId, code])
   @@unique([tournamentId, matchNumber])
   @@unique([id, tournamentId])
+  // Active fixture uniqueness is a SQL partial index; retained deleted history is excluded.
+  @@index([stageId, teamAId, teamBId, scheduledAt])
   @@index([status, scheduledAt])
 }
 
 model IrcLobbyRequest {
-  id           String   @id @default(cuid())
-  matchId      String
-  tournamentId String
-  match        Match    @relation(fields: [matchId, tournamentId], references: [id, tournamentId], onDelete: Cascade, map: "IrcLobbyRequest_match_fkey")
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "IrcLobbyRequest_user_fkey")
-  status       String   @default("PENDING")
-  name         String
-  lobbyUrl     String   @default("")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id               String          @id @default(cuid())
+  matchId          String?
+  qualifierLobbyId String?
+  qualifierLobby   QualifierLobby? @relation(fields: [qualifierLobbyId, tournamentId], references: [id, tournamentId], onDelete: Cascade)
+  tournamentId     String
+  match            Match?          @relation(fields: [matchId, tournamentId], references: [id, tournamentId], onDelete: Cascade, map: "IrcLobbyRequest_match_fkey")
+  userId           String
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade, map: "IrcLobbyRequest_user_fkey")
+  status           String          @default("PENDING")
+  name             String
+  lobbyUrl         String          @default("")
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   @@index([matchId, createdAt])
+  @@index([qualifierLobbyId, createdAt])
 }
 
 model MatchAssignment {

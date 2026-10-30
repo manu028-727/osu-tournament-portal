@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 import { assertScoreRepresentation, type GameplayScoring } from './gameplay-scoring';
-import { qualifierPolicySchema, type QualifierPolicy } from './qualifier-policy';
+import {
+  qualifierPolicySchema,
+  qualifierTeamAggregate,
+  type QualifierPolicy,
+} from './qualifier-policy';
 
 export const QUALIFIER_CALCULATION_VERSION = 'qualifier-seeding/1';
 export const MATCH_COST_REFERENCE = {
@@ -301,18 +305,12 @@ export function calculateQualifierStandings(input: QualifierSeedingInput): Quali
     const runs = Array.from({ length: policy.runs }, (_, i) => {
       const run = i + 1;
       const maps = source.maps.flatMap(({ slotName }) => {
-        const scores = valid
-          .filter(
-            (s) => s.participantId === participant.id && s.slotName === slotName && s.run === run,
-          )
-          .sort((a, b) => b.adjusted - a.adjusted || a.osuId - b.osuId);
-        if (
-          scores.length < policy.requiredPlayers ||
-          (policy.teamAggregation !== 'TOP_N' && scores.length !== policy.requiredPlayers)
-        )
-          return [];
-        const chosen = scores.slice(0, policy.requiredPlayers);
-        const total = sum(chosen.map((s) => s.adjusted));
+        const scores = valid.filter(
+          (s) => s.participantId === participant.id && s.slotName === slotName && s.run === run,
+        );
+        const aggregate = qualifierTeamAggregate(scores, policy);
+        if (!aggregate) return [];
+        const { chosen, total } = aggregate;
         if (!Number.isFinite(total) || total > Number.MAX_SAFE_INTEGER) {
           issue('SCORE_OVERFLOW', 'Aggregated team score exceeds the supported precision range.', {
             participantId: participant.id,
@@ -324,7 +322,7 @@ export function calculateQualifierStandings(input: QualifierSeedingInput): Quali
           {
             slotName,
             run,
-            score: policy.teamAggregation === 'AVERAGE' ? total / chosen.length : total,
+            score: aggregate.value,
             scoreIds: chosen.map((s) => s.id),
             players: chosen.map((s) => ({
               osuId: s.osuId,

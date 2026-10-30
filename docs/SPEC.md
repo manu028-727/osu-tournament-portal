@@ -152,6 +152,21 @@ Use osu! IDs as identity, reuse registered rosters for matches/invites and prote
 private contact data. Qualifier seeds are distinct from registration/rank-sum order.
 Delete only unused registrations without damaging match snapshots/history.
 
+Website registration uses osu! OAuth and captain ownership for team or solo entries;
+it never grants website roles. New website entries and new organizer imports are
+automatically approved and published. Organizers may reject them with a required
+public reason visible in Teams; private notes and custom answers are separate.
+Configure native/external registration, eligibility by mode rank/country, required
+custom fields, deadlines, roster/substitute limits and roster locking. Existing
+rejected or pending entries retain that status when their captain edits them.
+
+Captains reserve, move or cancel their entry in existing qualifier sessions. Show
+times in the chosen display timezone, capacity, deadlines and current reservations.
+Validate ownership, eligibility, stage uniqueness, schedule conflicts, capacity and
+reviewed versions transactionally. Started/completed sessions protect histories;
+organizers may explicitly add/remove unscored entrants in active sessions with an
+audited reason. Recorded entrants remain in their historical session.
+
 Staff listings use custom ordered categories and multiple positions per member,
 osu! profiles, optional biography/image and visibility. Bulk changes support
 visibility/category/position patches without creating users or privileged roles.
@@ -320,7 +335,24 @@ Qualifier sessions play a full stage pool with stable snapshots, rosters, schedu
 staff, invites/pings, multiplayer links and individual map/run results. Batch create,
 schedule and compatible unstarted entrant transfers respect capacity and history.
 Support one/two runs and BEST_PER_MAP, BEST_COMPLETE_RUN, FIRST_RUN or SECOND_RUN;
-team aggregation SUM/AVERAGE/TOP_N. Review stable API evidence before capture.
+team aggregation SUM/AVERAGE/TOP_N. Empty sessions open before entrants are assigned;
+starting requires entrants, schedule and assigned staff. Multiple teams share one
+simultaneous lobby and play each map together, without Best-of, pick/ban or team
+wins. Referees select the full pool map by map and record individual scores inline.
+The existing IRC panel supports qualifier creation, linking, maps/mods, invites,
+player removal, commands and connection status; normal match refereeing is retained.
+
+Running website sessions automatically synchronize official multiplayer evidence
+while the referee workspace is open. Live sync and stage-selected bulk multiplayer
+imports share the canonical conversion, score writer and audit history. Attribute
+players by permanent osu! IDs in frozen rosters, never team colors or display names.
+Load complete paginated histories before applying scores. Exclude unrelated maps;
+warmups default to zero and require explicit count/selection. Review ambiguous
+players, retries, additional runs and missing evidence; never replace missing scores
+with zero. Previews show individual and team values and allow audited corrections.
+Re-import preserves accepted games and manual corrections unless replacement is
+explicitly reviewed. Incomplete histories and unresolved game evidence block
+submission/finalization; completed imports still require normal session confirmation.
 
 Calculate Raw Score, sample-deviation Z-Sum, Team Average or the explicitly named
 osu!plus qualifier-cohort Match Cost adaptation. Preserve raw/provenance data,
@@ -331,8 +363,8 @@ can generate brackets. Reviewed reopening preserves old witnesses and freezes
 downstream assignments, hides superseded publication and blocks after downstream
 gameplay starts. No silent reseeding.
 
-**Partial.** Native lazer Rooms API capture and qualifier IRC execution panel are
-not implemented. Lazer cannot use legacy Bancho setup/capture. Qualifier workbook
+**Partial.** Native lazer Rooms API capture is not implemented.
+Lazer cannot use legacy Bancho setup/capture. Qualifier workbook
 layouts are detected/reported but not imported as invented performances.
 
 ## Interoperability And Portability

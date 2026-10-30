@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { IrcIdentity } from './irc-types';
 
 const identitySchema = z.object({
+  kind: z.enum(['match', 'qualifier']).optional(),
   userId: z.string().min(1).max(100),
   username: z.string().min(1).max(100),
   sessionHash: z.string().regex(/^[a-f0-9]{64}$/),

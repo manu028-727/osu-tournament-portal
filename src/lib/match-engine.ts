@@ -346,7 +346,9 @@ export function lobbyCommands(
   )
     throw new AppError('Qualifier lobbies require between one and sixteen active players.');
   const safe = (value: string) => value.replace(/[\r\n\x00-\x1f]/g, ' ').slice(0, 120);
-  const name = `${safe(acronym)}: (${safe(match.teamA)}) vs (${safe(match.teamB)})`;
+  const name = lobby
+    ? `${safe(acronym)}: Qualifiers ${safe(match.code)}`
+    : `${safe(acronym)}: (${safe(match.teamA)}) vs (${safe(match.teamB)})`;
   const commands = {
     name,
     make: rules.gameplayScoring === 'LAZER' ? '' : `!mp make ${name}`,

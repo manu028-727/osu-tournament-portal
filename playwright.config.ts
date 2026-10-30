@@ -32,6 +32,13 @@ export default defineConfig({
       APP_URL: 'http://localhost:3001',
       STORAGE_DRIVER: 'filesystem',
       STORAGE_LOCAL_DIR: path.resolve('.data/test-uploads'),
+      ...(process.env.E2E_OSU_FIXTURE_DIR
+        ? {
+            NODE_OPTIONS: `${process.env.NODE_OPTIONS || ''} --import ${path.resolve('tests/helpers/mock-osu.mjs')}`,
+            OSU_CLIENT_ID: 'synthetic-e2e-client',
+            OSU_CLIENT_SECRET: 'synthetic-e2e-provider-secret',
+          }
+        : {}),
     },
   },
 });

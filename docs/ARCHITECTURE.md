@@ -114,22 +114,24 @@ Cancellation/read errors abort the stream; exports have no list cap.
 
 Principal handlers under `src/app/api`:
 
-| Route                                             | Contract                                                |
-| ------------------------------------------------- | ------------------------------------------------------- |
-| `/api/auth/{login,callback,logout}`               | OAuth initiation/consumption and POST revocation        |
-| `/api/tournaments`                                | Platform listing and tournament lifecycle/configuration |
-| `/api/admin/data?section=...&tournament=<slug>`   | Permission-filtered scoped reads                        |
-| `/api/admin/action?tournament=<slug>`             | Validated action union and transaction dispatcher       |
-| `/api/admin/{beatmaps,players}`                   | Authorized official-provider metadata                   |
-| `/api/admin/teams/export`                         | Authorized roster export                                |
-| `/api/admin/{multiplayer,qualifier-multiplayer}`  | Reviewed official match evidence                        |
-| `/api/admin/referee-import`                       | Workbook preview, destinations, reviewed application    |
-| `/api/media`, `/api/media/<id>`                   | Scoped uploads/catalog and authorized bytes             |
-| `/api/platform/media`, `/api/platform/media/<id>` | Independently owned platform assets                     |
-| `/api/public/<resource>`                          | Explicit public projections, not private serialization  |
-| `/api/tournament-transfer/{export,import}`        | Archives, validation/application and recovery           |
-| `/api/irc/ticket`, `/api/internal/irc`            | Session-bound ticket and signed reauthorized RPC        |
-| `/api/health`                                     | Runtime health used by image checks                     |
+| Route                                             | Contract                                                                   |
+| ------------------------------------------------- | -------------------------------------------------------------------------- |
+| `/api/auth/{login,callback,logout}`               | OAuth initiation/consumption and POST revocation                           |
+| `/api/tournaments`                                | Platform listing and tournament lifecycle/configuration                    |
+| `/api/admin/data?section=...&tournament=<slug>`   | Permission-filtered scoped reads                                           |
+| `/api/admin/action?tournament=<slug>`             | Validated action union and transaction dispatcher                          |
+| `/api/admin/{beatmaps,players}`                   | Authorized official-provider metadata                                      |
+| `/api/admin/teams/export`                         | Authorized roster export                                                   |
+| `/api/admin/{multiplayer,qualifier-multiplayer}`  | Reviewed official match evidence                                           |
+| `/api/admin/qualifier-import`                     | Stage-selected paginated qualifier MP import previews/application          |
+| `/api/registration`                               | Native captain registration and qualifier booking, without workspace roles |
+| `/api/admin/referee-import`                       | Workbook preview, destinations, reviewed application                       |
+| `/api/media`, `/api/media/<id>`                   | Scoped uploads/catalog and authorized bytes                                |
+| `/api/platform/media`, `/api/platform/media/<id>` | Independently owned platform assets                                        |
+| `/api/public/<resource>`                          | Explicit public projections, not private serialization                     |
+| `/api/tournament-transfer/{export,import}`        | Archives, validation/application and recovery                              |
+| `/api/irc/ticket`, `/api/internal/irc`            | Session-bound ticket and signed reauthorized RPC                           |
+| `/api/health`                                     | Runtime health used by image checks                                        |
 
 Admin data includes overview, homepage/rules, settings, stages/mappools/pooling,
 staff/media/users/roles/teams, matches/referee/detail/history/events, referees,
@@ -175,25 +177,25 @@ a second boundary, not an optional UI check.
 
 ### Relational Ownership Map
 
-| Models                                                                                                 | Identity, Relationships And Purpose                                                                                                          |
-| ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| User, Session, OAuthState, RateLimit                                                                   | Global unique osuId; hashed credentials/state, expiry and durable rate windows                                                               |
-| Permission, Role, UserRole, RolePermission                                                             | Global permission catalog; local role names unique per tenant, composite membership ownership; legacy system keys retained                   |
-| PlatformSettings, PlatformAsset                                                                        | Singleton main, one-time bootstrap/root/featured settings; globally owned assets                                                             |
-| Tournament, TournamentSettings                                                                         | Unique slug, lifecycle/timezone/version/number counter; one-to-one branding/navigation/scoring/rules                                         |
-| Page, PageRevision, ContentBlock                                                                       | Unique tenant/slug, independent draft/public pointers, saved immutable revisions, ordered typed JSON blocks                                  |
-| TournamentStage, ModCategory                                                                           | Tenant slug/type/rules/policy/banner/progression; configurable acronym/color/priority                                                        |
-| Mappool, MappoolRevision, MappoolSlot, Beatmap                                                         | Pool per stage, revision pointers, unique slot/name and position per revision; global metadata cache plus frozen slot values                 |
-| PoolPlan, PoolCandidate, PoolSkillset, PoolCandidateTag, PoolReview, PoolArtistWarning                 | Plan/stage; unique candidate beatmap/tenant, scoped skillsets/tags, candidate/reviewer uniqueness and normalized artist warnings             |
-| Participant, Team, TeamMember                                                                          | Global numeric player identity; tenant registration/approval/seeding/source; one roster ownership per tenant/player, ordered members         |
-| StaffMember, StaffCategory, StaffAssignment                                                            | Tenant public profile/visibility and many-to-many positions; no access grant                                                                 |
-| MediaAsset, AuditLog                                                                                   | Opaque unique storage keys/metadata; scoped/platform actor/action/entity/details/time                                                        |
-| Match, MatchAssignment                                                                                 | Stable local number/source code; stage/pool/team references, frozen participants/rules, state/version/score/roll/timer/lobby, assigned users |
-| MatchMapAction, MatchMapResult, MatchPlayerScore                                                       | Unique match/sequence, result/action, result/player; void/correction and score provenance                                                    |
-| MatchEvent, MatchResultRevision, MultiplayerGame                                                       | Unique match/version history and unique match/MP/game evidence                                                                               |
-| QualifierLobby, QualifierEntry, QualifierAssignment, QualifierScore, QualifierEvent, QualifierStanding | Sessions/snapshots, ordered entrants/staff, unique lobby/player/slot/run, versioned events and stage/version standings                       |
-| Bracket, BracketRound, BracketNode, BracketSlot, BracketEntry                                          | Native paths, ordered stage-mapped rounds, unique node keys/match bindings/numbers, source routes and path-specific seed/eligibility         |
-| RefereeImport, IrcLobbyRequest, TournamentTransfer                                                     | Expiring parsed previews, durable uncertain room creation, archive upload/cleanup journal                                                    |
+| Models                                                                                                                | Identity, Relationships And Purpose                                                                                                                      |
+| --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User, Session, OAuthState, RateLimit                                                                                  | Global unique osuId; hashed credentials/state, expiry and durable rate windows                                                                           |
+| Permission, Role, UserRole, RolePermission                                                                            | Global permission catalog; local role names unique per tenant, composite membership ownership; legacy system keys retained                               |
+| PlatformSettings, PlatformAsset                                                                                       | Singleton main, one-time bootstrap/root/featured settings; globally owned assets                                                                         |
+| Tournament, TournamentSettings                                                                                        | Unique slug, lifecycle/timezone/version/number counter; one-to-one branding/navigation/scoring/rules                                                     |
+| Page, PageRevision, ContentBlock                                                                                      | Unique tenant/slug, independent draft/public pointers, saved immutable revisions, ordered typed JSON blocks                                              |
+| TournamentStage, ModCategory                                                                                          | Tenant slug/type/rules/policy/banner/progression; configurable acronym/color/priority                                                                    |
+| Mappool, MappoolRevision, MappoolSlot, Beatmap                                                                        | Pool per stage, revision pointers, unique slot/name and position per revision; global metadata cache plus frozen slot values                             |
+| PoolPlan, PoolCandidate, PoolSkillset, PoolCandidateTag, PoolReview, PoolArtistWarning                                | Plan/stage; unique candidate beatmap/tenant, scoped skillsets/tags, candidate/reviewer uniqueness and normalized artist warnings                         |
+| Participant, Team, TeamMember                                                                                         | Global numeric player identity; tenant registration/approval/seeding/source; one roster ownership per tenant/player, ordered members                     |
+| StaffMember, StaffCategory, StaffAssignment                                                                           | Tenant public profile/visibility and many-to-many positions; no access grant                                                                             |
+| MediaAsset, AuditLog                                                                                                  | Opaque unique storage keys/metadata; scoped/platform actor/action/entity/details/time                                                                    |
+| Match, MatchAssignment                                                                                                | Stable local number/source code; stage/pool/team references, frozen participants/rules, state/version/score/roll/timer/lobby, assigned users             |
+| MatchMapAction, MatchMapResult, MatchPlayerScore                                                                      | Unique match/sequence, result/action, result/player; void/correction and score provenance                                                                |
+| MatchEvent, MatchResultRevision, MultiplayerGame                                                                      | Unique match/version history and unique match/MP/game evidence                                                                                           |
+| QualifierLobby, QualifierEntry, QualifierAssignment, QualifierScore, QualifierGame, QualifierEvent, QualifierStanding | Sessions/snapshots/booking capacity, ordered entrants/staff, unique lobby/player/slot/run and source games, versioned events and stage/version standings |
+| Bracket, BracketRound, BracketNode, BracketSlot, BracketEntry                                                         | Native paths, ordered stage-mapped rounds, unique node keys/match bindings/numbers, source routes and path-specific seed/eligibility                     |
+| RefereeImport, IrcLobbyRequest, TournamentTransfer                                                                    | Expiring parsed previews, durable uncertain room creation, archive upload/cleanup journal                                                                |
 
 IDs are normally CUIDs; numeric osu!/beatmap identities stay stable. JSON represents
 validated configuration/provider values and frozen historical witnesses, not a
@@ -582,8 +584,33 @@ maps to reviewed existing stages while keeping original bracket/round labels.
 Qualifiers Ref/Schedule layouts are detected but unsupported for performance import;
 native sessions and archives are separate supported routes.
 
-`multiplayer.ts`/`qualifier-multiplayer.ts` preview official game evidence and capture
-provenance; evidence is not automatically an official result or duplicate run.
+`multiplayer.ts`/`qualifier-multiplayer.ts` paginate and parse official game evidence.
+`qualifier-capture-service.ts` owns live ingestion and the shared API/import writer:
+root advisory lock, refreshed authorization, stage row lock, session version,
+frozen-roster conversion and per-score/event/audit provenance. QualifierGame retains
+original provider evidence plus the accepted proposal or explicit exclusion. Its
+session/MP/game key makes re-import duplicate-safe; stage/player/game checks prevent
+reusing a performance in another session/run. Accepted games preserve later manual
+corrections. Missing scores never become zero and pending receipts block finalization.
+
+Qualifier ref pages poll score synchronization every 20 seconds while visible and
+running; the persistent checkpoint resumes bounded six-page API requests until
+history is complete. No partial history is scored. Referee-selected warmup events,
+unrelated maps and pre-start games are excluded; other ambiguities remain reviewable.
+`qualifier-import-service.ts` uses the same parser/writer for stage-selected bulk
+links. Existing RefereeImport caches bounded, actor-owned 24-hour previews with a
+QUALIFIER_MP_V1 discriminator, source checkpoints and stage/roster/session witness.
+Bulk preview bounds the total page budget, persists successful sources even if
+another source fails, and resumes remaining sources without re-fetching completed
+histories. No partially loaded batch can apply scores.
+Workbook readers explicitly reject that discriminator. Apply rechecks the witness
+under the root/stage locks before creating external sessions/evidence; individual
+game transactions use reviewed versions and report partial failures for resumable
+review. External starts carry explicit provenance, without inventing website staff
+or IRC execution. Configured runs follow complete pool cycles; retries require
+explicit review. Exclusions and corrections retain original evidence and audit.
+
+Evidence is not automatically an official result or duplicate run.
 Organizer imports use `POST /api/admin/match-results` for impact/source preview and
 `match.result.import` for application. They use the official
 [Get Match API](https://osu.ppy.sh/docs/#get-match), with legacy score representation
@@ -761,8 +788,14 @@ addref needs persisted creation proof; rate/queue/message/submission-ID bounds r
 Creation differs: persist unresolved IrcLobbyRequest before !mp make to BanchoBot,
 parse real official room URL, join and require explicit match linking. Unknown
 outcomes survive restarts and block blind retries until reviewed. Creating/linking
-a lobby never creates a website match. Qualifiers copy setup commands, not this
-execution panel; lazer is not legacy Bancho support.
+a lobby never creates a website match. Tickets/RPC/gateway identity optionally name
+a qualifier context; omitted context remains a normal match for compatibility.
+IrcLobbyRequest has exactly one match or qualifier owner, with composite tenant FKs.
+Qualifiers reuse this panel and transport, including uncertain-creation guards,
+without dummy matches or an additional Bancho client. Lazer is not legacy Bancho support.
+Commands follow the [official tournament management reference](https://osu.ppy.sh/wiki/en/osu!_tournament_client/osu!tourney/Tournament_management_commands),
+including permanent user IDs as command targets. Delivery status still distinguishes
+sending from actual provider execution.
 
 Safe logs: `./portal compose logs --tail=100 irc-gateway`. Gateway/web fixes need
 rebuild/recreation (`./portal install`); start alone reuses images. Strict mock TCP
@@ -986,8 +1019,24 @@ content, media, metadata, lists, brackets, standings and featured selection. Arc
 flags and saved revisions are preserved. Public CMS queries select visible blocks;
 media inference uses the same visible blocks, and bracket projections omit private
 entrants. Editing APIs use requireTournamentActor with an explicit proxy-derived
-slug. Public featured-root fallback does not select an editing context. Registration
-redirects reuse the pure scopedHref helper from tournament-paths.ts. New tournament
+slug. Public featured-root fallback does not select an editing context. Native
+`/register` pages and qualifier results use scopedHref from tournament-paths.ts.
+`registration-service.ts` owns private registration policy/answers and captain
+reservations. Existing OAuth/session identities are revalidated under the root lock;
+policy hashes and team/session versions reject stale forms. Profiles and mode ranks
+are fetched outside transactions through the existing osu! API wrapper, then
+identity/eligibility are checked before the shared team writer. Rank/country evidence
+does not claim to verify unavailable restricted-account flags. No role is created.
+New entries auto-approve; updates retain existing status. Public Team projections
+include rejection reasons and exclude custom answers, contact fields and admin notes.
+Captain assignment uses a server-only ownership capability in the existing qualifier
+move/removal helpers, not an impersonated organizer permission. Stage uniqueness,
+capacity, approved status, exact-time resource conflicts and history checks apply
+equally to organizer and captain entrypoints. Migration
+`20261030010000_qualifier_registration_workflows` is additive; normal installation
+applies it through migrate deploy. Archives retain new configuration/provenance and
+default absent game tables/booking fields for older version-1 archives. Operational
+IRC requests and import jobs remain excluded. New tournament
 page containers have no saved revision until the first successful save.
 
 settings-service.ts owns settings patch application within the dispatcher's locked,
@@ -1207,6 +1256,16 @@ Visual harnesses guard platform_visual_test; current profile/rollout/E2E superse
 rejected pilot compositions. Real artwork is private QA input, never committed.
 IRC E2E uses IRC_ENABLED, random test-only secret >=64 chars and mock Bancho, never
 real passwords. [DESIGN.md](DESIGN.md#verification) defines rendered acceptance.
+
+Qualifier workflow E2E also accepts an explicit E2E_OSU_FIXTURE_DIR containing
+synthetic user/match JSON. Playwright preloads tests/helpers/mock-osu.mjs only into
+that test server; the preload refuses any database except tournament_platform_test.
+It substitutes the upstream fetch boundary while exercising the real registration,
+booking, capture and import HTTP routes, session checks and PostgreSQL writers.
+Application runtime has no mock-provider or fake-login endpoint. Missing fixtures
+fail rather than accessing live osu! data. Use IRC_ENABLED=true with a fresh
+test-only IRC_GATEWAY_SECRET to exercise the shared mock-Bancho gateway as well.
+These checks establish synthetic workflow behavior, not live OAuth/API/Bancho verification.
 
 CI checks secrets/history, format/lint/types/Prisma, unit/DB/browser/build, dependency
 audit, source audit, fresh Docker/storage, overlays, notices and container scans.

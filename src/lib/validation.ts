@@ -14,6 +14,7 @@ import { poolingActionOptions, poolPlanSchema } from './pooling-validation';
 import { stageWorkflowActionSchemas } from './stage-workflows-validation';
 import { matchesSchedulingActionOptions } from './matches-bulk-validation';
 import { staffBulkActionSchema } from './staff-bulk-validation';
+import { registrationPolicySchema } from './registration-policy';
 export const id = z.string().min(1).max(100);
 export const label = z.string().trim().min(1).max(120);
 export const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -58,6 +59,7 @@ export const slotSchema = z.object({
 });
 const base = z.object({ type: z.string() });
 export const settingsFieldsSchema = z.object({
+  registrationPolicy: registrationPolicySchema.nullable().optional(),
   gameplayScoring: gameplayScoringSchema.nullable().optional(),
   name: label,
   acronym: z.string().trim().min(1).max(20),

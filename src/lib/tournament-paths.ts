@@ -17,7 +17,9 @@ export function scopedHref(
     return href;
   if (/^\/admin(?:\/|$)/.test(href)) return href.replace(/^\/admin/, scope.adminBase);
   if (
-    /^\/(?:mappools|teams|staff|rules|matches|schedule|brackets|register)(?:\/|\?|$)/.test(href) ||
+    /^\/(?:mappools|teams|staff|rules|matches|schedule|brackets|register|qualifiers)(?:\/|\?|$)/.test(
+      href,
+    ) ||
     href === '/' ||
     href.startsWith('/?')
   )

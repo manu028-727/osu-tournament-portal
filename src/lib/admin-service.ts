@@ -197,6 +197,10 @@ export async function executeAction(
         case 'qualifier.batch.create':
         case 'qualifier.bulk.schedule':
         case 'qualifier.participants.move':
+        case 'qualifier.participants.remove':
+        case 'qualifier.booking':
+        case 'qualifier.map':
+        case 'qualifier.scores':
         case 'qualifier.schedule':
         case 'qualifier.lobby':
         case 'qualifier.score':

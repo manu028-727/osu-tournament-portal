@@ -334,6 +334,7 @@ export function createGateway(options: {
             ...room,
             requestId: pending.requestId,
             matchId: pending.identity.matchId,
+            kind: pending.identity.kind,
             tournamentId: pending.identity.tournamentId,
           };
           s.lobbies.push(lobby);

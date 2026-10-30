@@ -20,9 +20,11 @@ import {
   assertQualifierAvailability,
   assertQualifierCapacity,
   qualifierNeverStarted,
+  removeQualifierParticipants,
 } from './qualifiers-bulk';
 const json = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value));
 const include = {
+  games: true,
   stage: { select: { id: true, name: true } },
   poolRevision: { include: { slots: { orderBy: { position: 'asc' as const } } } },
   assignments: { include: { user: { select: { id: true, osuId: true, username: true } } } },
@@ -40,13 +42,19 @@ export function qualifierPermission(a: QualifierAction): PermissionKey {
   if (
     a.type === 'qualifier.create' ||
     a.type === 'qualifier.batch.create' ||
-    a.type === 'qualifier.participants.move' ||
+    a.type === 'qualifier.booking' ||
     (a.type === 'qualifier.status' && ['CONFIRM', 'REOPEN', 'CANCEL'].includes(a.command))
   )
     return 'matches.manage';
+  if (a.type === 'qualifier.participants.move' || a.type === 'qualifier.participants.remove')
+    return 'matches.manage_assigned';
   if (a.type === 'qualifier.schedule' || a.type === 'qualifier.bulk.schedule')
     return 'matches.assign_referees';
-  if (a.type === 'qualifier.score' || a.type === 'qualifier.score.remove')
+  if (
+    a.type === 'qualifier.score' ||
+    a.type === 'qualifier.scores' ||
+    a.type === 'qualifier.score.remove'
+  )
     return 'matches.update_scores';
   if (a.type === 'qualifier.status' && a.command === 'SUBMIT') return 'matches.submit_results';
   return 'matches.manage_assigned';
@@ -117,13 +125,29 @@ export async function qualifierData(actor: Actor, url: URL) {
     };
   }
   return {
+    entrantOptions:
+      can(actor, 'matches.manage') ||
+      ((can(actor, 'matches.manage_assigned') || can(actor, 'matches.manage_all')) &&
+        records.some((record) => matchAccess(actor, record).operate))
+        ? await db.team.findMany({
+            where: { status: 'APPROVED' },
+            select: { id: true, name: true, format: true },
+            orderBy: { name: 'asc' },
+          })
+        : undefined,
     lobbies: records.map((lobby) => ({
       ...lobby,
+      ...(!matchAccess(actor, lobby).score &&
+      !can(actor, 'matches.view_history') &&
+      !can(actor, 'matches.manage')
+        ? { games: [] }
+        : {}),
       rules: matchRulesSchema.parse(lobby.rules),
       policy: qualifierPolicySchema.parse(
         lobby.policy || { requiredPlayers: matchRulesSchema.parse(lobby.rules).teamSize },
       ),
       access: matchAccess(actor, lobby),
+      selection: lobby.events.find((event) => event.kind === 'qualifier.map')?.data || null,
       canTransfer: qualifierNeverStarted(lobby),
       ...(!can(actor, 'matches.view_history') && !can(actor, 'matches.manage')
         ? { events: [] }
@@ -136,6 +160,8 @@ export async function applyQualifierAction(
   tx: Prisma.TransactionClient,
   actor: Actor,
   a: QualifierAction,
+  provenance?: { source: 'OSU_API' | 'IMPORT'; gameId: string; verified: boolean },
+  external?: { multiplayerId: number },
 ): Promise<{
   id: string;
   version?: number;
@@ -153,6 +179,21 @@ export async function applyQualifierAction(
     return applyQualifierBulkSchedule(tx, actor, tournamentId, a);
   if (a.type === 'qualifier.participants.move')
     return applyQualifierParticipantMove(tx, actor, tournamentId, a);
+  if (a.type === 'qualifier.participants.remove')
+    return removeQualifierParticipants(tx, actor, tournamentId, a);
+  if (a.type === 'qualifier.scores') {
+    let version = a.baseVersion;
+    for (const score of a.scores) {
+      const result = await applyQualifierAction(tx, actor, {
+        ...a,
+        ...score,
+        type: 'qualifier.score',
+        baseVersion: version,
+      });
+      version = result.version!;
+    }
+    return { id: a.id, version, updated: a.scores.length };
+  }
   if (a.type === 'qualifier.batch.create') {
     const lobbies = [];
     for (const session of a.sessions) {
@@ -206,7 +247,10 @@ export async function applyQualifierAction(
       include: teamInclude,
     });
     if (teams.length !== a.teamIds.length) throw new AppError('Select approved entrants.');
-    const solo = teams.length > 0 && teams.every((team) => team.format === 'INDIVIDUAL');
+    const tournament = await tx.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
+    const solo = teams.length
+      ? teams.every((team) => team.format === 'INDIVIDUAL')
+      : tournament.format === 'SOLO';
     if (
       (!solo && teams.some((team) => team.format === 'INDIVIDUAL')) ||
       teams.length > (solo ? 16 : 8)
@@ -217,7 +261,6 @@ export async function applyQualifierAction(
     const settings = await tx.tournamentSettings.findUniqueOrThrow({
       where: { tournamentId },
     });
-    const tournament = await tx.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
     const rules = matchRulesSchema.parse({
       ...inheritedRules(stage.matchRules || settings.matchRules, settings.gameplayScoring),
       gameMode: tournament.gameMode,
@@ -241,7 +284,7 @@ export async function applyQualifierAction(
     const participants = a.teamIds.map((id) =>
       rosterSnapshot(teams.find((team) => team.id === id)!),
     );
-    assertQualifierCapacity(participants, policy);
+    assertQualifierCapacity(participants, policy, a.capacity);
     await assertQualifierAvailability(tx, tournamentId, [
       {
         id: '',
@@ -255,6 +298,9 @@ export async function applyQualifierAction(
     return tx.qualifierLobby.create({
       data: {
         code: a.code,
+        capacity: a.capacity ?? 16,
+        bookingOpen: a.bookingOpen ?? true,
+        bookingClosesAt: a.bookingClosesAt ? new Date(a.bookingClosesAt) : null,
         stageId: stage.id,
         poolRevisionId: revision.id,
         rules: json(rules),
@@ -285,7 +331,21 @@ export async function applyQualifierAction(
   const participants = lobby.participants as unknown as MatchParticipants['A'][];
   let changes: Prisma.QualifierLobbyUncheckedUpdateManyInput = {};
   let eventData: unknown = a;
-  if (a.type === 'qualifier.schedule') {
+  if (a.type === 'qualifier.map') {
+    if (!['SCHEDULED', 'IN_PROGRESS'].includes(lobby.status))
+      throw new AppError('Reopen this lobby before editing.', 409);
+    if (a.run > policy.runs || !lobby.poolRevision.slots.some((slot) => slot.name === a.slotName))
+      throw new AppError('Select a configured qualifier map and run.');
+  } else if (a.type === 'qualifier.booking') {
+    if (!qualifierNeverStarted(lobby))
+      throw new AppError('Booking settings are locked after a session starts.', 409);
+    assertQualifierCapacity(participants, policy, a.capacity);
+    changes = {
+      capacity: a.capacity,
+      bookingOpen: a.bookingOpen,
+      bookingClosesAt: a.bookingClosesAt ? new Date(a.bookingClosesAt) : null,
+    };
+  } else if (a.type === 'qualifier.schedule') {
     if (lobby.status !== 'SCHEDULED')
       throw new AppError('Only scheduled qualifier lobbies can be rescheduled.', 409);
     const date = a.scheduledAt ? new Date(a.scheduledAt) : null;
@@ -313,6 +373,12 @@ export async function applyQualifierAction(
     if (!['SCHEDULED', 'IN_PROGRESS'].includes(lobby.status))
       throw new AppError('Reopen this lobby before editing.', 409);
     changes.lobbyUrl = a.lobbyUrl ? lobbyInfo(a.lobbyUrl, null).lobbyUrl : '';
+    if (changes.lobbyUrl !== lobby.lobbyUrl)
+      Object.assign(changes, {
+        multiplayerSync: Prisma.DbNull,
+        multiplayerSyncedAt: null,
+        multiplayerError: null,
+      });
   } else if (a.type === 'qualifier.score.remove') {
     if (lobby.status !== 'IN_PROGRESS')
       throw new AppError('Reopen this lobby before correcting scores.', 409);
@@ -364,9 +430,9 @@ export async function applyQualifierAction(
       adjusted: convertedScore(rules, a.raw, a.mods, slot.name).adjusted,
       actualScoring: historicalScoring(rules),
       representation: a.representation,
-      source: 'MANUAL',
-      gameId: null,
-      verified: true,
+      source: provenance?.source || 'MANUAL',
+      gameId: provenance?.gameId || null,
+      verified: provenance?.verified ?? true,
     };
     const after = await tx.qualifierScore.upsert({
       where,
@@ -384,12 +450,14 @@ export async function applyQualifierAction(
     }[a.command];
     if (!transition.includes(lobby.status))
       throw new AppError('This status transition is not available.', 409);
-    if (a.command === 'START' && (!lobby.scheduledAt || !lobby.assignments.length))
+    if (external && !can(actor, 'matches.manage'))
+      throw new AppError('Only organizers may record externally refereed sessions.', 403);
+    if (a.command === 'START' && (!lobby.scheduledAt || (!lobby.assignments.length && !external)))
       throw new AppError('Set a schedule and referee before starting.');
     if (a.command === 'START') {
       if (!participants.length)
         throw new AppError('Assign entrants before starting this qualifier session.');
-      assertQualifierCapacity(participants, policy);
+      assertQualifierCapacity(participants, policy, lobby.capacity);
       const settings = await tx.tournamentSettings.findUniqueOrThrow({ where: { tournamentId } });
       if (!historicalScoring(rules) || historicalScoring(rules) !== settings.gameplayScoring)
         throw new AppError(
@@ -398,6 +466,14 @@ export async function applyQualifierAction(
         );
     }
     if (a.command === 'SUBMIT' || a.command === 'CONFIRM') {
+      if (
+        lobby.games.some((game) => game.status === 'PENDING') ||
+        (lobby.multiplayerSync as { complete?: boolean } | null)?.complete === false
+      )
+        throw new AppError(
+          'Review pending multiplayer games and finish loading history before submitting.',
+          409,
+        );
       if (!lobby.lobbyUrl) throw new AppError('Record the multiplayer link before submitting.');
       for (const run of Array.from({ length: policy.runs }, (_, i) => i + 1))
         for (const slot of lobby.poolRevision.slots)
@@ -433,6 +509,16 @@ export async function applyQualifierAction(
             }
           }
     }
+    if (
+      a.command === 'CANCEL' &&
+      (await tx.ircLobbyRequest.findFirst({
+        where: { qualifierLobbyId: lobby.id, status: { in: ['PENDING', 'UNKNOWN'] } },
+      }))
+    )
+      throw new AppError(
+        'Resolve the outstanding IRC lobby creation request before cancelling.',
+        409,
+      );
     changes.status = {
       START: 'IN_PROGRESS',
       SUBMIT: 'AWAITING_CONFIRMATION',
@@ -442,6 +528,7 @@ export async function applyQualifierAction(
     }[a.command] as 'IN_PROGRESS';
     eventData = {
       ...a,
+      ...(external ? { external } : {}),
       before: { status: lobby.status },
       scores: lobby.scores,
       participants: lobby.participants,

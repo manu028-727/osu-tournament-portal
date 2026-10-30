@@ -1,4 +1,4 @@
-import type { Prisma } from '@/generated/prisma/client';
+import { Prisma } from '@/generated/prisma/client';
 import type { AdminAction } from './validation';
 import { AppError, assertPermission, type Actor } from './permissions';
 import { inheritedRules } from './gameplay-scoring';
@@ -133,7 +133,13 @@ export async function applySettingsAction(
       startsAt,
       endsAt,
       version: { increment: 1 },
-      settings: { update: settings },
+      settings: {
+        update: {
+          ...settings,
+          registrationPolicy:
+            settings.registrationPolicy === null ? Prisma.DbNull : settings.registrationPolicy,
+        },
+      },
     },
   });
 }

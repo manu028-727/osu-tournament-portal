@@ -8,6 +8,9 @@ const ids = z
 const notes = z.string().max(4000).default('');
 const base = z.object({ id, baseVersion: z.number().int().positive() });
 const createFields = z.object({
+  capacity: z.number().int().min(1).max(16).optional(),
+  bookingOpen: z.boolean().optional(),
+  bookingClosesAt: z.iso.datetime().nullable().optional(),
   code: z
     .string()
     .trim()
@@ -27,6 +30,46 @@ const selectedLobbies = z
     'Select each lobby only once.',
   );
 export const qualifierActionOptions = [
+  base.extend({
+    type: z.literal('qualifier.map'),
+    slotName: z.string().min(1).max(20),
+    run: z.number().int().min(1).max(2),
+    warmup: z.boolean().default(false),
+    reason: z.string().trim().max(2000).default('Referee map selection'),
+  }),
+  base.extend({
+    type: z.literal('qualifier.scores'),
+    slotName: z.string().min(1).max(20),
+    run: z.number().int().min(1).max(2),
+    representation: z.enum(['LEGACY', 'STANDARDIZED']).default('LEGACY'),
+    scores: z
+      .array(
+        z.object({
+          osuId: z.number().int().positive().max(2147483647),
+          raw: z.number().min(0).max(1_000_000_000_000),
+          mods: z.array(z.enum(MODS)).max(10),
+        }),
+      )
+      .min(1)
+      .max(16)
+      .refine(
+        (scores) => new Set(scores.map((score) => score.osuId)).size === scores.length,
+        'Duplicate player scores.',
+      ),
+    reason: z.string().trim().min(3).max(2000).default('Record shared qualifier map scores'),
+  }),
+  base.extend({
+    type: z.literal('qualifier.booking'),
+    capacity: z.number().int().min(1).max(16),
+    bookingOpen: z.boolean(),
+    bookingClosesAt: z.iso.datetime().nullable(),
+  }),
+  base.extend({
+    type: z.literal('qualifier.participants.remove'),
+    teamIds: ids.min(1),
+    override: z.boolean().default(false),
+    reason: z.string().trim().min(3).max(2000),
+  }),
   createFields.extend({
     type: z.literal('qualifier.create'),
   }),
@@ -75,6 +118,8 @@ export const qualifierActionOptions = [
       toLobbyId: id,
       baseVersion: z.number().int().positive(),
       teamIds: ids.min(1),
+      override: z.boolean().optional(),
+      reason: z.string().trim().max(2000).optional(),
     })
     .superRefine((action, ctx) => {
       if (action.fromLobbyId === action.toLobbyId)

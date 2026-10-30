@@ -18,6 +18,8 @@ import { can, type Actor } from '@/lib/permissions';
 import { DEFAULT_COPY, siteCopy } from '@/lib/copy';
 import { settingsFieldsSchema } from '@/lib/validation';
 import { SCORING_LABELS, SCORING_DESCRIPTIONS, type GameplayScoring } from '@/lib/gameplay-scoring';
+import { registrationPolicySchema } from '@/lib/registration-policy';
+import { RegistrationSettings } from './registration-settings';
 import {
   action,
   Field,
@@ -66,7 +68,12 @@ export function SettingsEditor({
   useEffect(() => {
     if (data) {
       const { settings, ...t } = data;
-      setForm({ ...t, ...settings, copy: siteCopy(settings.copy) });
+      setForm({
+        ...t,
+        ...settings,
+        copy: siteCopy(settings.copy),
+        registrationPolicy: registrationPolicySchema.parse(settings.registrationPolicy || {}),
+      });
       setDirty(false);
     }
   }, [data]);
@@ -109,6 +116,9 @@ export function SettingsEditor({
               ...data,
               ...data.settings,
               copy: siteCopy(data.settings.copy),
+              registrationPolicy: registrationPolicySchema.parse(
+                data.settings.registrationPolicy || {},
+              ),
             });
             const patch = Object.fromEntries(
               Object.entries(settingsFieldsSchema.parse(form)).filter(
@@ -441,6 +451,10 @@ export function SettingsEditor({
           )}
           {area === 'advanced' && (
             <>
+              <RegistrationSettings
+                value={form.registrationPolicy || registrationPolicySchema.parse({})}
+                onChange={(value) => update('registrationPolicy', value)}
+              />
               <div className="grid-fields">
                 <Field
                   label={tr('Game mode')}

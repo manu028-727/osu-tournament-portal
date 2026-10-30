@@ -289,6 +289,25 @@ not decorative. Responsive layout keeps current action/maps reachable. Show clea
 whether editing assigned match or observing read-only; polls must not overwrite
 unsaved work. Copy controls and command dispatch are not execution confirmations.
 
+Qualifier refereeing uses a shared map/run board: all entrants are visible together,
+with inline individual scores, per-team completeness and totals. Missing scores are
+blank; observed zero remains zero. Full-pool selectors, warmup state and Next map
+sit beside the board; Best-of, picks/bans and team-versus-team controls do not appear.
+Keep the existing Bancho panel, commands and delivery language consistent with normal
+Referee Mode. Empty sessions provide contextual entrant assignment and a disabled
+start action. Active assignment overrides require a reason and preserve scored entrants.
+
+Registration and qualifiers is reachable from tournament navigation and Teams.
+Captains see their own roster and existing session cards with timezone, deadline,
+capacity and reserve/move/cancel actions. Private answers and administrative notes
+never appear in public Teams; rejected entries show the organizer's public reason.
+Organizer settings expose deadlines, limits, eligibility and custom fields together.
+Qualifier Results opens bulk multiplayer review in place, after selecting the stage.
+Each source shows warmup count, target session, roster ambiguities and expandable
+individual/team scores. Changed decisions require a refreshed preview; exclusions
+and score replacements are explicit. Automatic website sync does not require an
+approval dialog. Preserve edits while polling, including the draft's original version.
+
 ## Accessibility And States
 
 Use semantic headings/forms, visible labels/focus, aria-current for navigation,

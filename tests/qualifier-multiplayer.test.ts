@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { qualifierGameProposals } from '../src/lib/qualifier-multiplayer';
+import { qualifierGameProposals, qualifierCapturePlan } from '../src/lib/qualifier-multiplayer';
+import { qualifierProgress } from '../src/lib/qualifier-progress';
+import { qualifierPolicySchema } from '../src/lib/qualifier-policy';
 import { inheritedRules } from '../src/lib/gameplay-scoring';
 import type { QualifierView } from '../src/lib/qualifiers-types';
 const lobby = {
@@ -57,5 +59,71 @@ describe('reviewed qualifier multiplayer capture', () => {
     expect(
       qualifierGameProposals([{ game: { ...game, scores: [] } }], lobby).rejected,
     ).toHaveLength(1);
+  });
+  it('counts the first game by default and excludes only the requested number of warmups', () => {
+    expect(qualifierGameProposals([{ game }], lobby, { historical: true }).proposals).toHaveLength(
+      1,
+    );
+    expect(
+      qualifierGameProposals([{ game }], lobby, { historical: true, warmups: 1 }).proposals,
+    ).toHaveLength(0);
+    const scores = [...game.scores, { user_id: 99, score: 70, mods: [] }];
+    expect(
+      qualifierGameProposals([{ game: { ...game, scores } }], lobby, { excludePlayers: [99] })
+        .proposals[0].players,
+    ).toHaveLength(1);
+  });
+  it('tracks the whole shared pool for every team and leaves missing scores missing', () => {
+    const session = {
+      ...lobby,
+      policy: qualifierPolicySchema.parse({ requiredPlayers: 2, runs: 2 }),
+      participants: [
+        { id: 'a', members: [{ osuId: 10 }, { osuId: 11 }] },
+        { id: 'b', members: [{ osuId: 12 }, { osuId: 13 }] },
+      ],
+      scores: [
+        { osuId: 10, slotName: 'NM1', run: 1, adjusted: 0 },
+        { osuId: 11, slotName: 'NM1', run: 1, adjusted: 100 },
+        { osuId: 12, slotName: 'NM1', run: 1, adjusted: 200 },
+      ],
+    } as unknown as QualifierView;
+    expect(
+      qualifierProgress({ ...session, participants: [] }).every((item) => !item.complete),
+    ).toBe(true);
+    const progress = qualifierProgress(session);
+    expect(progress).toHaveLength(2);
+    expect(progress[0].teams.map((team) => [team.complete, team.value])).toEqual([
+      [true, 100],
+      [false, null],
+    ]);
+    expect(progress[1].complete).toBe(false);
+  });
+  it('infers complete runs across rooms while flagging retries and excess performances', () => {
+    const session = {
+      ...lobby,
+      policy: qualifierPolicySchema.parse({ runs: 2 }),
+      games: [1, 2, 3].map((id, index) => ({
+        id: `row${id}`,
+        multiplayerId: id === 1 ? 20 : 21,
+        gameId: String(id),
+        evidence: { game: { ...game, id, start_time: `2026-10-21T12:0${index + 1}:00Z` } },
+        status: 'PENDING',
+        run: null,
+      })),
+    } as unknown as QualifierView;
+    const plan = qualifierCapturePlan(session);
+    expect(plan.games.map((row) => row.run)).toEqual([1, 2, null]);
+    expect(plan.games[2].issue).toContain('exceeds');
+    const retry = qualifierCapturePlan({
+      ...session,
+      poolRevision: {
+        ...session.poolRevision,
+        slots: [
+          ...session.poolRevision.slots,
+          { ...session.poolRevision.slots[0], name: 'NM2', beatmapId: 124 },
+        ],
+      },
+    });
+    expect(retry.games[1].issue).toContain('retry');
   });
 });

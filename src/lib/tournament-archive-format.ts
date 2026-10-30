@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import type { Readable } from 'node:stream';
 import { AppError } from './permissions';
 import { poolPlanSchema } from './pooling-validation';
+import { registrationPolicySchema } from './registration-policy';
 
 export const ARCHIVE_FORMAT = 'osu-tournament-portal';
 export const ARCHIVE_VERSION = 1;
@@ -34,7 +35,7 @@ export const ARCHIVE_TABLES = {
   ),
   settings: def(
     'tournamentSettings',
-    'tournamentId:s gameplayScoring:s? logo:s favicon:s banner:s primaryColor:s accentColor:s registrationUrl:s socialLinks:j importantDates:j navigation:j footer:s copy:j matchRules:j updatedAt:d',
+    'tournamentId:s gameplayScoring:s? registrationPolicy:j? logo:s favicon:s banner:s primaryColor:s accentColor:s registrationUrl:s socialLinks:j importantDates:j navigation:j footer:s copy:j matchRules:j updatedAt:d',
     { tournamentId: 'tournament' },
   ),
   media: def(
@@ -141,7 +142,7 @@ export const ARCHIVE_TABLES = {
   participants: def('participant', 'osuId:i username:s avatarUrl:s country:s? updatedAt:d'),
   teams: def(
     'team',
-    'id:s tournamentId:s name:s slug:s description:s format:s logoImageId:s? seed:i? rankSum:i? qualifierPlayed:b? sourceKey:s? position:i status:s published:b version:i createdAt:d updatedAt:d',
+    'id:s tournamentId:s name:s slug:s description:s format:s logoImageId:s? seed:i? rankSum:i? qualifierPlayed:b? sourceKey:s? position:i status:s published:b version:i rejectionReason:s adminNotes:s registrationAnswers:j? createdAt:d updatedAt:d',
     { tournamentId: 'tournament', logoImageId: 'media' },
   ),
   rosters: def(
@@ -198,7 +199,7 @@ export const ARCHIVE_TABLES = {
   ),
   qualifierLobbies: def(
     'qualifierLobby',
-    'id:s tournamentId:s code:s stageId:s poolRevisionId:s rules:j policy:j? gameplayScoring:s? participants:j scheduledAt:d? status:s lobbyUrl:s notes:s version:i createdAt:d updatedAt:d',
+    'id:s tournamentId:s code:s stageId:s poolRevisionId:s rules:j policy:j? gameplayScoring:s? participants:j scheduledAt:d? status:s lobbyUrl:s notes:s version:i capacity:i bookingOpen:b bookingClosesAt:d? multiplayerSyncedAt:d? multiplayerError:s? multiplayerSync:j? createdAt:d updatedAt:d',
     { tournamentId: 'tournament', stageId: 'stages', poolRevisionId: 'poolRevisions' },
   ),
   qualifierEntries: def('qualifierEntry', 'tournamentId:s lobbyId:s teamId:s position:i', {
@@ -216,6 +217,12 @@ export const ARCHIVE_TABLES = {
     'qualifierEvent',
     'id:s lobbyId:s actorId:s? version:i kind:s reason:s data:j createdAt:d',
     { lobbyId: 'qualifierLobbies', actorId: 'identities' },
+    ['lobby'],
+  ),
+  qualifierGames: def(
+    'qualifierGame',
+    'id:s lobbyId:s multiplayerId:i gameId:s run:i? slotName:s? startedAt:d? evidence:j status:s reason:s version:i createdAt:d updatedAt:d',
+    { lobbyId: 'qualifierLobbies' },
     ['lobby'],
   ),
   audits: def(
@@ -339,6 +346,7 @@ export const archiveInsertionOrder: ArchiveTable[] = [
   'qualifierEntries',
   'qualifierScores',
   'qualifierEvents',
+  'qualifierGames',
   'qualifierStandings',
   'brackets',
   'bracketRounds',
@@ -425,6 +433,12 @@ function fieldSchema(table: ArchiveTable, name: string, type: string, nullable: 
   if (type === 's' && /^(?:color|primaryColor|accentColor)$/.test(name))
     schema = z.string().regex(/^#[a-fA-F0-9]{6}$/);
   if (name === 'matchNumber') schema = z.number().int().positive().max(2147483647);
+  if (table === 'qualifierLobbies' && name === 'capacity') schema = z.number().int().min(1).max(16);
+  if (table === 'qualifierGames' && name === 'status')
+    schema = z.enum(['PENDING', 'ACCEPTED', 'IGNORED']);
+  if (table === 'qualifierGames' && name === 'run') schema = z.number().int().min(1).max(2);
+  if (table === 'qualifierGames' && name === 'multiplayerId')
+    schema = z.number().int().positive().max(2147483647);
   if (name === 'matchNumberSequence') schema = z.number().int().min(0).max(2147483647);
   if (table === 'poolReviews' && ['fit', 'difficulty'].includes(name))
     schema = z.number().int().min(1).max(5);
@@ -434,6 +448,10 @@ function fieldSchema(table: ArchiveTable, name: string, type: string, nullable: 
       .max(2048)
       .refine((value) => !value || /^https?:\/\//.test(value), 'Unsafe warning source URL.');
   const defaults: Record<string, unknown> = {
+    'teams.rejectionReason': '',
+    'teams.adminNotes': '',
+    'qualifierLobbies.capacity': 16,
+    'qualifierLobbies.bookingOpen': true,
     'qualifierScores.run': 1,
     'qualifierScores.representation': 'LEGACY',
     'qualifierScores.source': 'MANUAL',
@@ -464,6 +482,7 @@ const tablesSchema = z
         return [
           table,
           [
+            'qualifierGames',
             'qualifierStandings',
             'brackets',
             'bracketRounds',
@@ -557,6 +576,8 @@ export function validateArchiveData(input: unknown): ArchiveData {
     throw new AppError('Archive contains too many records.');
   if (data.tournament.length !== 1 || data.settings.length !== 1)
     throw new AppError('Archive must contain one tournament and its settings.');
+  if (data.settings[0].registrationPolicy)
+    registrationPolicySchema.parse(data.settings[0].registrationPolicy);
   for (const plan of data.poolPlans)
     poolPlanSchema.parse({
       slots: plan.slots,

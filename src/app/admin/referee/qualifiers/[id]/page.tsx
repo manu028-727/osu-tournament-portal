@@ -7,5 +7,12 @@ export default async function QualifierPage({ params }: { params: Promise<{ id: 
   const actor = await getWorkspaceActor();
   if (!actor || !canAccessSection(actor, 'referee')) notFound();
   const tournament = await getTournament();
-  return <QualifiersWorkspace actor={actor} acronym={tournament.acronym} id={(await params).id} />;
+  return (
+    <QualifiersWorkspace
+      actor={actor}
+      acronym={tournament.acronym}
+      id={(await params).id}
+      ircEnabled={process.env.IRC_ENABLED === 'true'}
+    />
+  );
 }

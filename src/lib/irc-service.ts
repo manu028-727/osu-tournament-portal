@@ -6,9 +6,11 @@ import { matchAccess } from './match-access';
 import { matchScope } from './match-access';
 import { lobbyInfo } from './match-record';
 import type { Prisma } from '@/generated/prisma/client';
+import { applyQualifierAction } from './qualifiers-service';
 
 export const gatewayRequest = z.object({
   identity: z.object({
+    kind: z.enum(['match', 'qualifier']).optional(),
     userId: z.string().max(100),
     sessionHash: z.string().regex(/^[a-f0-9]{64}$/),
     tournamentId: z.string().max(100),
@@ -30,6 +32,7 @@ export const gatewayRequest = z.object({
       'settings',
       'name',
       'invite',
+      'kick',
       'addref',
       'listrefs',
       'map',
@@ -71,11 +74,26 @@ export async function authorizeIrc(
     !can(actor, 'matches.manage_all')
   )
     throw new AppError('Match access denied.', 403);
-  const match = await tx.match.findFirst({
-    where: { AND: [{ id: identity.matchId }, matchScope(actor)] },
-    include: { assignments: true },
-  });
-  if (!match) throw new AppError('Match not found.', 404);
+  const record =
+    identity.kind === 'qualifier'
+      ? await tx.qualifierLobby.findFirst({
+          where: {
+            AND: [{ id: identity.matchId }, matchScope(actor) as Prisma.QualifierLobbyWhereInput],
+          },
+          include: { assignments: true },
+        })
+      : await tx.match.findFirst({
+          where: { AND: [{ id: identity.matchId }, matchScope(actor)] },
+          include: { assignments: true },
+        });
+  if (!record) throw new AppError('Match not found.', 404);
+  const match = {
+    ...record,
+    multiplayerId:
+      'multiplayerId' in record
+        ? record.multiplayerId
+        : Number(record.lobbyUrl.match(/\/(\d+)\/?$/)?.[1]) || null,
+  };
   if ((match.rules as { gameplayScoring?: string }).gameplayScoring === 'LAZER')
     throw new AppError(
       'Legacy Bancho IRC cannot configure lazer multiplayer rooms. Operate the lazer room directly.',
@@ -88,12 +106,19 @@ export async function executeGateway(input: GatewayRequest) {
     async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(78214321)`;
       const { actor, match, access } = await authorizeIrc(input.identity, tx);
+      const context = {
+        tournamentId: match.tournamentId,
+        ...(input.identity.kind === 'qualifier'
+          ? { qualifierLobbyId: match.id }
+          : { matchId: match.id }),
+      };
+      const entityType = input.identity.kind === 'qualifier' ? 'QualifierLobby' : 'Match';
       const active = await tx.ircLobbyRequest.findFirst({
-        where: { matchId: match.id, status: { in: ['PENDING', 'UNKNOWN'] } },
+        where: { ...context, status: { in: ['PENDING', 'UNKNOWN'] } },
         select: { id: true, status: true, name: true, createdAt: true },
       });
       const createdLobby = await tx.ircLobbyRequest.findFirst({
-        where: { matchId: match.id, userId: actor.id, status: 'CREATED' },
+        where: { ...context, userId: actor.id, status: 'CREATED' },
         orderBy: { createdAt: 'desc' },
         select: { id: true, lobbyUrl: true },
       });
@@ -110,6 +135,19 @@ export async function executeGateway(input: GatewayRequest) {
       if (!access.operate || ['COMPLETED', 'CANCELLED'].includes(match.status))
         throw new AppError('This match is read only. Reopen it or ask an authorized referee.', 403);
       if (input.operation === 'control') {
+        if (
+          input.identity.kind === 'qualifier' &&
+          input.commandKind === 'start' &&
+          match.status === 'SCHEDULED'
+        ) {
+          await applyQualifierAction(tx, actor, {
+            type: 'qualifier.status',
+            id: match.id,
+            baseVersion: match.version,
+            command: 'START',
+            reason: 'Website IRC qualifier start',
+          });
+        }
         if (input.commandKind) {
           const expected = match.multiplayerId || createdLobby?.lobbyUrl.match(/\/(\d+)$/)?.[1];
           if (!expected || input.channel !== `#mp_${expected}`)
@@ -118,7 +156,7 @@ export async function executeGateway(input: GatewayRequest) {
             data: {
               actorId: actor.id,
               tournamentId: match.tournamentId,
-              entityType: 'Match',
+              entityType,
               entityId: match.id,
               action: 'irc.command.requested',
               details: { command: input.commandKind, channel: input.channel },
@@ -143,8 +181,7 @@ export async function executeGateway(input: GatewayRequest) {
         if (!input.name) throw new AppError('Enter a lobby name.');
         const request = await tx.ircLobbyRequest.create({
           data: {
-            matchId: match.id,
-            tournamentId: match.tournamentId,
+            ...context,
             userId: actor.id,
             name: input.name,
           },
@@ -153,7 +190,7 @@ export async function executeGateway(input: GatewayRequest) {
           data: {
             actorId: actor.id,
             tournamentId: match.tournamentId,
-            entityType: 'Match',
+            entityType,
             entityId: match.id,
             action: 'irc.lobby.requested',
             details: { requestId: request.id },
@@ -162,7 +199,7 @@ export async function executeGateway(input: GatewayRequest) {
         return { requestId: request.id };
       }
       const request = await tx.ircLobbyRequest.findFirst({
-        where: { id: input.requestId || '', matchId: match.id, tournamentId: match.tournamentId },
+        where: { id: input.requestId || '', ...context },
       });
       if (!request) throw new AppError('Lobby request not found.', 404);
       if (input.operation === 'resolve') {
@@ -185,7 +222,7 @@ export async function executeGateway(input: GatewayRequest) {
         data: {
           actorId: actor.id,
           tournamentId: match.tournamentId,
-          entityType: 'Match',
+          entityType,
           entityId: match.id,
           action: `irc.lobby.${input.operation === 'resolve' ? 'resolved' : input.status?.toLowerCase()}`,
           details: { requestId: request.id },

@@ -3,6 +3,24 @@ import type { MatchParticipants } from './matches-types';
 import type { MatchOptions, MatchStatus, MatchView } from './matches-types';
 import type { MatchAccess } from './match-access';
 export type QualifierView = {
+  capacity: number;
+  bookingOpen: boolean;
+  bookingClosesAt: string | null;
+  multiplayerSyncedAt: string | null;
+  multiplayerError: string | null;
+  multiplayerSync: unknown;
+  games: {
+    id: string;
+    multiplayerId: number;
+    gameId: string;
+    run: number | null;
+    slotName: string | null;
+    evidence: unknown;
+    status: string;
+    reason: string;
+    version: number;
+  }[];
+  selection?: unknown;
   id: string;
   code: string;
   stage: { id: string; name: string };
@@ -46,6 +64,7 @@ export type QualifierView = {
   }[];
 };
 export type QualifierData = {
+  entrantOptions?: { id: string; name: string; format: string; startingPlayers?: number }[];
   lobbies: QualifierView[];
   options:
     | (Omit<MatchOptions, 'teams'> & {

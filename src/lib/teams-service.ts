@@ -34,7 +34,7 @@ export function teamPermission(a: TeamAction): PermissionKey {
       return 'teams.import';
   }
 }
-async function profilesFor(ids: number[]) {
+export async function profilesFor(ids: number[]) {
   const unique = [...new Set(ids)];
   const cached = await rootDb.participant.findMany({ where: { osuId: { in: unique } } });
   const found = new Map(
@@ -112,7 +112,7 @@ export async function prepareTeamAction(
     .digest('hex');
   return { profiles, plan: { teams, profiles, errors, previewHash } };
 }
-async function writeTeam(
+export async function writeTeam(
   tx: Prisma.TransactionClient,
   fields: TeamFields,
   profiles: Profile[],
@@ -173,7 +173,7 @@ async function writeTeam(
         where: { id },
         data: { ...data, version: { increment: 1 }, members: roster },
       })
-    : tx.team.create({ data: { ...data, members: roster } });
+    : tx.team.create({ data: { ...data, status: 'APPROVED', published: true, members: roster } });
 }
 async function currentTeam(tx: Prisma.TransactionClient, id: string, version: number) {
   const team = await tx.team.findFirst({ where: { id } });
@@ -213,10 +213,13 @@ export async function applyTeamAction(
   }
   if (a.type === 'team.save') {
     if (a.id) await currentTeam(tx, a.id, a.baseVersion);
-    const { type, id, baseVersion, ...data } = a;
+    const { type, id, baseVersion, adminNotes, ...data } = a;
     void type;
     void baseVersion;
-    return { id: (await writeTeam(tx, data, prepared.profiles, id)).id };
+    const team = await writeTeam(tx, data, prepared.profiles, id);
+    if (adminNotes !== undefined)
+      await tx.team.update({ where: { id: team.id }, data: { adminNotes } });
+    return { id: team.id };
   }
   await currentTeam(tx, a.id, a.baseVersion);
   if (a.type === 'team.delete') {
@@ -238,15 +241,22 @@ export async function applyTeamAction(
     await tx.team.delete({ where: { id: a.id } });
     return { id: a.id };
   }
-  if (a.published && a.status !== 'APPROVED')
-    throw new AppError('Only approved teams can be published.');
+  if (a.published && a.status === 'PENDING')
+    throw new AppError('Pending teams cannot be published.');
   await tx.team.update({
     where: { id: a.id },
-    data: { status: a.status, published: a.published, version: { increment: 1 } },
+    data: {
+      status: a.status,
+      published: a.status === 'REJECTED' ? true : a.published,
+      rejectionReason: a.status === 'REJECTED' ? a.rejectionReason : '',
+      version: { increment: 1 },
+    },
   });
   return { id: a.id };
 }
 export const publicTeamSelect = {
+  status: true,
+  rejectionReason: true,
   id: true,
   name: true,
   slug: true,
@@ -268,11 +278,11 @@ export const publicTeamSelect = {
     },
   },
 };
-const publicTeamWhere = {
+const publicTeamWhere: Prisma.TeamWhereInput = {
   published: true,
-  status: 'APPROVED',
+  status: { in: ['APPROVED', 'REJECTED'] },
   tournament: publicTournamentWhere,
-} as const;
+};
 export async function publicTeams(
   slug?: string,
   tournamentId?: string,

@@ -22,8 +22,11 @@ export async function POST(request: Request) {
     const actor = await getActor();
     assertPermission(actor, 'referee.access');
     await rateLimit(`irc-ticket:${actor.id}`, 20);
-    const { matchId } = z
-      .object({ matchId: z.string().min(1).max(100) })
+    const { matchId, kind } = z
+      .object({
+        matchId: z.string().min(1).max(100),
+        kind: z.enum(['match', 'qualifier']).optional(),
+      })
       .parse(await jsonBody(request));
     const identity = {
       userId: actor.id,
@@ -31,6 +34,7 @@ export async function POST(request: Request) {
       sessionHash: hash((await cookies()).get(sessionCookie())!.value),
       tournamentId: actor.tournamentId || 'main',
       matchId,
+      kind,
       expires: Date.now() + 60000,
       nonce: randomUUID(),
     };

@@ -43,6 +43,12 @@ export default async function TeamPage({ params }: { params: Promise<{ slug: str
           </p>
         </div>
       </header>
+      {team.status === 'REJECTED' && (
+        <p className="my-5 whitespace-pre-line rounded-xl border border-red-300/40 p-4 text-sm text-red-300">
+          <strong>{tr('Rejected')}</strong>
+          {team.rejectionReason ? `: ${team.rejectionReason}` : ''}
+        </p>
+      )}
       {team.description && <p className="my-8 max-w-3xl whitespace-pre-line">{team.description}</p>}
       <h2 className="mb-4 mt-7 text-xl font-semibold">{tr('Roster')}</h2>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

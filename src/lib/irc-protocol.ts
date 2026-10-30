@@ -69,12 +69,15 @@ export function lobbyFromResponse(sender: string, message: string) {
 export function validateLobbyCommand(command: string, confirmed: boolean, creator: boolean) {
   if (!text.safeParse(command).success) throw new Error('Invalid command text.');
   const match = command.match(
-    /^!mp (settings|name|invite|addref|listrefs|map|mods|timer|aborttimer|start|abort|lock|unlock|close|set)(?: (.+))?$/i,
+    /^!mp (settings|name|invite|kick|addref|listrefs|map|mods|timer|aborttimer|start|abort|lock|unlock|close|set)(?: (.+))?$/i,
   );
   if (!match) throw new Error('Unsupported multiplayer command.');
   const verb = match[1].toLowerCase(),
     args = match[2] || '';
-  if (['start', 'abort', 'close', 'name', 'lock', 'unlock', 'set'].includes(verb) && !confirmed)
+  if (
+    ['start', 'abort', 'close', 'name', 'lock', 'unlock', 'set', 'kick'].includes(verb) &&
+    !confirmed
+  )
     throw new Error('Confirm this disruptive lobby command.');
   if (verb === 'addref' && !creator)
     throw new Error('Only the known lobby creator can add referees.');
@@ -87,6 +90,8 @@ export function validateLobbyCommand(command: string, confirmed: boolean, creato
     throw new Error('Unexpected command parameters.');
   if (verb === 'map' && !/^[1-9]\d{0,9}(?: [0-3])?$/.test(args))
     throw new Error('Use a valid beatmap ID and optional game mode.');
+  if (verb === 'kick' && !/^#[1-9]\d{0,9}$/.test(args))
+    throw new Error('Select a registered osu! player ID.');
   if (['timer', 'start'].includes(verb) && args && !/^\d{1,4}$/.test(args))
     throw new Error('Use seconds between 0 and 9999.');
   if (verb === 'set' && !/^[0-3](?: [0-3](?: (?:[1-9]|1[0-6]))?)?$/.test(args))

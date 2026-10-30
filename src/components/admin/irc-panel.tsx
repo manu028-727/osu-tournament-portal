@@ -37,8 +37,16 @@ export function IrcPanel({
   editable,
   enabled,
   onLinked,
+  kind = 'match',
 }: {
-  match: MatchView;
+  match: Pick<MatchView, 'id' | 'version' | 'lobbyUrl'> & {
+    code?: string;
+    matchNumber?: number;
+    multiplayerId?: number | null;
+    participants: MatchView['participants'] | MatchView['participants']['A'][];
+    assignments: { userId: string; user: { osuId: number; username: string } }[];
+  };
+  kind?: 'match' | 'qualifier';
   commands: ReturnType<typeof lobbyCommands>;
   editable: boolean;
   enabled: boolean;
@@ -107,7 +115,7 @@ export function IrcPanel({
       throw new Error('IRC credentials require HTTPS.');
     const ticket = await api<Ticket>('/api/irc/ticket', {
       method: 'POST',
-      body: JSON.stringify({ matchId: match.id }),
+      body: JSON.stringify({ matchId: match.id, kind }),
     });
     setUnresolved(ticket.activeRequest);
     if (ticket.createdLobby) {
@@ -116,6 +124,7 @@ export function IrcPanel({
         setProposal({
           requestId: ticket.createdLobby.id,
           matchId: match.id,
+          kind,
           tournamentId: '',
           channel: `#mp_${id}`,
           url: ticket.createdLobby.lobbyUrl,
@@ -153,7 +162,9 @@ export function IrcPanel({
         setChannels(event.channels);
         setMessages(event.messages);
         setDeliveries(event.deliveries);
-        const created = event.lobbies.findLast((l) => l.matchId === match.id);
+        const created = event.lobbies.findLast(
+          (l) => l.matchId === match.id && (l.kind || 'match') === kind,
+        );
         if (created) setProposal(created);
       } else if (event.type === 'message') {
         setMessages((previous) => [...previous, event.message].slice(-500));
@@ -178,7 +189,7 @@ export function IrcPanel({
             name: event.delivery.command.slice(9),
           });
       } else if (event.type === 'lobby') {
-        if (event.lobby.matchId === match.id) {
+        if (event.lobby.matchId === match.id && (event.lobby.kind || 'match') === kind) {
           setProposal(event.lobby);
           setUnresolved(null);
           setActive(event.lobby.channel);
@@ -196,15 +207,17 @@ export function IrcPanel({
       .catch(() => notify('Clipboard unavailable.', true));
   function command(value: string) {
     if (!value || !canSend) return;
-    if (/^!mp (?:start|abort|close|name|lock|unlock|set)(?: |$)/i.test(value)) {
+    if (/^!mp (?:start|abort|close|name|lock|unlock|set|kick)(?: |$)/i.test(value)) {
       setDialog({ kind: 'command', command: value });
       return;
     }
     send({ type: 'command', id: crypto.randomUUID(), target, command: value });
   }
-  const players = [...match.participants.A.members, ...match.participants.B.members].sort(
-    (a, b) => Number(b.captain) - Number(a.captain),
-  );
+  const players = (
+    Array.isArray(match.participants)
+      ? match.participants.flatMap((team) => team.members)
+      : [...match.participants.A.members, ...match.participants.B.members]
+  ).sort((a, b) => Number(b.captain) - Number(a.captain));
   return (
     <details
       className="mt-4 min-w-0 border-y py-3"
@@ -415,7 +428,10 @@ export function IrcPanel({
                     onClick={() => setDialog({ kind: 'link', command: proposal.url })}
                   >
                     <Link2 size={16} />
-                    {tr('Link to match')} {match.matchNumber}
+                    {kind === 'qualifier'
+                      ? tr('Link to qualifier session')
+                      : tr('Link to match')}{' '}
+                    {match.matchNumber || match.code}
                   </Button>
                   <Button
                     size="sm"
@@ -551,6 +567,19 @@ export function IrcPanel({
                     </div>
                     <div className="min-w-0 space-y-3">
                       <div className="flex flex-wrap gap-2">
+                        {kind === 'qualifier' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={!canSend || !commands.map || !commands.mods}
+                            onClick={() => {
+                              command(commands.map);
+                              command(commands.mods);
+                            }}
+                          >
+                            {tr('Load map and mods')}
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
@@ -680,6 +709,18 @@ export function IrcPanel({
                         >
                           <MessageSquare size={16} />
                         </Button>
+                        {kind === 'qualifier' && (
+                          <Button
+                            size="icon"
+                            variant="destructive"
+                            title={tr('Remove selected player from lobby')}
+                            aria-label={tr('Remove selected player from lobby')}
+                            disabled={!canSend || !invite}
+                            onClick={() => command(`!mp kick #${invite}`)}
+                          >
+                            <X size={16} />
+                          </Button>
+                        )}
                       </div>
                       <div className="flex min-w-0 gap-2">
                         <select
@@ -789,7 +830,7 @@ export function IrcPanel({
                   } else
                     void run(async () => {
                       await action({
-                        type: 'match.lobby',
+                        type: kind === 'qualifier' ? 'qualifier.lobby' : 'match.lobby',
                         id: match.id,
                         baseVersion: match.version,
                         lobbyUrl: chosen.command,

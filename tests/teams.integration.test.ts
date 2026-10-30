@@ -45,7 +45,7 @@ afterAll(async () => {
   await db.$disconnect();
 });
 describe.sequential('persistent team registration workflows', () => {
-  it('creates private teams and rejects Guest mutations', async () => {
+  it('automatically approves new organizer entries and rejects Guest mutations', async () => {
     const input = {
       type: 'team.save',
       name: prefix,
@@ -57,9 +57,9 @@ describe.sequential('persistent team registration workflows', () => {
     await expect(act(guest, input)).rejects.toThrow('permission');
     const team = (await act(owner, input)) as { id: string };
     teamId = team.id;
-    expect(await publicTeams(prefix)).toEqual([]);
+    expect(await publicTeams(prefix)).toHaveLength(1);
   });
-  it('requires approval before publication and rejects stale writes', async () => {
+  it('keeps legacy pending entries private and rejects stale writes', async () => {
     await expect(
       act(owner, {
         type: 'team.status',
@@ -68,7 +68,7 @@ describe.sequential('persistent team registration workflows', () => {
         status: 'PENDING',
         published: true,
       }),
-    ).rejects.toThrow('approved');
+    ).rejects.toThrow('Pending teams');
     await act(owner, {
       type: 'team.status',
       id: teamId,
@@ -88,6 +88,7 @@ describe.sequential('persistent team registration workflows', () => {
         id: teamId,
         baseVersion: 1,
         status: 'REJECTED',
+        rejectionReason: 'Reviewed eligibility rejection',
         published: false,
       }),
     ).rejects.toThrow('another session');
@@ -133,12 +134,12 @@ describe.sequential('persistent team registration workflows', () => {
         })
       ).members,
     ).toHaveLength(2);
-    expect(await publicTeams(prefix + '-import')).toEqual([]);
+    expect((await publicTeams(prefix + '-import'))[0].status).toBe('APPROVED');
     expect(
       await db.auditLog.count({ where: { actorId: owner.id, action: 'team.import.apply' } }),
     ).toBe(1);
   });
-  it('preserves approval on imports, rejects changed previews, and hides rejected teams', async () => {
+  it('preserves approval on imports, rejects changed previews, and publishes public rejection reasons', async () => {
     const csv = `team_name,team_slug,osu_id,captain\nUpdated,${prefix},930000001,true`;
     const plan = (await act(owner, { type: 'team.import.preview', csv })) as TeamImportPlan;
     await act(owner, {
@@ -161,8 +162,12 @@ describe.sequential('persistent team registration workflows', () => {
       id: teamId,
       baseVersion: updated.version,
       status: 'REJECTED',
+      rejectionReason: 'Reviewed eligibility rejection',
       published: false,
     });
-    expect(await publicTeams(prefix)).toEqual([]);
+    expect((await publicTeams(prefix)).find((team) => team.id === teamId)).toMatchObject({
+      status: 'REJECTED',
+      rejectionReason: 'Reviewed eligibility rejection',
+    });
   });
 });

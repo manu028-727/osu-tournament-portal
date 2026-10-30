@@ -48,7 +48,13 @@ export function TournamentProfileHeader({ tournament }: { tournament: Tournament
           </div>
         </div>
       </div>
-      <TournamentTabs links={navigation} />
+      <TournamentTabs
+        links={
+          navigation.some((link) => link.href === '/register')
+            ? navigation
+            : [...navigation, { href: '/register', label: tr('Registration and qualifiers') }]
+        }
+      />
     </header>
   );
 }

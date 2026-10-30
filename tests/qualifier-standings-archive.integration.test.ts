@@ -226,6 +226,19 @@ async function populatedSource(tied: boolean) {
       })),
     ),
   });
+  for (const run of [1, 2])
+    await db.qualifierGame.create({
+      data: {
+        lobbyId: lobby.id,
+        multiplayerId: 12345,
+        gameId: String(9000 + run),
+        run,
+        slotName: 'NM1',
+        status: 'ACCEPTED',
+        evidence: { provider: 'synthetic archive evidence', multiplayerId: 12345, run },
+        reason: 'Synthetic archive provenance fixture',
+      },
+    });
   const base = async () => {
     const data = await qualifierStandingsData(actor, qualifierStage.id);
     return {
@@ -309,6 +322,7 @@ describe.sequential('populated qualifier standings and bracket archive roundtrip
       const { archive } = await inspectArchive(exported.bytes);
       expect(archive.data.qualifierStandings).toHaveLength(2);
       expect(archive.data.qualifierScores).toHaveLength(4);
+      expect(archive.data.qualifierGames).toHaveLength(2);
       expect(archive.data.brackets).toHaveLength(1);
       expect(archive.data.bracketNodes).toHaveLength(1);
       const report = await importTournament(
@@ -318,6 +332,9 @@ describe.sequential('populated qualifier standings and bracket archive roundtrip
       );
       tournamentIds.push(report.tournamentId);
       const importedActor = { ...owner, tournamentId: report.tournamentId };
+      expect(
+        await db.qualifierGame.count({ where: { lobby: { tournamentId: report.tournamentId } } }),
+      ).toBe(2);
       const importedStage = await db.tournamentStage.findFirstOrThrow({
         where: { tournamentId: report.tournamentId, slug: 'qualifiers' },
       });

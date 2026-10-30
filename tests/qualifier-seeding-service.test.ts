@@ -75,6 +75,7 @@ function database() {
     rules,
     poolRevisionId: 'pool',
     poolRevision: { slots },
+    games: [],
     participants: [
       { id: 'a', name: 'A', members: [{ osuId: 1 }] },
       { id: 'b', name: 'B', members: [{ osuId: 2 }] },

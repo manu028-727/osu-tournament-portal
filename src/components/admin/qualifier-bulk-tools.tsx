@@ -579,26 +579,37 @@ function BulkSchedule({
   );
 }
 
-function MoveEntrants({
+export function MoveEntrants({
   options,
   lobbies,
   reload,
   close,
+  initialTarget = '',
+  allowOverride = false,
 }: {
-  options: Options;
+  options: Pick<Options, 'teams'>;
   lobbies: QualifierView[];
   reload: () => Promise<unknown>;
   close: () => void;
+  initialTarget?: string;
+  allowOverride?: boolean;
 }) {
   const tr = useT();
   const { run, busy } = useTask();
   const [sourceId, setSourceId] = useState('');
-  const [targetId, setTargetId] = useState('');
+  const [targetId, setTargetId] = useState(initialTarget);
+  const [override, setOverride] = useState(false),
+    [reason, setReason] = useState('');
   const [teamIds, setTeamIds] = useState<string[]>([]);
-  const [versions, setVersions] = useState<Record<string, number>>({});
+  const [versions, setVersions] = useState<Record<string, number>>(() => {
+    const target = lobbies.find((lobby) => lobby.id === initialTarget);
+    return target ? { [target.id]: target.version } : {};
+  });
   const source = lobbies.find((lobby) => lobby.id === sourceId);
   const target = lobbies.find((lobby) => lobby.id === targetId);
-  const unstarted = lobbies.filter((lobby) => lobby.canTransfer);
+  const unstarted = lobbies.filter(
+    (lobby) => lobby.canTransfer || (allowOverride && override && lobby.status === 'IN_PROGRESS'),
+  );
   const candidates = source
     ? source.participants
     : options.teams.filter(
@@ -617,7 +628,7 @@ function MoveEntrants({
     ? [...target.participants, ...candidates.filter((team) => teamIds.includes(team.id!))]
     : [];
   const overCapacity =
-    activePlayers > 16 ||
+    activePlayers > (target?.capacity || 16) ||
     nextCount > (combined.every((team) => team.format === 'INDIVIDUAL') ? 16 : 8);
   const mixed =
     target &&
@@ -643,6 +654,8 @@ function MoveEntrants({
               toLobbyId: target.id,
               baseVersion: versions[target.id],
               teamIds,
+              override,
+              reason: reason || 'Assign qualifier entrants',
             });
             await reload();
             close();
@@ -699,6 +712,27 @@ function MoveEntrants({
           </select>
         </Field>
       </div>
+      {allowOverride && (
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={override}
+            onChange={(event) => setOverride(event.target.checked)}
+          />
+          {tr('Override active-session assignments')}
+        </label>
+      )}
+      {override && (
+        <Field label={tr('Assignment override reason')}>
+          <textarea
+            required
+            minLength={3}
+            maxLength={2000}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+          />
+        </Field>
+      )}
       <fieldset className="max-h-56 space-y-2 overflow-auto">
         <legend className="mb-2 font-semibold">
           {tr('Entrants (')}
@@ -729,7 +763,8 @@ function MoveEntrants({
       </fieldset>
       {target && (
         <p className="text-sm">
-          {target.code}: {nextCount} {tr('entrants ·')} {activePlayers}/16 {tr('active players')}
+          {target.code}: {nextCount} {tr('entrants ·')} {activePlayers}/{target.capacity || 16}{' '}
+          {tr('active players')}
         </p>
       )}
       {(stale || mixed || overCapacity) && (
@@ -743,7 +778,15 @@ function MoveEntrants({
       )}
       <SaveButton
         busy={busy}
-        disabled={!target || !teamIds.length || stale || !!mixed || overCapacity}
+        disabled={
+          !target ||
+          !teamIds.length ||
+          stale ||
+          !!mixed ||
+          overCapacity ||
+          (!target.canTransfer && !override) ||
+          (override && reason.trim().length < 3)
+        }
       >
         {tr('Assign')} {teamIds.length} {tr('entrants')}
       </SaveButton>

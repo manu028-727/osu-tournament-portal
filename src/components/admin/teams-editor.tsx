@@ -2,7 +2,7 @@
 import { Feedback, useT } from '@/components/locale';
 import { humanizeCode } from '@/lib/i18n';
 
-import { tournamentApiUrl } from '@/components/tournament-scope';
+import Link, { tournamentApiUrl } from '@/components/tournament-scope';
 import { useState } from 'react';
 import {
   Plus,
@@ -98,6 +98,11 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
         description={tr(filter ? '{0} matching entries' : '{0} registered entries', result!.total)}
       >
         <div className="flex flex-wrap gap-2">
+          {can(actor, 'settings.manage') && (
+            <Button asChild variant="outline" size="sm">
+              <Link href="/admin/settings#registration">{tr('Registration settings')}</Link>
+            </Button>
+          )}
           {(can(actor, 'teams.view') || can(actor, 'teams.import')) && (
             <Button asChild variant="outline" size="sm">
               <a href={tournamentApiUrl('/api/admin/teams/export')}>
@@ -514,6 +519,18 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                 ))}
               </div>
             </section>
+            <Field
+              label={tr('Private administrative notes')}
+              hint={tr(
+                'Only website organizers can see these notes. They are never shown as a rejection reason.',
+              )}
+            >
+              <textarea
+                maxLength={4000}
+                value={draft.adminNotes || ''}
+                onChange={(event) => update({ adminNotes: event.target.value })}
+              />
+            </Field>
             <div className="flex justify-end gap-3">
               <Button type="button" variant="outline" disabled={busy} onClick={close}>
                 {tr('Cancel')}
@@ -545,6 +562,7 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                   baseVersion: visibility.version,
                   status: visibility.status,
                   published: visibility.published,
+                  rejectionReason: visibility.rejectionReason || '',
                 });
                 setVisibility(null);
                 await reload();
@@ -559,7 +577,9 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                   setVisibility({
                     ...visibility,
                     status: e.target.value as TeamView['status'],
-                    published: e.target.value === 'APPROVED' && visibility.published,
+                    published:
+                      e.target.value === 'REJECTED' ||
+                      (e.target.value === 'APPROVED' && visibility.published),
                   })
                 }
               >
@@ -568,6 +588,24 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                 <option value="REJECTED">{tr('Rejected')}</option>
               </select>
             </Field>
+            {visibility.status === 'REJECTED' && (
+              <Field
+                label={tr('Public rejection reason')}
+                hint={tr(
+                  'Rejected entries remain visible with this reason. Keep private notes in the team editor.',
+                )}
+              >
+                <textarea
+                  required
+                  minLength={3}
+                  maxLength={2000}
+                  value={visibility.rejectionReason || ''}
+                  onChange={(event) =>
+                    setVisibility({ ...visibility, rejectionReason: event.target.value })
+                  }
+                />
+              </Field>
+            )}
             <label className="flex items-center gap-3">
               <input
                 type="checkbox"

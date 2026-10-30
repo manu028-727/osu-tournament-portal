@@ -188,6 +188,7 @@ export async function loadQualifierCalculation(
     where: { stageId, tournamentId },
     include: {
       scores: { orderBy: { id: 'asc' } },
+      games: { orderBy: { id: 'asc' } },
       entries: { include: { team: true }, orderBy: { position: 'asc' } },
       poolRevision: { include: { slots: true } },
     },
@@ -237,8 +238,25 @@ export async function loadQualifierCalculation(
         .map((s) => ({ slotName: s.name, beatmapId: s.beatmapId }))
         .sort((a, b) => (a.slotName < b.slotName ? -1 : a.slotName > b.slotName ? 1 : 0)),
       originalScores: lobby.scores.map((s) => ({ ...s, updatedAt: s.updatedAt.toISOString() })),
+      ...(lobby.games.length
+        ? {
+            games: lobby.games.map((game) => ({
+              ...game,
+              createdAt: game.createdAt.toISOString(),
+              updatedAt: game.updatedAt.toISOString(),
+              startedAt: game.startedAt?.toISOString() || null,
+            })),
+          }
+        : {}),
+      ...((lobby.multiplayerSync as { complete?: boolean } | null)?.complete === false
+        ? { incompleteHistory: true }
+        : {}),
     });
     if (lobby.status === 'CANCELLED') continue;
+    if (lobby.games.some((game) => game.status === 'PENDING'))
+      add('PENDING_GAMES', `${lobby.code} has multiplayer games requiring review.`);
+    if ((lobby.multiplayerSync as { complete?: boolean } | null)?.complete === false)
+      add('INCOMPLETE_HISTORY', `${lobby.code} has incomplete multiplayer history.`);
     if (lobby.status !== 'COMPLETED')
       add('UNCONFIRMED_LOBBY', `${lobby.code} must be referee-confirmed before finalization.`);
     const rules = matchRulesSchema.parse(lobby.rules);

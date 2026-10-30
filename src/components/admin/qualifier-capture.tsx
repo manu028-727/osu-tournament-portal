@@ -1,6 +1,6 @@
 'use client';
 import { localeTag } from '@/lib/i18n';
-import { useLocale, useT } from '@/components/locale';
+import { useLocale, useT, Feedback } from '@/components/locale';
 
 import { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
@@ -13,6 +13,13 @@ type Preview = {
   rejected: { gameId: string; issue: string }[];
   complete: boolean;
   version: number;
+  games: {
+    recordId: string;
+    gameId: string;
+    status: string;
+    issue: string | null;
+    unknownPlayers: number[];
+  }[];
 };
 export function QualifierCaptureDialog({
   lobby,
@@ -28,6 +35,7 @@ export function QualifierCaptureDialog({
     [gameId, setGameId] = useState(''),
     [run, setRun] = useState(1),
     [replace, setReplace] = useState(false),
+    [excludePlayers, setExcludePlayers] = useState<number[]>([]),
     [reason, setReason] = useState('');
   const { busy, run: task } = useTask();
   const post = <T,>(data: object) =>
@@ -44,10 +52,10 @@ export function QualifierCaptureDialog({
           setOpen(true);
           setPreview(null);
           setGameId('');
-          void task(
-            async () => setPreview(await post<Preview>({})),
-            'Multiplayer capture preview ready.',
-          );
+          void task(async () => {
+            setPreview(await post<Preview>({}));
+            await onChanged();
+          }, 'Multiplayer capture preview ready.');
         }}
       >
         <RefreshCw size={16} />
@@ -60,7 +68,7 @@ export function QualifierCaptureDialog({
             e.preventDefault();
             if (!preview) return;
             void task(async () => {
-              await post({ gameId, baseVersion: preview.version, replace, reason });
+              await post({ gameId, baseVersion: preview.version, replace, reason, excludePlayers });
               setOpen(false);
               setReplace(false);
               setReason('');
@@ -73,22 +81,74 @@ export function QualifierCaptureDialog({
               {!preview.complete && (
                 <p role="alert">
                   {tr(
-                    'History exceeds the capture window. Import is disabled; use reviewed manual entry.',
+                    'More history is available. Continue loading before importing; partial history is never applied.',
                   )}
                 </p>
               )}
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() =>
+                  void task(async () => {
+                    setPreview(await post<Preview>({}));
+                    await onChanged();
+                  }, 'Multiplayer capture preview ready.')
+                }
+              >
+                {tr(preview.complete ? 'Refresh import preview' : 'Load remaining history')}
+              </Button>
               <Field label={tr('Multiplayer game')}>
-                <select required value={gameId} onChange={(e) => setGameId(e.target.value)}>
+                <select
+                  required
+                  value={gameId}
+                  onChange={(e) => {
+                    setGameId(e.target.value);
+                    setExcludePlayers([]);
+                  }}
+                >
                   <option value="">{tr('Select played game')}</option>
-                  {preview.proposals.map((g) => (
+                  {preview.games.map((g) => (
                     <option key={g.gameId} value={g.gameId}>
-                      {g.slotName} {tr('· game')} {g.gameId} ·{' '}
-                      {new Date(g.startedAt).toLocaleString(localeTag(language))} ·{' '}
-                      {g.players.length} {tr('scores')}
+                      {tr('Game')} {g.gameId} ·{' '}
+                      {tr(
+                        g.status === 'ACCEPTED'
+                          ? 'Already imported'
+                          : g.status === 'IGNORED'
+                            ? 'Excluded'
+                            : g.issue
+                              ? 'Needs review'
+                              : 'Ready',
+                      )}
                     </option>
                   ))}
                 </select>
               </Field>
+              {!!preview.games.find((game) => game.gameId === gameId)?.unknownPlayers.length && (
+                <fieldset className="space-y-2">
+                  <legend className="text-sm">
+                    {tr('Unknown players (explicitly exclude non-entrants)')}
+                  </legend>
+                  {preview.games
+                    .find((game) => game.gameId === gameId)!
+                    .unknownPlayers.map((osuId) => (
+                      <label key={osuId} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={excludePlayers.includes(osuId)}
+                          onChange={(event) =>
+                            setExcludePlayers((ids) =>
+                              event.target.checked
+                                ? [...ids, osuId]
+                                : ids.filter((id) => id !== osuId),
+                            )
+                          }
+                        />
+                        #{osuId}
+                      </label>
+                    ))}
+                </fieldset>
+              )}
               {lobby.policy.runs === 2 && (
                 <Field label={tr('Run')}>
                   <select value={run} onChange={(e) => setRun(Number(e.target.value))}>
@@ -114,7 +174,7 @@ export function QualifierCaptureDialog({
                   <ul className="mt-2 max-h-48 overflow-auto space-y-2 text-sm text-muted">
                     {preview.rejected.map((issue, i) => (
                       <li key={i}>
-                        {tr('Game')} {issue.gameId}: {issue.issue}
+                        {tr('Game')} {issue.gameId}: <Feedback message={issue.issue} />
                       </li>
                     ))}
                   </ul>
@@ -143,6 +203,38 @@ export function QualifierCaptureDialog({
               >
                 {tr('Import selected game')}
               </SaveButton>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={
+                  busy || !gameId || reason.trim().length < 3 || preview.version !== lobby.version
+                }
+                onClick={() => {
+                  const game = preview.games.find((game) => game.gameId === gameId);
+                  if (
+                    !game ||
+                    !window.confirm(
+                      tr(
+                        'Exclude this game and remove its linked imported scores? Audited manual corrections are preserved.',
+                      ),
+                    )
+                  )
+                    return;
+                  void task(async () => {
+                    await post({
+                      ignore: true,
+                      recordId: game.recordId,
+                      baseVersion: preview.version,
+                      reason,
+                      removeScores: true,
+                    });
+                    setPreview(await post<Preview>({}));
+                    await onChanged();
+                  }, 'Qualifier game excluded.');
+                }}
+              >
+                {tr('Exclude selected game')}
+              </Button>
             </>
           ) : (
             <p className="text-sm text-muted">

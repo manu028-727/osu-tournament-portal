@@ -39,6 +39,7 @@ export const teamSaveSchema = teamFields
     type: z.literal('team.save'),
     id: z.string().min(1).max(100).optional(),
     baseVersion: z.number().int().nonnegative().default(0),
+    adminNotes: z.string().max(4000).optional(),
   })
   .superRefine((team, ctx) => {
     if (team.format === 'INDIVIDUAL' && team.members.length !== 1)
@@ -49,13 +50,19 @@ export const teamSaveSchema = teamFields
   });
 export const teamActionOptions = [
   teamSaveSchema,
-  z.object({
-    type: z.literal('team.status'),
-    id: z.string().min(1),
-    baseVersion: z.number().int(),
-    status: z.enum(['PENDING', 'APPROVED', 'REJECTED']),
-    published: z.boolean(),
-  }),
+  z
+    .object({
+      type: z.literal('team.status'),
+      id: z.string().min(1),
+      baseVersion: z.number().int(),
+      status: z.enum(['PENDING', 'APPROVED', 'REJECTED']),
+      published: z.boolean(),
+      rejectionReason: z.string().trim().max(2000).default(''),
+    })
+    .superRefine((team, ctx) => {
+      if (team.status === 'REJECTED' && team.rejectionReason.length < 3)
+        ctx.addIssue({ code: 'custom', message: 'Provide a public rejection reason.' });
+    }),
   z.object({
     type: z.literal('team.delete'),
     id: z.string().min(1),

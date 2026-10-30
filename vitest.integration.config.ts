@@ -24,6 +24,7 @@ export default defineConfig({
       'tests/irc.integration.test.ts',
       'tests/gameplay-scoring.integration.test.ts',
       'tests/qualifier-capture.integration.test.ts',
+      'tests/qualifier-workflows.integration.test.ts',
       'tests/competition.integration.test.ts',
       'tests/qualifiers-bulk.integration.test.ts',
       'tests/stage-workflows.integration.test.ts',

@@ -1,5 +1,5 @@
 import type { Prisma } from '@/generated/prisma/client';
-import { AppError, type Actor } from './permissions';
+import { AppError, can, type Actor } from './permissions';
 import { rosterSnapshot } from './match-record';
 import { type MatchParticipants } from './matches-types';
 import { assertScheduleAvailability } from './schedule-availability';
@@ -19,13 +19,45 @@ export type QualifierPlan = {
   participants: QualifierRoster;
 };
 const json = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value));
+type CaptainCapability = { captainTeamId: string };
+async function authorizeRosterChange(
+  tx: Prisma.TransactionClient,
+  actor: Actor,
+  tournamentId: string,
+  records: { assignments: { userId: string }[] }[],
+  teamIds: string[],
+  captain?: CaptainCapability,
+) {
+  if (can(actor, 'matches.manage') || can(actor, 'matches.manage_all')) return;
+  if (
+    captain &&
+    teamIds.length === 1 &&
+    teamIds[0] === captain.captainTeamId &&
+    (await tx.teamMember.findFirst({
+      where: { tournamentId, teamId: captain.captainTeamId, osuId: actor.osuId, captain: true },
+    }))
+  )
+    return;
+  if (
+    !can(actor, 'matches.manage_assigned') ||
+    records.some((record) => !record.assignments.some((ref) => ref.userId === actor.id))
+  )
+    throw new AppError(
+      'Only assigned referees, authorized organizers or the entrant captain may change this reservation.',
+      403,
+    );
+}
 
-export function assertQualifierCapacity(participants: QualifierRoster, policy: QualifierPolicy) {
+export function assertQualifierCapacity(
+  participants: QualifierRoster,
+  policy: QualifierPolicy,
+  capacity = 16,
+) {
   const solo = participants.every((team) => team.format === 'INDIVIDUAL');
   if (
     (!solo && participants.some((team) => team.format === 'INDIVIDUAL')) ||
     participants.length > (solo ? 16 : 8) ||
-    participants.length * policy.requiredPlayers > 16
+    participants.length * policy.requiredPlayers > capacity
   )
     throw new AppError(
       'A session supports sixteen active players: up to sixteen solo entrants or eight teams, without mixing formats.',
@@ -230,6 +262,7 @@ export async function applyQualifierParticipantMove(
   actor: Actor,
   tournamentId: string,
   action: Extract<QualifierAction, { type: 'qualifier.participants.move' }>,
+  captain?: CaptainCapability,
 ) {
   const ids = [action.toLobbyId, ...(action.fromLobbyId ? [action.fromLobbyId] : [])];
   const records = await tx.qualifierLobby.findMany({
@@ -238,17 +271,38 @@ export async function applyQualifierParticipantMove(
   });
   if (records.length !== ids.length)
     throw new AppError('A selected lobby does not exist in this tournament.', 404);
+  await authorizeRosterChange(tx, actor, tournamentId, records, action.teamIds, captain);
   const target = records.find((record) => record.id === action.toLobbyId)!;
   const source = records.find((record) => record.id === action.fromLobbyId);
   for (const record of records) {
     if (record.version !== (record.id === target.id ? action.baseVersion : action.sourceVersion))
       throw new AppError('{0} changed. Reload before moving entrants.', 409, [record.code]);
-    if (!qualifierNeverStarted(record))
+    if (
+      !qualifierNeverStarted(record) &&
+      !(
+        action.override &&
+        can(actor, 'matches.manage') &&
+        action.reason &&
+        action.reason.trim().length >= 3 &&
+        record.status === 'IN_PROGRESS'
+      )
+    )
       throw new AppError(
         '{0} has started or has recorded history. Entrants can only move between unstarted sessions.',
         409,
         [record.code],
       );
+    if (
+      record.id === action.fromLobbyId &&
+      record.scores.some((score) =>
+        (record.participants as unknown as QualifierRoster).some(
+          (team) =>
+            action.teamIds.includes(team.id!) &&
+            team.members.some((player) => player.osuId === score.osuId),
+        ),
+      )
+    )
+      throw new AppError('Recorded entrants cannot be moved out of their historical session.', 409);
   }
   if (
     source &&
@@ -265,6 +319,12 @@ export async function applyQualifierParticipantMove(
   await assertQualifierMutable(tx, target.stageId, tournamentId);
   let moving: QualifierRoster;
   if (source) {
+    if (
+      (await tx.team.count({
+        where: { tournamentId, id: { in: action.teamIds }, status: 'APPROVED' },
+      })) !== action.teamIds.length
+    )
+      throw new AppError('Select approved entrants from this tournament.');
     const roster = source.participants as unknown as QualifierRoster;
     moving = action.teamIds.map((id) => {
       const entrant = roster.find((team) => team.id === id);
@@ -296,13 +356,14 @@ export async function applyQualifierParticipantMove(
           requiredPlayers: matchRulesSchema.parse(record.rules).teamSize,
         },
       ),
+      record.capacity,
     );
     return { ...record, participants, refereeIds: record.assignments.map((ref) => ref.userId) };
   });
   await assertQualifierAvailability(tx, tournamentId, plans, ids);
   for (const plan of plans) {
     const updated = await tx.qualifierLobby.updateMany({
-      where: { id: plan.id, tournamentId, version: plan.version, status: 'SCHEDULED' },
+      where: { id: plan.id, tournamentId, version: plan.version, status: plan.status },
       data: { participants: json(plan.participants), version: { increment: 1 } },
     });
     if (updated.count !== 1)
@@ -332,4 +393,64 @@ export async function applyQualifierParticipantMove(
     });
   }
   return { id: target.id, moved: moving.length };
+}
+
+// Called by organizer actions and by the captain service after checking ownership.
+export async function removeQualifierParticipants(
+  tx: Prisma.TransactionClient,
+  actor: Actor,
+  tournamentId: string,
+  action: Extract<QualifierAction, { type: 'qualifier.participants.remove' }>,
+  captain?: CaptainCapability,
+) {
+  const lobby = await tx.qualifierLobby.findFirst({
+    where: { id: action.id, tournamentId },
+    include: { scores: true, events: true, assignments: true },
+  });
+  if (!lobby) throw new AppError('Qualifier lobby not found.', 404);
+  await authorizeRosterChange(tx, actor, tournamentId, [lobby], action.teamIds, captain);
+  if (lobby.version !== action.baseVersion)
+    throw new AppError('Another referee updated this lobby. Reload before saving.', 409);
+  if (
+    !qualifierNeverStarted(lobby) &&
+    !(action.override && can(actor, 'matches.manage') && lobby.status === 'IN_PROGRESS')
+  )
+    throw new AppError('Started or completed reservations require organizer review.', 409);
+  await assertQualifierMutable(tx, lobby.stageId, tournamentId);
+  const before = lobby.participants as unknown as QualifierRoster;
+  if (action.teamIds.some((id) => !before.some((team) => team.id === id)))
+    throw new AppError('An entrant is no longer assigned to the source session. Reload.', 409);
+  const players = new Set(
+    before
+      .filter((team) => action.teamIds.includes(team.id!))
+      .flatMap((team) => team.members.map((player) => player.osuId)),
+  );
+  if (lobby.scores.some((score) => players.has(score.osuId)))
+    throw new AppError('Recorded entrants cannot be removed from their historical session.', 409);
+  const participants = before.filter((team) => !action.teamIds.includes(team.id!));
+  await tx.qualifierEntry.deleteMany({ where: { lobbyId: lobby.id, tournamentId } });
+  if (participants.length)
+    await tx.qualifierEntry.createMany({
+      data: participants.map((team, position) => ({
+        lobbyId: lobby.id,
+        tournamentId,
+        teamId: team.id!,
+        position,
+      })),
+    });
+  await tx.qualifierLobby.update({
+    where: { id: lobby.id, version: action.baseVersion },
+    data: { participants: json(participants), version: { increment: 1 } },
+  });
+  await tx.qualifierEvent.create({
+    data: {
+      lobbyId: lobby.id,
+      actorId: actor.id,
+      version: lobby.version + 1,
+      kind: action.type,
+      reason: action.reason,
+      data: json({ before, after: participants, override: action.override }),
+    },
+  });
+  return { id: lobby.id, version: lobby.version + 1, moved: action.teamIds.length };
 }

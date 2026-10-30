@@ -1,5 +1,8 @@
 import type { TeamFields } from './teams-validation';
 export type TeamView = Omit<TeamFields, 'members'> & {
+  adminNotes?: string;
+  rejectionReason?: string;
+  registrationAnswers?: unknown;
   id: string;
   version: number;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';

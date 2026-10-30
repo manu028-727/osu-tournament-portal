@@ -18,7 +18,11 @@ export async function isPublicAsset(id: string, tournamentId: string) {
     })
   )
     return true;
-  if (await scoped.team.count({ where: { logoImageId: id, published: true, status: 'APPROVED' } }))
+  if (
+    await scoped.team.count({
+      where: { logoImageId: id, published: true, status: { in: ['APPROVED', 'REJECTED'] } },
+    })
+  )
     return true;
   if (await scoped.staffMember.count({ where: { visible: true, customImage: url } })) return true;
   const pages = await scoped.page.findMany({

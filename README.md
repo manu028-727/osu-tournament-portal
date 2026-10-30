@@ -30,6 +30,11 @@ tournaments or fake player accounts.
 Use the EN/IT control beside appearance to choose English or Italian. Tournament
 content stays in the language its authors used.
 
+Players use **Registration and qualifiers** in tournament navigation. Organizers
+configure registration from **Teams & players / Registration settings**. Use
+**Matches / Qualifier sessions** for scheduling and refereeing, and **Qualifier
+results** for stage-selected multiplayer imports, standings and seedings.
+
 See [deployment and configuration](docs/ARCHITECTURE.md#deployment-and-configuration)
 for proxy configuration and troubleshooting.
 

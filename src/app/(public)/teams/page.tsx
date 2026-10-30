@@ -25,8 +25,14 @@ export default async function Teams({
       <PageHeading
         eyebrow={tr('I PARTECIPANTI')}
         title={tr('Team e giocatori')}
-        description={tr('Le squadre approvate e i giocatori del torneo.')}
+        description={tr('Tournament entrants and registration decisions.')}
       />
+      <Link
+        href="/register"
+        className="mb-5 inline-flex rounded-full bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground"
+      >
+        {tr('Manage registration and qualifier booking')}
+      </Link>
       <ListPagination
         page={result.page}
         pageSize={result.pageSize}
@@ -59,6 +65,12 @@ export default async function Teams({
                 )}
                 <div className="min-w-0 flex-1">
                   <h2 className="break-words text-lg font-semibold leading-snug">{team.name}</h2>
+                  {team.status === 'REJECTED' && (
+                    <p className="mt-2 whitespace-pre-line text-sm text-red-300">
+                      <strong>{tr('Rejected')}</strong>
+                      {team.rejectionReason ? `: ${team.rejectionReason}` : ''}
+                    </p>
+                  )}
                   {team.seed && (
                     <p className="mt-1 text-sm text-accent">
                       {tr('Seed #')}

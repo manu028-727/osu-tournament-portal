@@ -105,7 +105,7 @@ export async function importPreview(actor: Actor, id: string) {
   assertPermission(actor, 'matches.import');
   const db = scopedDb(rootDb, actor.tournamentId || 'main'),
     preview = await db.refereeImport.findUnique({ where: { id } });
-  if (!preview || preview.expiresAt < new Date())
+  if (!preview || preview.expiresAt < new Date() || !Array.isArray(preview.records))
     throw new AppError('Import preview expired or not found. Upload the workbook again.', 404);
   const [matches, stages, teams, importEvents, settings, tournamentState] = await Promise.all([
     db.match.findMany({
@@ -291,7 +291,7 @@ export async function applyWorkbook(original: Actor, input: z.infer<typeof impor
       assertPermission(actor, 'matches.import');
       if (input.confirmResults) assertPermission(actor, 'matches.manage');
       const preview = await tx.refereeImport.findUnique({ where: { id: input.importId } });
-      if (!preview || preview.expiresAt < new Date())
+      if (!preview || preview.expiresAt < new Date() || !Array.isArray(preview.records))
         throw new AppError('Import preview expired or not found.', 404);
       const record = (preview.records as unknown as RefereeRecord[]).find(
         (r) => r.sheet === input.sheet,

@@ -18,6 +18,8 @@ export function RefereePool({
   state,
   action,
   dense = false,
+  label,
+  textActions = false,
 }: {
   slots: Slot[];
   rules: MatchRules;
@@ -25,11 +27,16 @@ export function RefereePool({
   state?: (slot: Slot) => ReactNode;
   action?: (slot: Slot) => ReactNode;
   dense?: boolean;
+  label?: string;
+  textActions?: boolean;
 }) {
   const tr = useT();
   const language = useLocale();
   return (
-    <section aria-label={tr('Match mappool')} className="min-w-0 [container-type:inline-size]">
+    <section
+      aria-label={label || tr('Match mappool')}
+      className="min-w-0 [container-type:inline-size]"
+    >
       <h2 className="mb-3 text-base font-semibold">
         {tr('Mappool')}{' '}
         <span className="text-sm font-normal text-muted">
@@ -48,7 +55,7 @@ export function RefereePool({
               <th>{tr('Beatmap')}</th>
               <th className="pool-id w-24">{tr('ID')}</th>
               <th className="pool-copy w-28">{tr('Copy')}</th>
-              {action && <th className="w-12">{tr('Action')}</th>}
+              {action && <th className={textActions ? 'w-24' : 'w-12'}>{tr('Action')}</th>}
             </tr>
           </thead>
           <tbody>

@@ -5,10 +5,13 @@ import { useState } from 'react';
 import type { Actor } from '@/lib/permissions';
 import { QualifierStandings } from './qualifier-standings';
 import { Field, LoadingState, useResource } from './shared';
+import { QualifierImport } from './qualifier-import';
+import { can } from '@/lib/permissions';
 export function QualifierResults({ actor }: { actor: Actor }) {
   const tr = useT();
   const { data, error, reload } = useResource<{ id: string; name: string }[]>('qualifier-stages');
   const [selected, setSelected] = useState('');
+  const [revision, setRevision] = useState(0);
   if (!data) return <LoadingState error={error} retry={() => void reload()} />;
   const stageId = data.some((s) => s.id === selected) ? selected : data[0]?.id;
   return (
@@ -23,7 +26,16 @@ export function QualifierResults({ actor }: { actor: Actor }) {
           ))}
         </select>
       </Field>
-      {stageId && <QualifierStandings key={stageId} stageId={stageId} actor={actor} />}
+      {stageId && can(actor, 'matches.manage') && (
+        <QualifierImport
+          key={stageId}
+          stageId={stageId}
+          onChanged={() => setRevision((value) => value + 1)}
+        />
+      )}
+      {stageId && (
+        <QualifierStandings key={`${stageId}:${revision}`} stageId={stageId} actor={actor} />
+      )}
     </div>
   );
 }

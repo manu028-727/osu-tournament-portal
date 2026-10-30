@@ -66,6 +66,7 @@ const parents: Record<string, string[]> = {
   qualifierAssignment: ['lobby'],
   qualifierScore: ['lobby'],
   qualifierEvent: ['lobby'],
+  qualifierGame: ['lobby'],
 };
 const relations: Record<string, Record<string, string>> = {
   tournament: { settings: 'tournamentSettings' },
@@ -95,6 +96,8 @@ const relations: Record<string, Record<string, string>> = {
   },
   matchMapResult: { playerScores: 'matchPlayerScore' },
   qualifierLobby: {
+    games: 'qualifierGame',
+    ircLobbyRequests: 'ircLobbyRequest',
     entries: 'qualifierEntry',
     assignments: 'qualifierAssignment',
     scores: 'qualifierScore',
@@ -132,6 +135,8 @@ const parentReferences: Record<string, Record<string, string>> = {
   qualifierAssignment: { lobbyId: 'qualifierLobby' },
   qualifierScore: { lobbyId: 'qualifierLobby' },
   qualifierEvent: { lobbyId: 'qualifierLobby' },
+  qualifierGame: { lobbyId: 'qualifierLobby' },
+  ircLobbyRequest: { matchId: 'match', qualifierLobbyId: 'qualifierLobby' },
 };
 async function assertReferences(
   client: Client,
