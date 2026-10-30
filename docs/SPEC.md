@@ -167,8 +167,12 @@ uses explicit clearing. Stale/foreign selections and resource conflicts reject
 unsafe batches. Bracket round stage assignment preserves started history.
 
 Each match has an immutable positive tournament-local number distinct from database
-ID and source code. Numbers are unique, stable while retained, and reserved in bracket
-round order before lazy match creation. Public numeric links resolve those numbers.
+ID and source code. Numbers are unique, stable while retained, and reserved before
+lazy match creation. New brackets order reservations by configured stage progression,
+then Winners/Losers/shared finals, then round and top-to-bottom position. For RO16
+double elimination, Winners positions receive 1-8 and the first Losers round 9-12
+before the next stage. An existing tournament continues at its next available number.
+Byes consume no numbers; a conditional reset reserves one. Public numeric links resolve those numbers.
 Generated database/source identifiers are not displayed. Organizer and public
 match labels, bracket controls, lobby commands and deletion confirmation use match
 numbers. Numeric referee URLs resolve the same record; existing internal URLs and
@@ -242,6 +246,20 @@ the generation form remains available for retry.
 Native single elimination, double elimination/reset and groups support deterministic
 seeding, byes, previews, configurable round/stage assignments, manual/locked slots,
 reviewed routes, qualification and public views. Only confirmed results advance.
+Creation suggests every round's stage from the selected starting stage, following
+explicit Next stage links before configured display order. The first Winners and
+Losers rounds share a stage; the next Winners round and the next two Losers rounds
+advance together. Later rounds repeat that pattern. Winners/Losers Finals share
+the final path stage; Grand Finals uses the next stage when available, and its reset
+shares that stage. When stages run out, remaining rounds use the last available
+stage. Single-elimination third place shares its final stage; group rounds stay
+in their selected stage. Authored names are never parsed to infer progression.
+Organizers may override suggestions; a round cannot precede a feeder's stage.
+The preview shows every proposed stage and actual numeric range in generation
+order, updating after edits. Generation checks the reviewed stage/configuration
+and counter witness before writing; stale previews must be refreshed. Existing
+match numbers, database identities, histories and routes are never renumbered by
+new generation, stage edits, lazy materialization, imports or synchronization.
 Double-elimination presentation has only Winners Bracket and Losers Bracket paths.
 Winners Finals and Losers Finals end their respective paths in aligned columns.
 Grand Finals and the optional reset form their shared conclusion to the right;

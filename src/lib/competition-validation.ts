@@ -23,7 +23,14 @@ export const competitionCreateFields = {
   manualMatches: z.boolean().default(false),
 };
 export const competitionActionSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('competition.create'), ...competitionCreateFields }),
+  z.object({
+    type: z.literal('competition.create'),
+    ...competitionCreateFields,
+    reviewHash: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
+  }),
   z.object({ type: z.literal('competition.preview'), ...competitionCreateFields }),
   z.object({
     type: z.literal('competition.lifecycle.preview'),

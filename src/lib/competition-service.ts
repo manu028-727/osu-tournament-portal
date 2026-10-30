@@ -9,6 +9,7 @@ import {
   generateCompetition,
   groupStandings,
   recalculateCompetition,
+  type CompetitionPlan,
 } from './competition-engine';
 import {
   GroupConfig,
@@ -18,14 +19,24 @@ import {
   stable,
 } from './competition-groups';
 import { allNodes, tenant } from './competition-queries';
-import type { CompetitionNode, CompetitionLifecyclePreview } from './competition-types';
+import type {
+  CompetitionNode,
+  CompetitionLifecyclePreview,
+  CompetitionGenerationPreview,
+} from './competition-types';
+import { orderedCompetitionStages, suggestedCompetitionStages } from './competition-stages';
 import {
   competitionActionSchema,
   type CompetitionAction,
   type CompetitionCreate,
 } from './competition-validation';
 import { inheritedRules } from './gameplay-scoring';
-import { allocateMatchNumber, reserveBracketMatchNumbers } from './match-numbering';
+import {
+  allocateMatchNumber,
+  reserveBracketMatchNumbers,
+  numberBracketNodes,
+  bracketNumberingOrder,
+} from './match-numbering';
 import { matchRulesSchema } from './match-rules';
 import { AppError, assertPermission, type Actor, type PermissionKey } from './permissions';
 import { finalizedQualifierSeeds } from './qualifier-standings-service';
@@ -85,16 +96,39 @@ async function checkedPlan(
   tournamentId: string,
   a: CompetitionCreate | Extract<CompetitionAction, { type: 'competition.preview' }>,
 ) {
-  const stages = await tx.tournamentStage.findMany({
-    where: {
-      tournamentId,
-      id: { in: [...new Set([a.stageId, ...Object.values(a.roundStages)])] },
-      archivedAt: null,
-      kind: { notIn: ['QUALIFIERS', 'QUALIFIER'] },
-    },
-  });
-  if (stages.length !== new Set([a.stageId, ...Object.values(a.roundStages)]).size)
+  const availableStages = orderedCompetitionStages(
+    await tx.tournamentStage.findMany({
+      where: {
+        tournamentId,
+        archivedAt: null,
+        kind: { notIn: ['QUALIFIERS', 'QUALIFIER'] },
+      },
+    }),
+  );
+  if (
+    [a.stageId, ...Object.values(a.roundStages)].some(
+      (id) => !availableStages.some((stage) => stage.id === id),
+    )
+  )
     throw new AppError('Choose valid, active head-to-head stages from this tournament.');
+  const plan = await generateCompetition(a, availableStages);
+  if (Object.keys(a.roundStages).some((key) => !plan.rounds.some((round) => round.key === key)))
+    throw new AppError('Choose stage overrides for rounds in this bracket.');
+  const stageRank = new Map(availableStages.map((stage, index) => [stage.id, index]));
+  const roundRank = new Map(plan.rounds.map((round) => [round.key, stageRank.get(round.stageId)!]));
+  const nodeRank = new Map(plan.nodes.map((node) => [node.key, roundRank.get(node.roundKey)!]));
+  if (
+    plan.nodes.some((node) =>
+      node.slots.some(
+        (slot) => slot.sourceKey && nodeRank.get(slot.sourceKey)! > nodeRank.get(node.key)!,
+      ),
+    )
+  )
+    throw new AppError(
+      'A round cannot use a stage before its feeder round. Review the stage assignments.',
+    );
+  const usedIds = new Set([a.stageId, ...plan.rounds.map((round) => round.stageId)]);
+  const stages = availableStages.filter((stage) => usedIds.has(stage.id));
   const teams = await tx.team.findMany({
     where: { tournamentId, id: { in: a.teamIds }, status: 'APPROVED' },
     include: { members: { select: { substitute: true } } },
@@ -126,7 +160,7 @@ async function checkedPlan(
     if (order.some((id, index) => id !== a.teamIds[index]))
       throw new AppError('Preserve finalized seed order when generating this bracket.');
   }
-  const plan = await generateCompetition(a);
+  let groupSource;
   if (a.sourceBracketId) {
     const source = await finalizedGroupSeeds(tx, tournamentId, a.sourceBracketId);
     if (!a.teamIds.every((id) => source.seeds.some((s) => s.teamId === id)))
@@ -136,9 +170,105 @@ async function checkedPlan(
     const order = source.seeds.filter((s) => a.teamIds.includes(s.teamId)).map((s) => s.teamId);
     if (order.some((id, index) => id !== a.teamIds[index]))
       throw new AppError('Preserve the reviewed group seed order.');
-    return { ...plan, groupSource: { bracketId: a.sourceBracketId, ...source } };
+    groupSource = { bracketId: a.sourceBracketId, ...source };
   }
-  return { ...plan, groupSource: undefined };
+  return {
+    ...plan,
+    groupSource,
+    availableStages,
+    witness: { stages, gameplayScoring: settings.gameplayScoring, matchRules: settings.matchRules },
+  };
+}
+
+function generationPreview(
+  plan: CompetitionPlan & {
+    groupSource?: unknown;
+    availableStages: { id: string; name: string; position: number }[];
+    witness: unknown;
+  },
+  input: CompetitionCreate | Extract<CompetitionAction, { type: 'competition.preview' }>,
+  sequence: number,
+): CompetitionGenerationPreview {
+  const ranks = new Map(plan.availableStages.map((stage, index) => [stage.id, index]));
+  const suggested = suggestedCompetitionStages(plan.rounds, input.stageId, plan.availableStages);
+  const rounds = plan.rounds.map((round) => ({
+    ...round,
+    id: round.key,
+    stagePosition: ranks.get(round.stageId)!,
+  }));
+  const nodes = recalculateCompetition(
+    plan.nodes.map((node) => ({
+      ...node,
+      id: node.key,
+      bracketId: 'preview',
+      roundId: node.roundKey,
+      state: 'WAITING',
+      matchNumber: null,
+      matchId: null,
+      match: null,
+      slots: node.slots.map(({ sourceKey, ...slot }) => ({ ...slot, sourceNodeId: sourceKey })),
+    })),
+  );
+  const assignments = input.manualMatches
+    ? new Map<string, number>()
+    : numberBracketNodes(
+        nodes.filter((node) => !['BYE', 'SKIPPED'].includes(node.state)),
+        rounds,
+        sequence + 1,
+      );
+  const orderedRounds = bracketNumberingOrder(
+    rounds.map((round) => ({
+      id: round.key,
+      bracketId: 'preview',
+      roundId: round.key,
+      key: round.key,
+      position: 0,
+      state: 'READY',
+    })),
+    rounds,
+  );
+  const ranges = orderedRounds.map(({ key }) => {
+    const round = rounds.find((round) => round.key === key)!;
+    const numbers = nodes
+      .filter((node) => node.roundId === key)
+      .flatMap((node) => {
+        const number = assignments.get(node.id);
+        return number ? [number] : [];
+      });
+    return {
+      roundKey: key,
+      stageId: round.stageId,
+      stageName: plan.availableStages.find((stage) => stage.id === round.stageId)!.name,
+      suggestedStageId: suggested[key],
+      suggestedStageName: plan.availableStages.find((stage) => stage.id === suggested[key])!.name,
+      firstMatchNumber: numbers.length ? Math.min(...numbers) : null,
+      lastMatchNumber: numbers.length ? Math.max(...numbers) : null,
+      matchCount: numbers.length,
+    };
+  });
+  const { reviewHash: _review, ...request } = {
+    ...input,
+    type: 'competition.create',
+  } as CompetitionCreate;
+  const reviewHash = createHash('sha256')
+    .update(
+      stable({
+        request,
+        sequence: input.manualMatches ? null : sequence,
+        rounds: plan.rounds,
+        nodes: plan.nodes,
+        groupSource: plan.groupSource,
+        witness: plan.witness,
+        stageOrder: plan.availableStages.map((stage) => stage.id),
+      }),
+    )
+    .digest('hex');
+  return { rounds: plan.rounds, nodes: plan.nodes, assignments: ranges, reviewHash };
+}
+
+function generationRequest(input: CompetitionCreate) {
+  const { reviewHash: _review, ...request } = input;
+  return request;
 }
 async function snapshotTeams(tx: Prisma.TransactionClient, tournamentId: string, ids: string[]) {
   const teams = await tx.team.findMany({
@@ -739,13 +869,23 @@ export async function applyCompetitionAction(
     a.type === 'competition.regenerate-missing'
   )
     return applyLifecycle(tx, actor, a);
-  if (a.type === 'competition.preview') return checkedPlan(tx, tournamentId, a);
+  if (a.type === 'competition.preview') {
+    const plan = await checkedPlan(tx, tournamentId, a);
+    const tournament = await tx.tournament.findUniqueOrThrow({
+      where: { id: tournamentId },
+      select: { matchNumberSequence: true },
+    });
+    return generationPreview(plan, a, tournament.matchNumberSequence);
+  }
   if (a.type === 'competition.create') {
     const existing = await tx.bracket.findFirst({
       where: { tournamentId, generationKey: a.generationKey },
     });
     if (existing) {
-      if (stable(competitionActionSchema.options[0].parse(existing.config)) !== stable(a))
+      if (
+        stable(generationRequest(competitionActionSchema.options[0].parse(existing.config))) !==
+        stable(generationRequest(a))
+      )
         throw new AppError(
           'This generation key has already been used for a different bracket.',
           409,
@@ -753,13 +893,27 @@ export async function applyCompetitionAction(
       return { id: existing.id, version: existing.version };
     }
     const plan = await checkedPlan(tx, tournamentId, a);
+    // Preserve the existing advisory-lock -> tournament-counter row-lock order.
+    // The reviewed counter must stay locked until its reservation is committed.
+    const counters = await tx.$queryRaw<{ matchNumberSequence: number }[]>`
+      SELECT "matchNumberSequence" FROM "Tournament" WHERE "id" = ${tournamentId} FOR UPDATE
+    `;
+    const preview = generationPreview(plan, a, counters[0].matchNumberSequence);
+    if (a.reviewHash && a.reviewHash !== preview.reviewHash)
+      throw new AppError(
+        'Bracket stages or match numbers changed. Preview the bracket again before generating.',
+        409,
+      );
     const bracket = await tx.bracket.create({
       data: {
         tournamentId,
         generationKey: a.generationKey,
         name: a.name,
         format: a.format,
-        config: json({ ...a, ...(plan.groupSource ? { groupSource: plan.groupSource } : {}) }),
+        config: json({
+          ...generationRequest(a),
+          ...(plan.groupSource ? { groupSource: plan.groupSource } : {}),
+        }),
         seedOrder: json(a.teamIds),
         sourceStandingId: a.sourceStandingId,
       },
@@ -808,10 +962,11 @@ export async function applyCompetitionAction(
     const before = await allNodes(tx, tournamentId);
     const after = recalculateCompetition(before);
     const newBracketNodes = after.filter((node) => node.bracketId === bracket.id);
-    const numberingRounds = await tx.bracketRound.findMany({
-      where: { tournamentId, bracketId: bracket.id },
-      select: { id: true, key: true, position: true, lane: true },
-    });
+    const numberingRounds = plan.rounds.map((round) => ({
+      ...round,
+      id: rounds.get(round.key)!,
+      stagePosition: plan.availableStages.findIndex((stage) => stage.id === round.stageId),
+    }));
     const allocated = a.manualMatches
       ? new Map<string, number>()
       : await reserveBracketMatchNumbers(tx, tournamentId, newBracketNodes, numberingRounds);

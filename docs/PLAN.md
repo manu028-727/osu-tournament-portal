@@ -47,7 +47,8 @@ append another guide. SPEC's capability labels do not override discrepancies her
 | 25    | Improve numeric match navigation, direct organizer results, reviewed multiplayer imports and Matches scheduling/search                                                        | Verified within recorded Chromium and PostgreSQL scope | `3b5beb4`                     |
 | 26    | Retain deleted generated fixtures, edit scores in rows, reconstruct roster-based MP results and integrate mappool suggestions                                                 | Verified within recorded Chromium and PostgreSQL scope | `01971b2`; checks below       |
 | 27    | Interactive bracket editing, explicit fixture restoration and permanent whole-bracket deletion with reviewed numbering restart                                                | Verified within recorded Chromium and PostgreSQL scope | `48f8b5d`; checks below       |
-| 28    | Two-path double-elimination presentation, shared finals conclusion, stage headings and numbered pending slots                                                                 | Verified within recorded Chromium and PostgreSQL scope | Working tree after `48f8b5d`  |
+| 28    | Two-path double-elimination presentation, shared finals conclusion, stage headings and numbered pending slots                                                                 | Verified within recorded Chromium and PostgreSQL scope | `527bdd7`; checks below       |
+| 29    | Progression-based bracket stage suggestions, persisted number reservations and reviewed editable generation ranges                                                            | Verified within recorded Chromium and PostgreSQL scope | Working tree after `527bdd7`  |
 
 Rejected calm/earlier redesign pilots are not design authority. Their useful
 usability lessons and verification procedures are incorporated in DESIGN and
@@ -1101,6 +1102,72 @@ OAuth, osu! and Bancho use synthetic/local mocks rather than live provider
 verification. Existing pg concurrent-query and synthetic avatar warnings remain
 visible. No migration or installation-data conversion is required; no deployment
 or live service change is part of this work.
+
+## Bracket Generation And Stage Numbering - 30 October 2026
+
+Source scope: working tree after `527bdd7`. New generation follows stage progression
+instead of numbering all Winners rounds before all Losers rounds. Existing graphs,
+match IDs/numbers, histories and immutable SQL triggers remain unchanged.
+
+- Added a client-safe stage ordering/suggestion owner. Explicit Next stage links
+  take precedence over position, with deterministic ordering for unrelated stages.
+  Suggestions cover all elimination segments, shared finals/reset, third place,
+  limited-stage configurations and groups, without parsing authored names.
+- Preview and creation share stage validation, forward dependency checks and
+  numbering order. Stage ranks precede Winners/Losers lane and native round/node
+  positions. RO16 reserves Winners 1-8 then Losers 9-12 before the next stage;
+  actual ranges continue from the current tournament counter, exclude byes and
+  include conditional reset reservations. Manual linking allocates no numbers.
+- Creation preview shows editable Automatic/override selectors and numeric range
+  cards in generation order, refreshing after edits. A reviewed hash rejects
+  stale stage/rules/source/counter state before writes under the established
+  advisory-lock/counter-row-lock order. Generation-key retries remain idempotent.
+- Removed the old unconditional stage inheritance and round-first numbering
+  comparator. Rebuild preserves the former rounds' actual stage assignments;
+  existing archives/configuration and historical numbers are not recalculated.
+  Rebuild forms refresh suggestions when entrants change and discard unavailable
+  stage selections so retired configuration cannot block the new preview.
+
+Verification on Node 22.23.3:
+
+- Locked `npm ci`, Prisma generation, format, lint, route generation/TypeScript,
+  production build and `git diff --check` passed. The source audit covers 409
+  source files, including the new stage owner, with no issues.
+- All 384 unit tests in 31 files passed. New cases cover literal DE16 ranges,
+  multiple Losers rounds, explicit links overriding display order, stage caps,
+  overrides, third place/groups, byes and reset/no-reset variants through DE128.
+- All 46 PostgreSQL tests in competition, lock, tournament-transfer and public
+  visibility suites passed. Coverage includes matching preview/persisted ranges,
+  stale counter/stage witnesses, suggested-stage eligibility, forward dependencies,
+  idempotent generation retries, immutable existing numbers, manual linking and
+  archive/history compatibility.
+- Production Chromium passed all 14 competition cases, followed by three focused
+  final cases after the rebuild fix. Those three also passed in development.
+  This covers 15 distinct production cases; repeated cases are not counted twice.
+  Two concurrent reviewed requests produce one graph and one stale rejection;
+  refreshing the latter then reserves the next nonoverlapping sequential range.
+- Browser interactions exercise Automatic/override updates, preserved selector
+  focus while rows reorder, stale-review recovery without lost form values,
+  exact generation ranges, a complete DE8 reset, public numeric placeholders,
+  old-match histories, permanent rebuilds and regeneration. The new rebuild case
+  removes former entrants and retires a former stage, then creates the smaller
+  bracket with fresh valid suggestions and numbers 1-3.
+- Captured and inspected preview/range screenshots in light/dark, English/Italian,
+  desktop and narrow mobile layouts. Checks cover 1920, 1366, 1024, 844 landscape,
+  768, 683, 390, 375 and 320px, including contained modal scrolling and wrapped
+  action controls. Required field hints use the shared accessible Field contract;
+  participant fieldsets explicitly allow shrinking at narrow widths.
+
+Evidence and command logs remain ignored under `.data/bracket-generation-20261030/`.
+Early runs exposed a stale private test DB address, sandbox socket restrictions,
+field-label/mobile containment regressions and a wrong Italian test selector;
+the final runs above passed after correction. Failed/interrupted runs are not
+success evidence. Tests use the guarded isolated database at the existing QA
+container's current address; no service was restarted and no private configuration
+file was rewritten. Browser coverage is Chromium with synthetic sessions/providers;
+live OAuth/osu!/Bancho remain unverified. The upstream pg concurrent-query warning
+remains visible. No migration or installation-data conversion is required; no
+deployment or installation-data mutation is part of this work.
 
 ## Completion Rules
 

@@ -11,7 +11,10 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import type { Prisma } from '../../src/generated/prisma/client';
 import { PrismaClient } from '../../src/generated/prisma/client';
-import type { CompetitionData } from '../../src/lib/competition-types';
+import type {
+  CompetitionData,
+  CompetitionGenerationPreview,
+} from '../../src/lib/competition-types';
 import type { CompetitionCreate } from '../../src/lib/competition-validation';
 import { matchRulesSchema } from '../../src/lib/match-rules';
 import type { MatchListData } from '../../src/lib/matches-types';
@@ -1344,6 +1347,288 @@ test('DE8 routes losers, preserves an independent division and plays the Grand F
     paths.find((p) => p.id === independent.id)!.teams.find((e) => e.teamId === loser)?.eligible,
   ).toBe(true);
   expect(await db.match.count({ where: { tournamentId: f.id } })).toBe(19);
+});
+
+test('creation previews automatic progression stages and number ranges, refreshes overrides and creates exactly the reviewed bracket', async ({
+  page,
+  context,
+  competition: f,
+}, info) => {
+  test.setTimeout(180000);
+  page.setDefaultTimeout(15000);
+  const pool = await db.mappool.findUniqueOrThrow({
+    where: { stageId: f.stageId },
+    include: { publishedRevision: { include: { slots: true } } },
+  });
+  const stageIds = [f.stageId];
+  const names = ['RO8', 'Semifinale dell autore', 'Finalissima', 'Grand Finals configurata'];
+  await db.tournamentStage.update({
+    where: { id: f.stageId },
+    data: { name: names[0], position: 10 },
+  });
+  for (let i = 1; i < names.length; i++) {
+    const stage = await db.tournamentStage.create({
+      data: {
+        tournamentId: f.id,
+        name: names[i],
+        slug: `generation-${i}`,
+        kind: 'ELIMINATION',
+        position: 10 - i,
+      },
+    });
+    await publishPool(
+      f.id,
+      stage.id,
+      pool.publishedRevision!.slots.map((slot) => slot.beatmapId),
+    );
+    stageIds.push(stage.id);
+  }
+  for (let i = 0; i < stageIds.length - 1; i++)
+    await db.tournamentStage.update({
+      where: { id: stageIds[i] },
+      data: { nextStageId: stageIds[i + 1] },
+    });
+  await openBracket(page, f);
+  await page.getByRole('button', { name: 'Create bracket', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Create bracket', exact: true });
+  await dialog.getByLabel('Name', { exact: true }).fill('Stage progression preview');
+  await dialog.getByLabel('Format', { exact: true }).selectOption('DOUBLE_ELIMINATION');
+  await expect(dialog.getByLabel('Gameplay stage', { exact: true })).toHaveValue(f.stageId);
+  const preview = await uiAction<CompetitionGenerationPreview>(page, 'competition.preview', () =>
+    dialog.getByRole('button', { name: 'Preview bracket', exact: true }).click(),
+  );
+  const expectedKeys = [
+    'g1-r1',
+    'g2-r1',
+    'g1-r2',
+    'g2-r2',
+    'g2-r3',
+    'g1-r3',
+    'g2-r4',
+    'g3-r1',
+    'g3-r2',
+  ];
+  expect(preview.assignments.map((row) => row.roundKey)).toEqual(expectedKeys);
+  expect(
+    await dialog
+      .locator('[data-round-preview]')
+      .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-round-preview'))),
+  ).toEqual(expectedKeys);
+  const row = (key: string) => dialog.locator(`[data-round-preview="${key}"]`);
+  await expect(row('g1-r1')).toContainText('Matches #1-4');
+  await expect(row('g2-r1')).toContainText('Matches #5-6');
+  await expect(row('g1-r2')).toContainText('Matches #7-8');
+  await db.tournamentStage.update({
+    where: { id: stageIds[3] },
+    data: { description: 'Configuration changed after review' },
+  });
+  const staleResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/admin/action') &&
+      response.request().postDataJSON()?.type === 'competition.create',
+  );
+  await dialog.getByRole('button', { name: 'Generate bracket', exact: true }).click();
+  expect((await staleResponse).status()).toBe(409);
+  await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('Stage progression preview');
+  expect(await db.bracket.count({ where: { tournamentId: f.id } })).toBe(0);
+  await uiAction(page, 'competition.preview', () =>
+    dialog.getByRole('button', { name: 'Preview bracket', exact: true }).click(),
+  );
+  await expect(row('g3-r2')).toContainText('Match #15');
+  for (const assignment of preview.assignments)
+    await expect(row(assignment.roundKey).getByRole('combobox')).toHaveValue('');
+  await expect(row('g1-r2').getByRole('combobox')).toContainText(`Automatic: ${names[1]}`);
+  await expect(row('g3-r1').getByRole('combobox')).toContainText(`Automatic: ${names[3]}`);
+  await row('g1-r2').getByRole('combobox').focus();
+  await uiAction<CompetitionGenerationPreview>(page, 'competition.preview', () =>
+    row('g1-r2').getByRole('combobox').selectOption(f.stageId),
+  );
+  await expect(row('g1-r2')).toContainText('Matches #5-6');
+  await expect(row('g1-r2').getByRole('combobox')).toBeFocused();
+  await expect(row('g2-r1')).toContainText('Matches #7-8');
+  await uiAction<CompetitionGenerationPreview>(page, 'competition.preview', () =>
+    row('g1-r2').getByRole('combobox').selectOption(''),
+  );
+  await expect(row('g1-r2')).toContainText('Matches #7-8');
+  await expect(page.locator('.toast')).toHaveCount(0, { timeout: 10000 });
+  for (const appearance of ['light', 'dark']) {
+    await page.evaluate(
+      (value) => document.documentElement.setAttribute('data-appearance', value),
+      appearance,
+    );
+    for (const width of [1920, 1366, 1024, 844, 768, 683, 390, 375, 320]) {
+      await page.setViewportSize({ width, height: width === 844 ? 390 : 900 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      );
+      const bounds = await dialog.evaluate((el) => ({
+        width: el.clientWidth,
+        scroll: el.scrollWidth,
+        overflow: [...el.querySelectorAll('*')]
+          .filter((item) => item.getBoundingClientRect().right > el.getBoundingClientRect().right)
+          .slice(0, 8)
+          .map((item) => ({
+            tag: item.tagName,
+            classes: item.className,
+            width: item.getBoundingClientRect().width,
+            text: item.textContent?.slice(0, 100),
+          })),
+      }));
+      expect(bounds.scroll, JSON.stringify({ viewport: width, ...bounds })).toBeLessThanOrEqual(
+        bounds.width,
+      );
+      await row('g1-r1').scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: info.outputPath(`generation-preview-${appearance}-${width}.png`),
+        fullPage: true,
+        animations: 'disabled',
+      });
+      await row('g3-r2').scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: info.outputPath(`generation-ending-${appearance}-${width}.png`),
+        fullPage: true,
+        animations: 'disabled',
+      });
+    }
+  }
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const created = await uiAction(page, 'competition.create', () =>
+    dialog.getByRole('button', { name: 'Generate bracket', exact: true }).click(),
+  );
+  await expect(dialog).toHaveCount(0);
+  const current = await bracket(created.id);
+  for (const assignment of preview.assignments) {
+    const round = current.rounds.find((round) => round.key === assignment.roundKey)!;
+    expect(round.stageId).toBe(assignment.stageId);
+    expect(
+      current.nodes
+        .filter((node) => node.roundId === round.id)
+        .map((node) => node.matchNumber)
+        .sort((a, b) => a! - b!),
+    ).toEqual(
+      Array.from({ length: assignment.matchCount }, (_, i) => assignment.firstMatchNumber! + i),
+    );
+  }
+  await publishInUI(page);
+  const guests = await context.browser()!.newContext();
+  try {
+    const publicPage = await guests.newPage();
+    await publicPage.goto(`${f.root}/brackets`);
+    const canvas = publicPage.getByLabel('Bracket canvas', { exact: true });
+    await expect(canvas.getByRole('button', { name: 'Match 5', exact: true })).toContainText(
+      'Loser of Match #1',
+    );
+    expect(await finish(f, created.id, 'RESET_FINAL')).toBe(15);
+    await publicPage.reload();
+    await expect(canvas.getByRole('button', { name: 'Match 15', exact: true })).toContainText(
+      'Completed',
+    );
+    await page.reload();
+    await page.getByRole('button', { name: 'Interface language', exact: true }).click();
+    await page.getByRole('menuitemradio', { name: 'Italiano', exact: true }).click();
+    await page.getByRole('button', { name: 'Crea tabellone', exact: true }).click();
+    const italian = page.getByRole('dialog', { name: 'Crea tabellone', exact: true });
+    await italian.getByRole('button', { name: 'Anteprima del tabellone', exact: true }).click();
+    await expect(italian.locator('[data-round-preview="g1-r1"]')).toContainText('Incontri #16-19');
+    await expect(italian.locator('[data-round-preview="g1-r2"]')).toContainText(
+      `Automatica: ${names[1]}`,
+    );
+    await page.setViewportSize({ width: 320, height: 844 });
+    await italian.locator('[data-round-preview="g1-r1"]').scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: info.outputPath('generation-preview-italian-320.png'),
+      fullPage: true,
+      animations: 'disabled',
+    });
+    await italian.getByRole('button', { name: 'Annulla', exact: true }).click();
+  } finally {
+    await guests.close();
+  }
+});
+
+test('rebuild refreshes stage suggestions when former participants and stages are no longer available', async ({
+  page,
+  competition: f,
+}) => {
+  const retiredStage = await db.tournamentStage.create({
+    data: {
+      tournamentId: f.id,
+      name: 'Former final',
+      slug: 'former-final',
+      kind: 'ELIMINATION',
+      position: 1,
+    },
+  });
+  const original = await f.post(
+    bracketInput(f, 'Smaller rebuild', {
+      roundStages: { 'g1-r2': retiredStage.id, 'g1-r3': retiredStage.id },
+    }),
+  );
+  await db.team.updateMany({
+    where: { id: { in: f.entrants.slice(4).map((team) => team.id) } },
+    data: { status: 'REJECTED' },
+  });
+  await db.tournamentStage.update({
+    where: { id: retiredStage.id },
+    data: { archivedAt: new Date() },
+  });
+  await openBracket(page, f, original.id);
+  await page.getByRole('button', { name: 'Rebuild bracket', exact: true }).click();
+  const deletion = page.getByRole('dialog', { name: 'Delete bracket', exact: true });
+  await deletion
+    .getByLabel('Type the bracket name to confirm', { exact: true })
+    .fill('Smaller rebuild');
+  await uiAction(page, 'competition.delete', () =>
+    deletion.getByRole('button', { name: 'Delete bracket', exact: true }).click(),
+  );
+  const dialog = page.getByRole('dialog', { name: 'Rebuild bracket', exact: true });
+  const preview = await uiAction<CompetitionGenerationPreview>(page, 'competition.preview', () =>
+    dialog.getByRole('button', { name: 'Preview bracket', exact: true }).click(),
+  );
+  expect(preview.rounds).toHaveLength(2);
+  expect(preview.assignments.every((row) => row.stageId === f.stageId)).toBe(true);
+  await expect(dialog.locator('[data-round-preview="g1-r1"]')).toContainText('Matches #1-2');
+  const created = await uiAction(page, 'competition.create', () =>
+    dialog.getByRole('button', { name: 'Generate bracket', exact: true }).click(),
+  );
+  const rebuilt = await bracket(created.id);
+  expect(rebuilt.entries).toHaveLength(4);
+  expect(rebuilt.nodes.map((node) => node.matchNumber).sort()).toEqual([1, 2, 3]);
+  expect(rebuilt.id).not.toBe(original.id);
+});
+
+test('concurrent reviewed generations serialize counter reservations and require the stale writer to re-preview', async ({
+  competition: f,
+}) => {
+  const inputs = ['First', 'Second'].map((name) => bracketInput(f, name));
+  const reviews: CompetitionGenerationPreview[] = [];
+  for (const input of inputs)
+    reviews.push(
+      await f.post<CompetitionGenerationPreview>({ ...input, type: 'competition.preview' }),
+    );
+  expect(reviews.every((review) => review.assignments[0].firstMatchNumber === 1)).toBe(true);
+  const responses = await Promise.all(
+    inputs.map((input, i) => f.request({ ...input, reviewHash: reviews[i].reviewHash })),
+  );
+  expect(responses.map((response) => response.status()).sort()).toEqual([200, 409]);
+  const staleIndex = responses.findIndex((response) => response.status() === 409);
+  expect(await responses[staleIndex].text()).toContain('Preview the bracket again');
+  expect(await db.bracket.count({ where: { tournamentId: f.id } })).toBe(1);
+  const fresh = await f.post<CompetitionGenerationPreview>({
+    ...inputs[staleIndex],
+    type: 'competition.preview',
+  });
+  expect(fresh.assignments[0].firstMatchNumber).toBe(8);
+  await f.post({ ...inputs[staleIndex], reviewHash: fresh.reviewHash });
+  expect(
+    (
+      await db.bracketNode.findMany({
+        where: { tournamentId: f.id },
+        orderBy: { matchNumber: 'asc' },
+        select: { matchNumber: true },
+      })
+    ).map((node) => node.matchNumber),
+  ).toEqual(Array.from({ length: 14 }, (_, i) => i + 1));
 });
 
 for (const resetPlayed of [false, true]) {

@@ -80,7 +80,16 @@ export type NumberableRound = {
   position: number;
   lane: string;
   key: string;
+  stagePosition: number;
 };
+
+function laneOrder(lane: string) {
+  if (lane === 'WINNERS') return 0;
+  if (lane === 'LOSERS') return 1;
+  if (lane === 'THIRD_PLACE') return 2;
+  if (lane === 'FINALS') return 3;
+  return 4;
+}
 
 export function bracketNumberingOrder<T extends NumberableNode>(
   nodes: T[],
@@ -92,8 +101,10 @@ export function bracketNumberingOrder<T extends NumberableNode>(
       roundB = roundOrder.get(b.roundId);
     if (!roundA || !roundB) throw new AppError('Bracket round ordering is incomplete.', 409);
     return (
+      roundA.stagePosition - roundB.stagePosition ||
+      laneOrder(roundA.lane) - laneOrder(roundB.lane) ||
+      roundA.lane.localeCompare(roundB.lane, 'en', { numeric: true }) ||
       roundA.position - roundB.position ||
-      roundA.lane.localeCompare(roundB.lane) ||
       a.position - b.position ||
       a.key.localeCompare(b.key) ||
       a.id.localeCompare(b.id)
@@ -108,6 +119,8 @@ export function numberBracketNodes<T extends NumberableNode>(
 ): Map<string, number> {
   if (!Number.isSafeInteger(firstNumber) || firstNumber < 1)
     throw new AppError('The first bracket match number must be a positive integer.', 409);
+  if (firstNumber + nodes.length - 1 > MAX_MATCH_NUMBER)
+    throw new AppError('The tournament has exhausted its available match numbers.', 409);
   return new Map(
     bracketNumberingOrder(nodes, rounds).map((node, index) => [node.id, firstNumber + index]),
   );
@@ -149,7 +162,10 @@ export async function reserveBracketMatchNumbers(
   rounds: NumberableRound[],
 ): Promise<Map<string, number>> {
   const ordered = bracketNumberingOrder(
-    nodes.filter((node) => !node.matchId && !['BYE', 'SKIPPED'].includes(node.state)),
+    nodes.filter(
+      (node) =>
+        !node.matchId && node.matchNumber == null && !['BYE', 'SKIPPED'].includes(node.state),
+    ),
     rounds,
   );
   if (!ordered.length) return new Map();

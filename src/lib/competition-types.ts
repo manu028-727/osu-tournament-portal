@@ -109,6 +109,19 @@ export type CompetitionData = {
   brackets: CompetitionBracketData[];
   options: CompetitionOptions | null;
 };
+export type CompetitionGenerationPreview = import('./competition-engine').CompetitionPlan & {
+  reviewHash: string;
+  assignments: {
+    roundKey: string;
+    stageId: string;
+    stageName: string;
+    suggestedStageId: string;
+    suggestedStageName: string;
+    firstMatchNumber: number | null;
+    lastMatchNumber: number | null;
+    matchCount: number;
+  }[];
+};
 export type CompetitionLifecyclePreview = {
   hash: string;
   blocked: boolean;

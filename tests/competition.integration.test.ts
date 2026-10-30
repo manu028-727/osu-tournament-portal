@@ -1,6 +1,6 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
-import type { Prisma } from '../src/generated/prisma/client';
+import { Prisma } from '../src/generated/prisma/client';
 import { groupStandings } from '../src/lib/competition-engine';
 import {
   rebindImportedCompetition,
@@ -31,7 +31,10 @@ import { applyMatchAction } from '../src/lib/matches-service';
 import { matchActionSchema } from '../src/lib/matches-validation';
 import { signMatchResultReview } from '../src/lib/match-result-review';
 import type { MultiplayerImportGame } from '../src/lib/match-results-contract';
-import type { CompetitionLifecyclePreview } from '../src/lib/competition-types';
+import type {
+  CompetitionLifecyclePreview,
+  CompetitionGenerationPreview,
+} from '../src/lib/competition-types';
 
 assertTestDatabase(process.env.DATABASE_URL);
 const rollback = new Error('competition test rollback');
@@ -108,11 +111,11 @@ async function fixture(tx: Prisma.TransactionClient, count = 12): Promise<Fixtur
   }
   return { tx, actor, tournamentId: id, stageId: stage.id, teamIds };
 }
-async function isolated(test: (f: Fixture) => Promise<void>) {
+async function isolated(test: (f: Fixture) => Promise<void>, count = 12) {
   try {
     await db.$transaction(
       async (tx) => {
-        await test(await fixture(tx));
+        await test(await fixture(tx, count));
         throw rollback;
       },
       { timeout: 60000 },
@@ -175,6 +178,156 @@ async function finish(f: Fixture, id: string, lowerWinsFinal = false) {
 }
 afterAll(() => db.$disconnect());
 describe('native competition PostgreSQL persistence', () => {
+  it('previews and persists DE16 progression stages and real number ranges, then retains numbers across edits and retries', () =>
+    isolated(async (f) => {
+      await f.tx.tournamentStage.update({
+        where: { id: f.stageId },
+        data: { name: 'RO16', position: 0 },
+      });
+      const stageIds = [f.stageId];
+      for (const [i, name] of ['QF', 'SF', 'F', 'GF'].entries()) {
+        const stage = await f.tx.tournamentStage.create({
+          data: {
+            tournamentId: f.tournamentId,
+            name,
+            slug: name.toLowerCase(),
+            kind: 'ELIMINATION',
+            position: i + 1,
+          },
+        });
+        stageIds.push(stage.id);
+      }
+      const input = create(f, 16, 'DOUBLE_ELIMINATION');
+      const preview = (await applyCompetitionAction(
+        f.tx,
+        f.actor,
+        competitionActionSchema.parse({ ...input, type: 'competition.preview' }),
+      )) as CompetitionGenerationPreview;
+      expect(await f.tx.bracket.count({ where: { tournamentId: f.tournamentId } })).toBe(0);
+      expect(
+        preview.assignments.map((row) => [
+          row.roundKey,
+          row.stageName,
+          row.firstMatchNumber,
+          row.lastMatchNumber,
+        ]),
+      ).toEqual([
+        ['g1-r1', 'RO16', 1, 8],
+        ['g2-r1', 'RO16', 9, 12],
+        ['g1-r2', 'QF', 13, 16],
+        ['g2-r2', 'QF', 17, 20],
+        ['g2-r3', 'QF', 21, 22],
+        ['g1-r3', 'SF', 23, 24],
+        ['g2-r4', 'SF', 25, 26],
+        ['g2-r5', 'SF', 27, 27],
+        ['g1-r4', 'F', 28, 28],
+        ['g2-r6', 'F', 29, 29],
+        ['g3-r1', 'GF', 30, 30],
+        ['g3-r2', 'GF', 31, 31],
+      ]);
+      const created = await apply(f, { ...input, reviewHash: preview.reviewHash });
+      expect((await apply(f, { ...input, reviewHash: preview.reviewHash })).id).toBe(created.id);
+      const initial = await bracket(f, created.id);
+      for (const row of preview.assignments) {
+        const round = initial.rounds.find((round) => round.key === row.roundKey)!;
+        expect(round.stageId).toBe(row.stageId);
+        expect(
+          initial.nodes
+            .filter((node) => node.roundId === round.id)
+            .map((node) => node.matchNumber)
+            .sort((a, b) => a! - b!),
+        ).toEqual(Array.from({ length: row.matchCount }, (_, i) => row.firstMatchNumber! + i));
+      }
+      expect((initial.config as { reviewHash?: string }).reviewHash).toBeUndefined();
+      expect(
+        initial.nodes
+          .flatMap((node) => (node.match ? [node.match.matchNumber] : []))
+          .sort((a, b) => a - b),
+      ).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+      const numbers = initial.nodes.map((node) => [node.id, node.matchNumber, node.matchId]);
+      await f.tx.tournamentStage.update({ where: { id: stageIds[1] }, data: { position: 20 } });
+      await apply(f, { type: 'competition.sync', id: created.id, baseVersion: initial.version });
+      expect(
+        (await bracket(f, created.id)).nodes.map((node) => [
+          node.id,
+          node.matchNumber,
+          node.matchId,
+        ]),
+      ).toEqual(numbers);
+      expect(
+        (await f.tx.tournament.findUniqueOrThrow({ where: { id: f.tournamentId } }))
+          .matchNumberSequence,
+      ).toBe(31);
+    }, 16));
+
+  it('rejects stale stage/counter previews before writing, validates suggested stages and preserves manual-link numbering', () =>
+    isolated(async (f) => {
+      const next = await f.tx.tournamentStage.create({
+        data: {
+          tournamentId: f.tournamentId,
+          name: 'Next',
+          slug: 'next',
+          kind: 'ELIMINATION',
+          position: 1,
+        },
+      });
+      const input = create(f, 8, 'DOUBLE_ELIMINATION');
+      const preview = async (value = input) =>
+        (await applyCompetitionAction(
+          f.tx,
+          f.actor,
+          competitionActionSchema.parse({ ...value, type: 'competition.preview' }),
+        )) as CompetitionGenerationPreview;
+      const first = await preview();
+      await expect(preview({ ...input, roundStages: { 'g2-r3': f.stageId } })).rejects.toThrow(
+        'before its feeder round',
+      );
+      await apply(f, create(f, 2));
+      await expect(apply(f, { ...input, reviewHash: first.reviewHash })).rejects.toThrow(
+        'Preview the bracket again',
+      );
+      const second = await preview();
+      expect(second.assignments[0].firstMatchNumber).toBe(2);
+      await f.tx.tournamentStage.update({ where: { id: next.id }, data: { name: 'Changed' } });
+      await expect(apply(f, { ...input, reviewHash: second.reviewHash })).rejects.toThrow(
+        'Preview the bracket again',
+      );
+      const third = await preview();
+      const created = await apply(f, { ...input, reviewHash: third.reviewHash });
+      expect(
+        (await bracket(f, created.id)).nodes
+          .map((node) => node.matchNumber)
+          .sort((a, b) => a! - b!),
+      ).toEqual(Array.from({ length: 15 }, (_, i) => i + 2));
+      await expect(preview({ ...input, roundStages: { bogus: f.stageId } })).rejects.toThrow(
+        'rounds in this bracket',
+      );
+      await f.tx.tournamentStage.update({
+        where: { id: next.id },
+        data: { matchRules: { ...DEFAULT_MATCH_RULES, teamSize: 2 } },
+      });
+      await expect(preview()).rejects.toThrow('sufficient starting players');
+      await expect(apply(f, { ...input, generationKey: randomUUID() })).rejects.toThrow(
+        'sufficient starting players',
+      );
+      await f.tx.tournamentStage.update({
+        where: { id: next.id },
+        data: { matchRules: Prisma.JsonNull },
+      });
+      const manual = { ...input, generationKey: randomUUID(), manualMatches: true };
+      const manualPreview = await preview(manual);
+      expect(
+        manualPreview.assignments.every(
+          (row) => row.firstMatchNumber === null && row.matchCount === 0,
+        ),
+      ).toBe(true);
+      const linked = await apply(f, { ...manual, reviewHash: manualPreview.reviewHash });
+      expect(
+        (await bracket(f, linked.id)).nodes.every(
+          (node) => node.matchNumber === null && node.matchId === null,
+        ),
+      ).toBe(true);
+    }));
   async function preview(
     f: Fixture,
     id: string,

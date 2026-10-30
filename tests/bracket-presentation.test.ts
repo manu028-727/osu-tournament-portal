@@ -49,7 +49,7 @@ async function fixture(
   );
   const numbers = numberBracketNodes(
     nodes.filter((node) => !['BYE', 'SKIPPED'].includes(node.state)),
-    rounds,
+    rounds.map((round) => ({ ...round, stagePosition: 0 })),
     1,
   );
   nodes.forEach((node) => {

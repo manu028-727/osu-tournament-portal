@@ -15,7 +15,8 @@ import {
   numericMatchIdentifier,
   restoreArchiveMatchNumbers,
 } from '../src/lib/match-numbering';
-import type { CompetitionNode, CompetitionRound } from '../src/lib/competition-types';
+import type { CompetitionNode } from '../src/lib/competition-types';
+import { orderedCompetitionStages } from '../src/lib/competition-stages';
 
 async function make(
   count: number,
@@ -32,7 +33,7 @@ async function make(
     ...settings,
   });
   const plan = await generateCompetition(action);
-  const rounds: CompetitionRound[] = plan.rounds.map((r) => ({ ...r, id: r.key }));
+  const rounds = plan.rounds.map((r) => ({ ...r, id: r.key, stagePosition: 0 }));
   const nodes: CompetitionNode[] = plan.nodes.map((n) => ({
     id: n.key,
     key: n.key,
@@ -64,6 +65,135 @@ function complete(node: CompetitionNode, winnerSide: 'A' | 'B' = 'A', status = '
 }
 
 describe('stable tournament match numbering', () => {
+  it('suggests every DE16 stage and numbers Winners/Losers together through Grand Finals', async () => {
+    const stages = ['RO16', 'QF', 'SF', 'F', 'GF'].map((id, position) => ({ id, position }));
+    const { action } = await make(16, 'DOUBLE_ELIMINATION', { stageId: 'RO16' });
+    const plan = await generateCompetition(action, [...stages].reverse());
+    const rounds = plan.rounds.map((round) => ({
+      ...round,
+      id: round.key,
+      stagePosition: stages.findIndex((stage) => stage.id === round.stageId),
+    }));
+    const nodes = recalculateCompetition(
+      plan.nodes.map((node) => ({
+        id: node.key,
+        key: node.key,
+        bracketId: 'test',
+        roundId: node.roundKey,
+        position: node.position,
+        state: 'WAITING',
+        matchId: null,
+        matchNumber: null,
+        match: null,
+        slots: node.slots.map(({ sourceKey, ...slot }) => ({ ...slot, sourceNodeId: sourceKey })),
+      })),
+    );
+    const numbers = numberBracketNodes(
+      nodes.filter((node) => !['BYE', 'SKIPPED'].includes(node.state)),
+      rounds,
+      1,
+    );
+    const expected = [
+      ['g1-r1', 'RO16', 1, 8],
+      ['g2-r1', 'RO16', 9, 12],
+      ['g1-r2', 'QF', 13, 16],
+      ['g2-r2', 'QF', 17, 20],
+      ['g2-r3', 'QF', 21, 22],
+      ['g1-r3', 'SF', 23, 24],
+      ['g2-r4', 'SF', 25, 26],
+      ['g2-r5', 'SF', 27, 27],
+      ['g1-r4', 'F', 28, 28],
+      ['g2-r6', 'F', 29, 29],
+      ['g3-r1', 'GF', 30, 30],
+      ['g3-r2', 'GF', 31, 31],
+    ];
+    for (const [key, stage, first, last] of expected) {
+      expect(rounds.find((round) => round.key === key)!.stageId).toBe(stage);
+      expect(
+        nodes.filter((node) => node.roundId === key).map((node) => numbers.get(node.id)),
+      ).toEqual(
+        Array.from(
+          { length: Number(last) - Number(first) + 1 },
+          (_, index) => Number(first) + index,
+        ),
+      );
+    }
+  });
+
+  it('honors explicit next-stage links ahead of display order, starting selection and overrides', async () => {
+    const stages = [
+      { id: 'first', position: 9, nextStageId: 'second' },
+      { id: 'second', position: 0, nextStageId: 'last' },
+      { id: 'last', position: 1 },
+    ];
+    expect(orderedCompetitionStages(stages).map((stage) => stage.id)).toEqual([
+      'first',
+      'second',
+      'last',
+    ]);
+    const { action } = await make(8, 'DOUBLE_ELIMINATION', {
+      stageId: 'first',
+      roundStages: { 'g2-r2': 'last' },
+    });
+    const plan = await generateCompetition(action, stages);
+    expect(
+      Object.fromEntries(plan.rounds.map((round) => [round.key, round.stageId])),
+    ).toMatchObject({
+      'g1-r1': 'first',
+      'g2-r1': 'first',
+      'g1-r2': 'second',
+      'g2-r2': 'last',
+      'g2-r3': 'second',
+      'g1-r3': 'last',
+      'g2-r4': 'last',
+      'g3-r1': 'last',
+      'g3-r2': 'last',
+    });
+    const later = await generateCompetition(
+      { ...action, stageId: 'second', roundStages: {} },
+      stages,
+    );
+    expect(later.rounds.find((round) => round.key === 'g1-r1')!.stageId).toBe('second');
+    expect(later.rounds.find((round) => round.key === 'g1-r2')!.stageId).toBe('last');
+    expect(() =>
+      orderedCompetitionStages([{ id: 'cycle', position: 0, nextStageId: 'cycle' }]),
+    ).toThrow('cycle');
+    await expect(
+      generateCompetition(action, [{ id: 'first', position: 0, nextStageId: 'missing' }]),
+    ).rejects.toThrow('active head-to-head');
+  });
+
+  it.each([2, 3, 6, 16, 32, 128])(
+    'keeps DE%i byes out of sequential reservations with and without a reset',
+    async (count) => {
+      for (const grandFinalReset of [false, true]) {
+        const { nodes, rounds } = await make(count, 'DOUBLE_ELIMINATION', { grandFinalReset });
+        const playable = nodes.filter((node) => !['BYE', 'SKIPPED'].includes(node.state));
+        const numbers = numberBracketNodes(playable, rounds, 42);
+        expect([...numbers.values()]).toEqual(
+          Array.from({ length: playable.length }, (_, i) => 42 + i),
+        );
+        expect(
+          nodes.filter((node) => node.state === 'BYE').every((node) => !numbers.has(node.id)),
+        ).toBe(true);
+      }
+    },
+  );
+
+  it('keeps single-elimination third place with the final and round-robin groups in their selected stage', async () => {
+    const stages = [0, 1, 2, 3].map((position) => ({ id: `stage-${position}`, position }));
+    const { action } = await make(8, 'SINGLE_ELIMINATION', {
+      stageId: 'stage-0',
+      thirdPlace: true,
+    });
+    const plan = await generateCompetition(action, stages);
+    expect(plan.rounds.find((round) => round.lane === 'THIRD_PLACE')!.stageId).toBe('stage-2');
+    const groups = await generateCompetition(
+      { ...action, format: 'GROUPS', groupCount: 2 },
+      stages,
+    );
+    expect(groups.rounds.every((round) => round.stageId === 'stage-0')).toBe(true);
+  });
   it('restores transferred numbers and preserves unambiguous legacy numeric codes', () => {
     const matches = [
       { id: 'a', code: 'historic', matchNumber: 11 as unknown },
@@ -100,6 +230,7 @@ describe('stable tournament match numbering', () => {
       key: `round-${position + 1}`,
       lane: position === 4 ? 'FINALS' : 'WINNERS',
       position,
+      stagePosition: position,
     }));
     const counts = [16, 8, 4, 2, 2];
     const nodes = rounds.flatMap((round, roundIndex) =>

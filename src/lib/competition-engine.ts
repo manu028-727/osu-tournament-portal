@@ -9,6 +9,7 @@ import {
 } from 'brackets-manager';
 import type { Id, Match as EngineMatch } from 'brackets-model';
 import { AppError } from './permissions';
+import { suggestedCompetitionStages, type ProgressionStage } from './competition-stages';
 import type { CompetitionCreate } from './competition-validation';
 import type {
   CompetitionNode,
@@ -98,6 +99,7 @@ export async function generateCompetition(
     | 'stageId'
     | 'roundStages'
   >,
+  stages: readonly ProgressionStage[] = [],
 ): Promise<CompetitionPlan> {
   if (new Set(input.teamIds).size !== input.teamIds.length)
     throw new AppError('Each participant can be seeded only once.');
@@ -153,7 +155,7 @@ export async function generateCompetition(
       name: `${lane.replaceAll('_', ' ')} ${r.number}`,
       lane,
       position: index,
-      stageId: input.roundStages[k] || input.stageId,
+      stageId: input.stageId,
     };
   });
   const nodes: CompetitionPlan['nodes'] = data.match.map((m) => ({
@@ -221,7 +223,7 @@ export async function generateCompetition(
       name: 'FINALS 1',
       lane: 'FINALS',
       position: rounds.length,
-      stageId: input.roundStages['g3-r1'] || input.stageId,
+      stageId: input.stageId,
     });
     nodes.push({
       key: 'g3-r1-m1',
@@ -242,7 +244,7 @@ export async function generateCompetition(
         name: 'FINALS 2',
         lane: 'FINALS',
         position: rounds.length,
-        stageId: input.roundStages['g3-r2'] || input.stageId,
+        stageId: input.stageId,
       });
       nodes.push({
         key: 'g3-r2-m1',
@@ -259,6 +261,9 @@ export async function generateCompetition(
       });
     }
   }
+  const suggestions = suggestedCompetitionStages(rounds, input.stageId, stages);
+  for (const round of rounds)
+    round.stageId = input.roundStages[round.key] || suggestions[round.key];
   return { rounds, nodes };
 }
 

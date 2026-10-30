@@ -377,11 +377,44 @@ restoration retains deleted nodes and historical roster witnesses without activa
 them. scopedDb ownership still follows the retained Match parent for child history.
 
 Native brackets use the established engine for SE/DE/groups construction and native
-rows for lifecycle/routes/eligibility/lazy matches. Playable nodes reserve numbers
-by round position, lane, node position/key; BYE/SKIPPED consume none. Lazy creation
+rows for lifecycle/routes/eligibility/lazy matches. Newly generated playable nodes
+reserve numbers by stage progression, lane (Winners, Losers, shared finals), native
+round position and top-to-bottom node position/key; BYE/SKIPPED consume none. Lazy creation
 retains reservations even after unrelated matches are created. Confirmed results
 advance; losses/withdrawals/overrides are path-specific. Manual slots/routes/locks
 are audited, cycle-checked and cannot replace started history.
+
+`competition-stages.ts` owns pure stage ordering and suggestions. It topologically
+orders active head-to-head stages using `nextStageId`, then configured position/ID
+for unrelated stages. Suggestions follow explicit links from the selected start,
+fall back to that order and clamp to the last available stage. Winners round N
+uses offset N-1; Losers round N uses floor(N/2); shared finals use the stage after
+Winners Finals, with the reset on the same stage. Third place uses its Winners
+final stage and group rounds stay at the selected start. No names are interpreted.
+`generateCompetition` applies explicit round overrides after suggestions without
+changing upstream seed placement, routes, keys or stored round positions.
+
+`checkedPlan` validates selected and suggested stages, roster eligibility, seeding
+sources, override keys and forward stage dependencies for preview and creation.
+The preview uses recalculated synthetic nodes to exclude byes and the same
+`match-numbering.ts` ordering as persisted reservations. Stage ranks are transient
+`NumberableRound.stagePosition` metadata; no schema field or migration is added.
+The existing global advisory lock precedes a tournament counter row lock during
+creation. Before inserting, the optional reviewed hash compares the request, graph,
+stage/rules/source witnesses and current counter, retaining that row lock through
+reservation. Manual-link previews reserve nothing and omit the counter witness.
+The browser always sends the preview hash; existing direct create callers without
+one compute and validate the current plan under the same locks. A stale reviewed
+writer rejects before creating any rows. Generation-key retries return their
+existing graph before re-evaluating the now-advanced counter.
+
+The hash is transient and excluded from saved creation configuration. Existing
+configuration JSON retains the requested overrides; persisted BracketRound.stageId
+is the authoritative assignment snapshot and is already exported/remapped with its
+round. Rebuild pre-fills eligible actual assignments, drops unavailable stages and
+refreshes suggestions when the entrant count changes. Archives, applied SQL numbering
+triggers, immutable existing reservations and referee histories remain unchanged;
+neither imports nor stage edits recompute old numbers using the new ordering.
 
 `bracket-presentation.ts` owns display-only lane grouping, coordinates, labels and
 connector filtering. It reads the native graph without mutating it. DE has two
@@ -395,9 +428,9 @@ The existing bracket renderer, round tools, preview and inspector share these la
 
 Competition read queries now include only the related stage's name and project
 optional `stageName` on round DTOs in both authorized and public views. The public
-projection contains no stage rules, pool drafts or added configuration. Stored
-round names/lane keys, generation configuration, archives and all mutation/domain
-services remain unchanged. This presentation update requires no migration.
+projection contains no stage rules, pool drafts or added configuration. Presentation
+code never writes stored round names/lane keys, generation configuration, archives
+or mutation/domain state. Display grouping requires no migration.
 
 Bracket lifecycle operations live in `competition-service.ts` and the existing
 mutation dispatcher. Delete and its preview require both `matches.manage` and

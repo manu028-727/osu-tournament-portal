@@ -23,12 +23,12 @@ import { CompetitionBracket } from '@/components/competition-bracket';
 import { Button } from '@/components/ui/button';
 import { can, type Actor } from '@/lib/permissions';
 import type { CompetitionAction, CompetitionCreate } from '@/lib/competition-validation';
-import type { CompetitionPlan } from '@/lib/competition-engine';
 import type {
   CompetitionBracketData,
   CompetitionData,
   CompetitionNode,
   CompetitionOptions,
+  CompetitionGenerationPreview,
 } from '@/lib/competition-types';
 import { action, Field, LoadingState, Modal, usePolling, useResource, useTask } from './shared';
 import { BracketRoundTools } from './bracket-rounds';
@@ -330,7 +330,14 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
             await reload();
             if (lifecycle.operation === 'delete') {
               if (lifecycle.rebuild && bracket.configuration) {
-                setInitial({ ...bracket.configuration, generationKey: crypto.randomUUID() });
+                setInitial({
+                  ...bracket.configuration,
+                  reviewHash: undefined,
+                  roundStages: Object.fromEntries(
+                    bracket.rounds.map((round) => [round.key, round.stageId]),
+                  ),
+                  generationKey: crypto.randomUUID(),
+                });
                 setCreating(true);
               }
             }
@@ -665,38 +672,82 @@ function CreateCompetition({
   initial?: CompetitionCreate;
 }) {
   const tr = useT();
-  const [form, setForm] = useState<CompetitionCreate>(() =>
-    initial
-      ? {
-          ...initial,
-          teamIds:
-            initial.sourceStandingId || initial.sourceBracketId
-              ? initial.teamIds.filter((id) => options.teams.some((team) => team.id === id))
-              : options.teams
-                  .filter((team) => initial.teamIds.includes(team.id))
-                  .map((team) => team.id),
-        }
-      : {
-          type: 'competition.create',
-          name: 'Main bracket',
-          format: 'SINGLE_ELIMINATION',
-          generationKey: crypto.randomUUID(),
-          stageId: options.stages[0]?.id || '',
-          teamIds: options.teams.map((t) => t.id),
-          thirdPlace: false,
-          grandFinalReset: true,
-          groupCount: 1,
-          advancePerGroup: 2,
-          roundStages: {},
-          manualMatches: false,
-        },
-  );
-  const [plan, setPlan] = useState<CompetitionPlan | null>(null),
+  const [form, setForm] = useState<CompetitionCreate>(() => {
+    if (initial) {
+      const teamIds =
+        initial.sourceStandingId || initial.sourceBracketId
+          ? initial.teamIds.filter((id) => options.teams.some((team) => team.id === id))
+          : options.teams
+              .filter((team) => initial.teamIds.includes(team.id))
+              .map((team) => team.id);
+      const stageIds = new Set(options.stages.map((stage) => stage.id));
+      return {
+        ...initial,
+        teamIds,
+        reviewHash: undefined,
+        stageId: stageIds.has(initial.stageId) ? initial.stageId : options.stages[0]?.id || '',
+        roundStages:
+          teamIds.length !== initial.teamIds.length
+            ? {}
+            : Object.fromEntries(
+                Object.entries(initial.roundStages).filter(([, stageId]) => stageIds.has(stageId)),
+              ),
+      };
+    }
+    return {
+      type: 'competition.create',
+      name: 'Main bracket',
+      format: 'SINGLE_ELIMINATION',
+      generationKey: crypto.randomUUID(),
+      stageId: options.stages[0]?.id || '',
+      teamIds: options.teams.map((t) => t.id),
+      thirdPlace: false,
+      grandFinalReset: true,
+      groupCount: 1,
+      advancePerGroup: 2,
+      roundStages: {},
+      manualMatches: false,
+    };
+  });
+  const [plan, setPlan] = useState<CompetitionGenerationPreview | null>(null),
     [cutoff, setCutoff] = useState(16);
+  const [previewRequest, setPreviewRequest] = useState(0);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewError, setPreviewError] = useState('');
+  useEffect(() => {
+    if (!previewRequest) return;
+    let current = true;
+    setPreviewing(true);
+    setPreviewError('');
+    const timer = setTimeout(() => {
+      void action<CompetitionGenerationPreview>({ ...form, type: 'competition.preview' })
+        .then((value) => {
+          if (current) setPlan(value);
+        })
+        .catch((error: Error) => {
+          if (current) setPreviewError(error.message);
+        })
+        .finally(() => {
+          if (current) setPreviewing(false);
+        });
+    }, 150);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [form, previewRequest]);
   const { run, busy } = useTask();
   const change = (value: Partial<CompetitionCreate>) => {
-    setForm((f) => ({ ...f, ...value }));
-    setPlan(null);
+    setForm((f) => ({
+      ...f,
+      ...value,
+      ...((value.format && value.format !== f.format) ||
+      (value.teamIds && value.teamIds.length !== f.teamIds.length) ||
+      (value.groupCount !== undefined && value.groupCount !== f.groupCount)
+        ? { roundStages: {} }
+        : {}),
+    }));
+    if (previewRequest) setPreviewing(true);
   };
   const finalized = options.standings.filter(
     (s) => (s.snapshot as { state?: string })?.state === 'FINALIZED',
@@ -737,7 +788,7 @@ function CreateCompetition({
       title={tr(initial ? 'Rebuild bracket' : 'Create bracket')}
       open
       onOpenChange={(open) => {
-        if (!open) close();
+        if (!open && !busy) close();
       }}
       wide
     >
@@ -745,267 +796,327 @@ function CreateCompetition({
         className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
-          void run(async () => {
-            if (!plan)
-              setPlan(await action<CompetitionPlan>({ ...form, type: 'competition.preview' }));
-            else await save(form);
-          });
+          if (busy || previewing) return;
+          if (!plan || previewError) {
+            setPreviewing(true);
+            setPreviewRequest((value) => value + 1);
+          } else
+            void run(async () => {
+              try {
+                await save({ ...form, reviewHash: plan.reviewHash });
+              } catch (error) {
+                setPlan(null);
+                setPreviewRequest(0);
+                throw error;
+              }
+            });
         }}
       >
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={tr('Name')}>
-            <input
-              value={form.name}
-              required
-              maxLength={100}
-              onChange={(e) => change({ name: e.target.value })}
-            />
-          </Field>
-          <Field label={tr('Format')}>
-            <select
-              value={form.format}
-              onChange={(e) => change({ format: e.target.value as CompetitionCreate['format'] })}
-            >
-              <option value="SINGLE_ELIMINATION">{tr('Single elimination')}</option>
-              <option value="DOUBLE_ELIMINATION">{tr('Double elimination')}</option>
-              <option value="GROUPS">{tr('Round-robin groups')}</option>
-            </select>
-          </Field>
-          <Field label={tr('Gameplay stage')}>
-            <select
-              required
-              value={form.stageId}
-              onChange={(e) => change({ stageId: e.target.value })}
-            >
-              {!options.stages.length && <option value="">{tr('No configured stages')}</option>}
-              {options.stages.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                  {s.ready ? '' : tr(' (pool pending)')}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label={tr('Seed source')}>
-            <select
-              value={
-                form.sourceBracketId
-                  ? `groups:${form.sourceBracketId}`
-                  : form.sourceStandingId || ''
-              }
-              onChange={(e) =>
-                e.target.value.startsWith('groups:')
-                  ? chooseGroups(e.target.value.slice(7))
-                  : chooseStanding(e.target.value)
-              }
-            >
-              <option value="">{tr('Participant seeds')}</option>
-              {finalized.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {tr('Qualifier')} {s.stageId} / {tr('Version')} {s.version}
-                </option>
-              ))}
-              {options.groupSources?.map((group) => (
-                <option key={group.id} value={`groups:${group.id}`}>
-                  {group.name} / {tr('Qualified groups')}
-                </option>
-              ))}
-            </select>
-          </Field>
-          {seededSource && (
-            <Field label={tr('Advancing participants')}>
+        <fieldset disabled={busy} className="min-w-0 space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={tr('Name')}>
               <input
-                type="number"
-                min={2}
-                max={128}
-                value={cutoff}
-                onChange={(e) => {
-                  const value = Number(e.target.value);
-                  setCutoff(value);
-                  if (form.sourceBracketId) chooseGroups(form.sourceBracketId, value);
-                  else chooseStanding(form.sourceStandingId!, value);
-                }}
+                value={form.name}
+                required
+                maxLength={100}
+                onChange={(e) => change({ name: e.target.value })}
               />
             </Field>
-          )}
-          {form.format === 'GROUPS' && (
-            <>
-              <Field label={tr('Groups')}>
-                <input
-                  type="number"
-                  min={1}
-                  max={32}
-                  value={form.groupCount}
-                  onChange={(e) => change({ groupCount: Number(e.target.value) })}
-                />
-              </Field>
-              <Field label={tr('Advance per group')}>
-                <input
-                  type="number"
-                  min={1}
-                  max={32}
-                  value={form.advancePerGroup}
-                  onChange={(e) => change({ advancePerGroup: Number(e.target.value) })}
-                />
-              </Field>
-            </>
-          )}
-        </div>
-        {form.format === 'SINGLE_ELIMINATION' && (
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.thirdPlace}
-              onChange={(e) => change({ thirdPlace: e.target.checked })}
-            />
-            {tr('Third-place match')}
-          </label>
-        )}
-        {form.format === 'DOUBLE_ELIMINATION' && (
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.grandFinalReset}
-              onChange={(e) => change({ grandFinalReset: e.target.checked })}
-            />
-            {tr('Grand Finals reset')}
-          </label>
-        )}
-        <label className="flex items-start gap-2 rounded-lg border p-3 text-sm">
-          <input
-            type="checkbox"
-            checked={form.manualMatches}
-            onChange={(event) => change({ manualMatches: event.target.checked })}
-            className="mt-1"
-          />
-          <span>
-            <span className="block font-medium">{tr('Link existing matches')}</span>
-            <span className="text-xs text-muted">
-              {tr(
-                'Build the bracket without creating replacement matches. Attach existing records to resolved positions while preserving their scores, referee actions, and match IDs.',
+            <Field label={tr('Format')}>
+              <select
+                value={form.format}
+                onChange={(e) => change({ format: e.target.value as CompetitionCreate['format'] })}
+              >
+                <option value="SINGLE_ELIMINATION">{tr('Single elimination')}</option>
+                <option value="DOUBLE_ELIMINATION">{tr('Double elimination')}</option>
+                <option value="GROUPS">{tr('Round-robin groups')}</option>
+              </select>
+            </Field>
+            <Field
+              label={tr('Gameplay stage')}
+              hint={tr(
+                'Starting stage. Later rounds follow the configured stage order; you can override each suggestion below.',
               )}
+            >
+              <select
+                required
+                value={form.stageId}
+                onChange={(e) => change({ stageId: e.target.value })}
+              >
+                {!options.stages.length && <option value="">{tr('No configured stages')}</option>}
+                {options.stages.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                    {s.ready ? '' : tr(' (pool pending)')}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={tr('Seed source')}>
+              <select
+                value={
+                  form.sourceBracketId
+                    ? `groups:${form.sourceBracketId}`
+                    : form.sourceStandingId || ''
+                }
+                onChange={(e) =>
+                  e.target.value.startsWith('groups:')
+                    ? chooseGroups(e.target.value.slice(7))
+                    : chooseStanding(e.target.value)
+                }
+              >
+                <option value="">{tr('Participant seeds')}</option>
+                {finalized.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {tr('Qualifier')} {s.stageId} / {tr('Version')} {s.version}
+                  </option>
+                ))}
+                {options.groupSources?.map((group) => (
+                  <option key={group.id} value={`groups:${group.id}`}>
+                    {group.name} / {tr('Qualified groups')}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {seededSource && (
+              <Field label={tr('Advancing participants')}>
+                <input
+                  type="number"
+                  min={2}
+                  max={128}
+                  value={cutoff}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
+                    setCutoff(value);
+                    if (form.sourceBracketId) chooseGroups(form.sourceBracketId, value);
+                    else chooseStanding(form.sourceStandingId!, value);
+                  }}
+                />
+              </Field>
+            )}
+            {form.format === 'GROUPS' && (
+              <>
+                <Field label={tr('Groups')}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={32}
+                    value={form.groupCount}
+                    onChange={(e) => change({ groupCount: Number(e.target.value) })}
+                  />
+                </Field>
+                <Field label={tr('Advance per group')}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={32}
+                    value={form.advancePerGroup}
+                    onChange={(e) => change({ advancePerGroup: Number(e.target.value) })}
+                  />
+                </Field>
+              </>
+            )}
+          </div>
+          {form.format === 'SINGLE_ELIMINATION' && (
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.thirdPlace}
+                onChange={(e) => change({ thirdPlace: e.target.checked })}
+              />
+              {tr('Third-place match')}
+            </label>
+          )}
+          {form.format === 'DOUBLE_ELIMINATION' && (
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.grandFinalReset}
+                onChange={(e) => change({ grandFinalReset: e.target.checked })}
+              />
+              {tr('Grand Finals reset')}
+            </label>
+          )}
+          <label className="flex items-start gap-2 rounded-lg border p-3 text-sm">
+            <input
+              type="checkbox"
+              checked={form.manualMatches}
+              onChange={(event) => change({ manualMatches: event.target.checked })}
+              className="mt-1"
+            />
+            <span>
+              <span className="block font-medium">{tr('Link existing matches')}</span>
+              <span className="text-xs text-muted">
+                {tr(
+                  'Build the bracket without creating replacement matches. Attach existing records to resolved positions while preserving their scores, referee actions, and match IDs.',
+                )}
+              </span>
             </span>
-          </span>
-        </label>
-        <fieldset>
-          <legend className="mb-2 text-sm font-semibold">
-            {tr('Participants (')}
-            {form.teamIds.length})
-          </legend>
-          <div className="max-h-64 overflow-auto divide-y divide-border border-y border-border">
-            {(seededSource
-              ? form.teamIds
-                  .map((id) => options.teams.find((t) => t.id === id))
-                  .filter((t): t is CompetitionOptions['teams'][number] => !!t)
-              : [
-                  ...form.teamIds
+          </label>
+          <fieldset className="min-w-0">
+            <legend className="mb-2 text-sm font-semibold">
+              {tr('Participants (')}
+              {form.teamIds.length})
+            </legend>
+            <div className="max-h-64 overflow-auto divide-y divide-border border-y border-border">
+              {(seededSource
+                ? form.teamIds
                     .map((id) => options.teams.find((t) => t.id === id))
-                    .filter((team): team is CompetitionOptions['teams'][number] => !!team),
-                  ...options.teams.filter((t) => !form.teamIds.includes(t.id)),
-                ]
-            ).map((team) => {
-              const index = form.teamIds.indexOf(team.id);
-              return (
-                <div key={team.id} className="flex min-h-11 items-center gap-2 py-1">
-                  <label className="flex min-w-0 flex-1 items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={index >= 0}
-                      onChange={(e) =>
-                        change({
-                          teamIds: e.target.checked
-                            ? [...form.teamIds, team.id]
-                            : form.teamIds.filter((id) => id !== team.id),
-                        })
-                      }
-                    />
-                    <span className="w-6 shrink-0 text-xs tabular-nums text-muted">
-                      {index >= 0 ? index + 1 : ''}
-                    </span>
-                    <span className="truncate">{team.name}</span>
-                  </label>
-                  {!seededSource && index >= 0 && (
-                    <>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        title={tr('Move seed up')}
-                        aria-label={tr('Move {0} up', team.name)}
-                        disabled={index === 0}
-                        onClick={() => move(index, -1)}
+                    .filter((t): t is CompetitionOptions['teams'][number] => !!t)
+                : [
+                    ...form.teamIds
+                      .map((id) => options.teams.find((t) => t.id === id))
+                      .filter((team): team is CompetitionOptions['teams'][number] => !!team),
+                    ...options.teams.filter((t) => !form.teamIds.includes(t.id)),
+                  ]
+              ).map((team) => {
+                const index = form.teamIds.indexOf(team.id);
+                return (
+                  <div key={team.id} className="flex min-h-11 items-center gap-2 py-1">
+                    <label className="flex min-w-0 flex-1 items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={index >= 0}
+                        onChange={(e) =>
+                          change({
+                            teamIds: e.target.checked
+                              ? [...form.teamIds, team.id]
+                              : form.teamIds.filter((id) => id !== team.id),
+                          })
+                        }
+                      />
+                      <span className="w-6 shrink-0 text-xs tabular-nums text-muted">
+                        {index >= 0 ? index + 1 : ''}
+                      </span>
+                      <span className="truncate">{team.name}</span>
+                    </label>
+                    {!seededSource && index >= 0 && (
+                      <>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          title={tr('Move seed up')}
+                          aria-label={tr('Move {0} up', team.name)}
+                          disabled={index === 0}
+                          onClick={() => move(index, -1)}
+                        >
+                          <ArrowUp size={14} />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          title={tr('Move seed down')}
+                          aria-label={tr('Move {0} down', team.name)}
+                          disabled={index === form.teamIds.length - 1}
+                          onClick={() => move(index, 1)}
+                        >
+                          <ArrowDown size={14} />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </fieldset>
+          {plan && (
+            <div className="space-y-3 border-t border-border pt-3">
+              <p className="text-sm text-muted">
+                {form.teamIds.length} {tr('participants /')} {plan.rounds.length} {tr('rounds /')}{' '}
+                {plan.nodes.length} {tr('positions')}
+              </p>
+              <p className="text-xs text-muted">
+                {tr(
+                  form.manualMatches
+                    ? 'Existing matches keep their own numbers when linked.'
+                    : 'Numbers are reserved by stage, Winners then Losers, and round position. Conditional resets reserve a number too.',
+                )}
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2" aria-busy={previewing}>
+                {plan.assignments.map((assignment) => {
+                  const round = plan.rounds.find((round) => round.key === assignment.roundKey)!;
+                  const details = bracketRoundDetails(
+                    { format: form.format, rounds: plan.rounds },
+                    { ...round, stageName: assignment.stageName },
+                    tr,
+                  );
+                  return (
+                    <div
+                      key={round.key}
+                      data-round-preview={round.key}
+                      className="space-y-2 rounded-xl border border-[var(--separator)] bg-card p-3"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2 text-sm">
+                        <span className="font-semibold">
+                          {[details.group, details.role].filter(Boolean).join(' / ')}
+                        </span>
+                        <span className="rounded-lg bg-[var(--accent-subtle)] px-2 py-1 font-semibold tabular-nums">
+                          {assignment.firstMatchNumber == null
+                            ? tr(form.manualMatches ? 'Link existing matches' : 'Byes only')
+                            : assignment.firstMatchNumber === assignment.lastMatchNumber
+                              ? tr('Match #{0}', assignment.firstMatchNumber)
+                              : tr(
+                                  'Matches #{0}-{1}',
+                                  assignment.firstMatchNumber,
+                                  assignment.lastMatchNumber!,
+                                )}
+                        </span>
+                      </div>
+                      <Field
+                        label={tr(
+                          'Stage for {0}',
+                          [details.group, details.role].filter(Boolean).join(' / '),
+                        )}
                       >
-                        <ArrowUp size={14} />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        title={tr('Move seed down')}
-                        aria-label={tr('Move {0} down', team.name)}
-                        disabled={index === form.teamIds.length - 1}
-                        onClick={() => move(index, 1)}
-                      >
-                        <ArrowDown size={14} />
-                      </Button>
-                    </>
-                  )}
-                </div>
-              );
-            })}
+                        <select
+                          value={form.roundStages[round.key] || ''}
+                          onChange={(e) => {
+                            const roundStages = { ...form.roundStages };
+                            if (e.target.value) roundStages[round.key] = e.target.value;
+                            else delete roundStages[round.key];
+                            change({ roundStages });
+                          }}
+                        >
+                          <option value="">
+                            {tr('Automatic: {0}', assignment.suggestedStageName)}
+                          </option>
+                          {options.stages.map((stage) => (
+                            <option key={stage.id} value={stage.id}>
+                              {stage.name}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {previewing && (
+            <p role="status" className="text-sm text-muted">
+              {tr('Updating stage and match-number preview...')}
+            </p>
+          )}
+          {previewError && (
+            <p role="alert" className="text-sm text-red-300">
+              <Feedback message={previewError} />
+            </p>
+          )}
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={close}>
+              {tr('Cancel')}
+            </Button>
+            <Button
+              type="submit"
+              disabled={busy || previewing || form.teamIds.length < 2 || !form.stageId}
+            >
+              {plan && !previewError ? tr('Generate bracket') : tr('Preview bracket')}
+            </Button>
           </div>
         </fieldset>
-        {plan && (
-          <div className="space-y-3 border-t border-border pt-3">
-            <p className="text-sm text-muted">
-              {form.teamIds.length} {tr('participants /')} {plan.rounds.length} {tr('rounds /')}{' '}
-              {plan.nodes.length} {tr('positions')}
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {plan.rounds.map((round) => (
-                <Field
-                  key={round.key}
-                  label={
-                    bracketRoundDetails(
-                      { format: form.format, rounds: plan.rounds },
-                      {
-                        ...round,
-                        stageName: options.stages.find(
-                          (stage) => stage.id === (form.roundStages[round.key] || form.stageId),
-                        )?.name,
-                      },
-                      tr,
-                    ).label
-                  }
-                >
-                  <select
-                    value={form.roundStages[round.key] || form.stageId}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        roundStages: { ...f.roundStages, [round.key]: e.target.value },
-                      }))
-                    }
-                  >
-                    {options.stages.map((stage) => (
-                      <option key={stage.id} value={stage.id}>
-                        {stage.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              ))}
-            </div>
-          </div>
-        )}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={close}>
-            {tr('Cancel')}
-          </Button>
-          <Button type="submit" disabled={busy || form.teamIds.length < 2 || !form.stageId}>
-            {plan ? tr('Generate bracket') : tr('Preview bracket')}
-          </Button>
-        </div>
       </form>
     </Modal>
   );

@@ -14,6 +14,7 @@ import { db } from './db';
 import { AppError, assertPermission, can, type Actor, type PermissionKey } from './permissions';
 import { publicTournamentWhere } from './public-visibility';
 import { competitionStoredConfigSchema } from './competition-archive';
+import { orderedCompetitionStages } from './competition-stages';
 
 import { GroupConfig, resolvedGroupSeeds, reviewedGroupOrder } from './competition-groups';
 const matchSelect = {
@@ -134,7 +135,7 @@ export async function competitionOptions(actor: Actor): Promise<CompetitionOptio
     }),
   ]);
   return {
-    stages: stages.map((s) => ({
+    stages: orderedCompetitionStages(stages).map((s) => ({
       id: s.id,
       name: s.name,
       ready: s.mappool?.state === 'PUBLISHED' && !!s.mappool.publishedRevisionId,

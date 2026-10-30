@@ -246,6 +246,18 @@ round selector and shows the active path, authored stage name and round/final ro
 Stage names remain verbatim in both interface languages. No generic stored lane
 number replaces a configured stage name.
 
+Bracket creation uses the gameplay stage as its starting stage. After Preview,
+show round cards in generation order, with a clear Winners/Losers/final role,
+numeric range badge and stage selector. Automatic options show the suggested
+authored stage name; an explicit selection overrides it and Automatic restores
+the suggestion. Changes refresh assignments and ranges without closing the form.
+Show updating/error feedback and disable generation until the current preview
+is valid. Stage dependencies must remain forward. A stale server review preserves
+the form and returns it to Preview. Inputs are disabled while generation saves.
+Show byes and manual-link positions honestly rather than inventing match numbers;
+conditional resets reserve a number. Cards wrap into a single column on narrow
+screens, retaining readable ranges, stage labels and keyboard focus across updates.
+
 Selecting a position opens a persistent editor beside the canvas on wide screens
 and below it on narrower screens. Match and Positions tabs expose existing inline
 time/referee/result controls and guarded participant/route editing. Results and
