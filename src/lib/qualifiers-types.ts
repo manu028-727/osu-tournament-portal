@@ -3,6 +3,9 @@ import type { MatchParticipants } from './matches-types';
 import type { MatchOptions, MatchStatus, MatchView } from './matches-types';
 import type { MatchAccess } from './match-access';
 export type QualifierView = {
+  deletedAt?: string | null;
+  autoCompleted?: boolean;
+  scoringLocked?: boolean;
   capacity: number;
   bookingOpen: boolean;
   bookingClosesAt: string | null;
@@ -40,6 +43,8 @@ export type QualifierView = {
   assignments: { userId: string; user: { id: string; username: string; osuId: number } }[];
   entries: { team: { members: { discordId: string }[] } }[];
   scores: {
+    eligible?: boolean;
+    eligibilityReason?: string;
     id: string;
     osuId: number;
     slotName: string;

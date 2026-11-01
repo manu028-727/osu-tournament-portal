@@ -4,7 +4,7 @@ import { humanizeCode } from '@/lib/i18n';
 import { localDateTimeInput } from '@/lib/utils';
 import { useT } from '@/components/locale';
 
-import { useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRightLeft, CalendarClock, ListPlus, X } from 'lucide-react';
 import Link, { useTournamentTime, useTournamentScope } from '@/components/tournament-scope';
 import type { Actor } from '@/lib/permissions';
@@ -13,6 +13,8 @@ import type { QualifierAction } from '@/lib/qualifiers-validation';
 import { qualifierSessionPlan, type NewQualifierSession } from '@/lib/qualifier-scheduling';
 import { Button } from '../ui/button';
 import { action, Field, Modal, SaveButton, useTask, useUnsaved } from './shared';
+import { DeleteQualifierSessions, QualifierSessionIdentity } from './qualifier-session-tools';
+import { qualifierCompletion } from '@/lib/qualifier-progress';
 
 type Options = NonNullable<QualifierData['options']>;
 const toggle = (values: string[], value: string) =>
@@ -394,11 +396,13 @@ function BulkSchedule({
   options,
   reload,
   close,
+  onDirty,
 }: {
   selected: QualifierView[];
   options: Options;
   reload: () => Promise<unknown>;
   close: () => void;
+  onDirty?: (dirty: boolean) => void;
 }) {
   const tr = useT();
   const { run, busy } = useTask();
@@ -410,15 +414,33 @@ function BulkSchedule({
   const [changeNotes, setChangeNotes] = useState(false);
   const [notes, setNotes] = useState('');
   const changed = schedule !== 'keep' || changeRefs || changeNotes;
+  useEffect(() => {
+    onDirty?.(changed);
+    return () => onDirty?.(false);
+  }, [changed, onDirty]);
   useUnsaved(changed);
-  const [versions] = useState(() =>
+  const [versions, setVersions] = useState(() =>
     selected.map((lobby) => ({ id: lobby.id, baseVersion: lobby.version })),
   );
-  const stale =
-    selected.length !== versions.length ||
-    selected.some(
-      (lobby) => versions.find((row) => row.id === lobby.id)?.baseVersion !== lobby.version,
+  useEffect(() => {
+    if (changed) return;
+    const latest = selected.map((lobby) => ({ id: lobby.id, baseVersion: lobby.version }));
+    setVersions((current) =>
+      current.length === latest.length &&
+      current.every(
+        (row, index) =>
+          row.id === latest[index].id && row.baseVersion === latest[index].baseVersion,
+      )
+        ? current
+        : latest,
     );
+  }, [changed, selected]);
+  const stale =
+    changed &&
+    (selected.length !== versions.length ||
+      selected.some(
+        (lobby) => versions.find((row) => row.id === lobby.id)?.baseVersion !== lobby.version,
+      ));
   const invalid = selected.some((lobby) => lobby.status !== 'SCHEDULED') || stale;
   const mixedRefs =
     new Set(
@@ -460,6 +482,9 @@ function BulkSchedule({
             };
             await action(body);
             await reload();
+            setSchedule('keep');
+            setChangeRefs(false);
+            setChangeNotes(false);
             close();
           },
           tr('{0} sessions updated.', selected.length),
@@ -808,6 +833,22 @@ export function QualifierLobbyList({
   const { timezone = 'UTC' } = useTournamentScope();
   const [filter, setFilter] = useState('');
   const [query, setQuery] = useState('');
+  const [editing, setEditing] = useState<string | null>(null);
+  const inlineDirty = useRef(new Set<string>());
+  const identityDirty = useCallback((id: string, dirty: boolean) => {
+    if (dirty) inlineDirty.current.add(`${id}:identity`);
+    else inlineDirty.current.delete(`${id}:identity`);
+  }, []);
+  const scheduleDirty = useCallback((id: string, dirty: boolean) => {
+    if (dirty) inlineDirty.current.add(`${id}:schedule`);
+    else inlineDirty.current.delete(`${id}:schedule`);
+  }, []);
+  const changeEditor = (next: string | null) => {
+    if (inlineDirty.current.size && !window.confirm(tr('Discard unsaved changes?'))) return false;
+    inlineDirty.current.clear();
+    setEditing(next);
+    return true;
+  };
   const [selected, setSelected] = useState<string[]>([]);
   const anchor = useRef<string | null>(null);
   const [dialog, setDialog] = useState<'create' | 'schedule' | 'move' | null>(null);
@@ -815,7 +856,9 @@ export function QualifierLobbyList({
   const scheduler = manager || actor.permissions.includes('matches.assign_referees');
   const visible = data.lobbies.filter(
     (lobby) =>
+      (filter === 'deleted' ? !!lobby.deletedAt : !lobby.deletedAt) &&
       (!filter ||
+        filter === 'deleted' ||
         (filter === 'me'
           ? lobby.assignments.some((ref) => ref.userId === actor.id)
           : filter === 'unassigned'
@@ -826,7 +869,9 @@ export function QualifierLobbyList({
         .includes(query.toLowerCase()),
   );
   const chosen = visible.filter((lobby) => selected.includes(lobby.id));
-  const eligible = visible.filter((lobby) => lobby.status === 'SCHEDULED');
+  const eligible = visible.filter(
+    (lobby) => !lobby.deletedAt && (manager || lobby.status === 'SCHEDULED'),
+  );
   const close = () => {
     setDialog(null);
     setSelected([]);
@@ -840,6 +885,7 @@ export function QualifierLobbyList({
           placeholder={tr('Search lobbies, entrants, referees')}
           value={query}
           onChange={(event) => {
+            if (!changeEditor(null)) return;
             setQuery(event.target.value);
             setSelected([]);
             anchor.current = null;
@@ -850,6 +896,7 @@ export function QualifierLobbyList({
           className="max-w-xs"
           value={filter}
           onChange={(event) => {
+            if (!changeEditor(null)) return;
             setFilter(event.target.value);
             setSelected([]);
             anchor.current = null;
@@ -858,6 +905,7 @@ export function QualifierLobbyList({
           <option value="">{tr('All qualifier lobbies')}</option>
           <option value="me">{tr('My assigned lobbies')}</option>
           <option value="unassigned">{tr('Unassigned')}</option>
+          {manager && <option value="deleted">{tr('Deleted sessions')}</option>}
           {[
             'SCHEDULED',
             'IN_PROGRESS',
@@ -897,10 +945,23 @@ export function QualifierLobbyList({
           <span>
             {chosen.length} {tr('visible sessions selected')}
           </span>
-          <Button variant="outline" onClick={() => setDialog('schedule')}>
+          <Button
+            variant="outline"
+            disabled={chosen.some((lobby) => lobby.status !== 'SCHEDULED' || !!lobby.deletedAt)}
+            onClick={() => setDialog('schedule')}
+          >
             <CalendarClock size={16} />
             {tr('Edit schedule and assignments')}
           </Button>
+          {manager && (
+            <DeleteQualifierSessions
+              lobbies={chosen}
+              onChanged={async () => {
+                await reload();
+                setSelected([]);
+              }}
+            />
+          )}
           <Button
             size="icon"
             variant="ghost"
@@ -924,7 +985,7 @@ export function QualifierLobbyList({
                 <th>
                   <input
                     type="checkbox"
-                    aria-label={tr('Select all visible scheduled qualifier sessions')}
+                    aria-label={tr('Select all visible qualifier sessions')}
                     disabled={!eligible.length}
                     checked={
                       !!eligible.length && eligible.every((lobby) => selected.includes(lobby.id))
@@ -944,62 +1005,127 @@ export function QualifierLobbyList({
               </th>
               <th>{tr('Referees')}</th>
               <th>{tr('Status')}</th>
+              {manager && <th>{tr('Actions')}</th>}
             </tr>
           </thead>
           <tbody>
             {visible.map((lobby) => (
-              <tr key={lobby.id} aria-selected={selected.includes(lobby.id)}>
-                {scheduler && (
+              <Fragment key={lobby.id}>
+                <tr aria-selected={selected.includes(lobby.id)}>
+                  {scheduler && (
+                    <td>
+                      <input
+                        type="checkbox"
+                        aria-label={tr('Select qualifier {0}', lobby.code)}
+                        disabled={!!lobby.deletedAt || (!manager && lobby.status !== 'SCHEDULED')}
+                        checked={selected.includes(lobby.id)}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          if (
+                            event.nativeEvent instanceof MouseEvent &&
+                            event.nativeEvent.shiftKey &&
+                            anchor.current
+                          ) {
+                            const start = visible.findIndex((row) => row.id === anchor.current),
+                              end = visible.findIndex((row) => row.id === lobby.id);
+                            const range = visible
+                              .slice(Math.min(start, end), Math.max(start, end) + 1)
+                              .filter(
+                                (row) => !row.deletedAt && (manager || row.status === 'SCHEDULED'),
+                              )
+                              .map((row) => row.id);
+                            setSelected(
+                              checked
+                                ? [...new Set([...selected, ...range])]
+                                : selected.filter((id) => !range.includes(id)),
+                            );
+                          } else
+                            setSelected(
+                              checked
+                                ? [...selected, lobby.id]
+                                : selected.filter((id) => id !== lobby.id),
+                            );
+                          anchor.current = lobby.id;
+                        }}
+                      />
+                    </td>
+                  )}
                   <td>
-                    <input
-                      type="checkbox"
-                      aria-label={tr('Select qualifier {0}', lobby.code)}
-                      disabled={lobby.status !== 'SCHEDULED'}
-                      checked={selected.includes(lobby.id)}
-                      onChange={(event) => {
-                        const checked = event.target.checked;
-                        if (
-                          event.nativeEvent instanceof MouseEvent &&
-                          event.nativeEvent.shiftKey &&
-                          anchor.current
-                        ) {
-                          const start = visible.findIndex((row) => row.id === anchor.current),
-                            end = visible.findIndex((row) => row.id === lobby.id);
-                          const range = visible
-                            .slice(Math.min(start, end), Math.max(start, end) + 1)
-                            .filter((row) => row.status === 'SCHEDULED')
-                            .map((row) => row.id);
-                          setSelected(
-                            checked
-                              ? [...new Set([...selected, ...range])]
-                              : selected.filter((id) => !range.includes(id)),
-                          );
-                        } else
-                          setSelected(
-                            checked
-                              ? [...selected, lobby.id]
-                              : selected.filter((id) => id !== lobby.id),
-                          );
-                        anchor.current = lobby.id;
-                      }}
-                    />
+                    <Link className="text-primary" href={`/admin/referee/qualifiers/${lobby.id}`}>
+                      {lobby.code}
+                    </Link>
                   </td>
+                  <td>{lobby.stage.name}</td>
+                  <td>
+                    {lobby.participants.map((team) => team.name).join(', ') || tr('No entrants')}
+                  </td>
+                  <td>{time(lobby.scheduledAt)}</td>
+                  <td>
+                    {lobby.assignments.map((ref) => ref.user.username).join(', ') ||
+                      tr('Unassigned')}
+                  </td>
+                  <td>
+                    <span>{tr(humanizeCode(lobby.status))}</span>
+                    <p className="text-xs text-muted">
+                      {tr('{0} complete runs', qualifierCompletion(lobby).completeRuns.length)}
+                    </p>
+                  </td>
+                  {manager && (
+                    <td>
+                      {!lobby.deletedAt && (
+                        <div className="flex flex-wrap gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => changeEditor(editing === lobby.id ? null : lobby.id)}
+                          >
+                            {tr('Edit')}
+                          </Button>
+                          <DeleteQualifierSessions
+                            compact
+                            lobbies={[lobby]}
+                            onChanged={async () => {
+                              if (editing === lobby.id) {
+                                inlineDirty.current.clear();
+                                setEditing(null);
+                              }
+                              await reload();
+                            }}
+                          />
+                        </div>
+                      )}
+                    </td>
+                  )}
+                </tr>
+                {editing === lobby.id && (
+                  <tr>
+                    <td colSpan={9}>
+                      <div className="space-y-3 py-2">
+                        <QualifierSessionIdentity
+                          lobby={lobby}
+                          onDirty={(dirty) => identityDirty(lobby.id, dirty)}
+                          onChanged={async () => {
+                            await reload();
+                            inlineDirty.current.delete(`${lobby.id}:identity`);
+                          }}
+                        />
+                        {lobby.status === 'SCHEDULED' && data.options && (
+                          <BulkSchedule
+                            selected={[lobby]}
+                            options={data.options}
+                            reload={async () => {
+                              await reload();
+                              inlineDirty.current.delete(`${lobby.id}:schedule`);
+                            }}
+                            onDirty={(dirty) => scheduleDirty(lobby.id, dirty)}
+                            close={() => changeEditor(null)}
+                          />
+                        )}
+                      </div>
+                    </td>
+                  </tr>
                 )}
-                <td>
-                  <Link className="text-primary" href={`/admin/referee/qualifiers/${lobby.id}`}>
-                    {lobby.code}
-                  </Link>
-                </td>
-                <td>{lobby.stage.name}</td>
-                <td>
-                  {lobby.participants.map((team) => team.name).join(', ') || tr('No entrants')}
-                </td>
-                <td>{time(lobby.scheduledAt)}</td>
-                <td>
-                  {lobby.assignments.map((ref) => ref.user.username).join(', ') || tr('Unassigned')}
-                </td>
-                <td>{tr(humanizeCode(lobby.status))}</td>
-              </tr>
+              </Fragment>
             ))}
           </tbody>
         </table>

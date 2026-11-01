@@ -109,10 +109,10 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
     URL.revokeObjectURL(href);
   };
   return (
-    <section className="min-w-0 space-y-5" aria-label={tr('Qualifier standings review')}>
+    <section className="min-w-0 space-y-3" aria-label={tr('Qualifier standings review')}>
       <header className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
         <div className="min-w-0">
-          <h2 className="text-xl font-semibold break-words">
+          <h2 className="text-lg font-semibold break-words">
             {data.stage.name} {tr('standings')}
           </h2>
           <p className="mt-1 text-sm text-muted">
@@ -225,6 +225,13 @@ export function QualifierStandings({ stageId }: { stageId: string; actor?: Actor
             ))}
           </ul>
         </details>
+      )}
+      {!errors.length && (
+        <p className="text-sm text-muted">
+          {tr(
+            'Eligible results are ready. Finalizing official seedings is a separate organizer decision.',
+          )}
+        </p>
       )}
       <QualifierStandingsTable
         rows={calculation.rows}

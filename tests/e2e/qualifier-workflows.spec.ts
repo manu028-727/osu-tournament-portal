@@ -2,7 +2,7 @@ import { test, expect, type BrowserContext } from '@playwright/test';
 import { PrismaClient } from '../../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
-import { mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { WebSocket } from 'ws';
@@ -21,7 +21,7 @@ const accounts: { id: string; osuId: number; username: string; token: string }[]
 let lobbyId: string, bookingId: string, externalStageId: string;
 const rules = inheritedRules({ teamSize: 1, multiplierMode: 'NONE' }, 'SCORE_V2');
 const policy = qualifierPolicySchema.parse({ requiredPlayers: 1, runs: 2 });
-const evidence = '.data/qualifier-workflow-20261030';
+const evidence = '.data/qualifier-audit-20261030';
 async function login(context: BrowserContext, index: number) {
   await context.addCookies([
     {
@@ -342,14 +342,271 @@ test('lets a captain book and cancel an existing session without workspace permi
   await session.getByRole('button', { name: 'Cancel reservation' }).click();
   await expect(session.getByRole('button', { name: 'Reserve session' })).toBeVisible();
   expect(await db.userRole.count({ where: { userId: accounts[1].id } })).toBe(0);
-  await page.setViewportSize({ width: 320, height: 900 });
-  await expect(page.locator('body')).toHaveJSProperty('scrollWidth', 320);
-  await page.screenshot({ path: `${evidence}/captain-mobile.png`, fullPage: true });
+  for (const theme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    for (const width of [1920, 1366, 768, 390, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.locator('body')).toHaveJSProperty('scrollWidth', width);
+      await page.screenshot({ path: `${evidence}/captain-${theme}-${width}.png`, fullPage: true });
+    }
+  }
   await page.goto(`${root}/teams`);
   await expect(
     page.getByRole('link', { name: 'Manage registration and qualifier booking' }),
   ).toHaveAttribute('href', `${root}/register`);
   await expect(page.locator('body')).not.toContainText('Private captain answer');
+});
+test('edits existing sessions inline and deletes single/bulk sessions without erasing history', async ({
+  page,
+  context,
+}) => {
+  await login(context, 0);
+  const ids: string[] = [];
+  for (const code of ['Session A', 'Session B', 'Session C']) {
+    const result = await admin(context, {
+      type: 'qualifier.create',
+      code,
+      stageId: externalStageId,
+      teamIds: [],
+      refereeIds: [],
+      scheduledAt: null,
+    });
+    ids.push(result.id);
+  }
+  await page.goto(`${root}/admin/referee/qualifiers`);
+  const row = page
+    .getByRole('row')
+    .filter({ has: page.getByRole('link', { name: 'Session A', exact: true }) });
+  await row.getByRole('button', { name: 'Edit', exact: true }).click();
+  await admin(context, {
+    type: 'qualifier.edit',
+    id: ids[0],
+    baseVersion: 1,
+    code: 'Session A',
+    notes: 'Refreshed notes from another organizer',
+  });
+  await expect(page.getByLabel('Notes', { exact: true }).first()).toHaveValue(
+    'Refreshed notes from another organizer',
+    { timeout: 10000 },
+  );
+  await page.getByLabel('Lobby code', { exact: true }).fill('Renamed session');
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await row.getByRole('button', { name: 'Edit', exact: true }).click();
+  await expect(page.getByLabel('Lobby code', { exact: true })).toHaveValue('Renamed session');
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Renamed session', exact: true })).toBeVisible();
+  await expect(
+    page.getByText(
+      'A selected lobby changed or is no longer scheduled. Close and review the selection.',
+      { exact: true },
+    ),
+  ).toHaveCount(0);
+  await page.goto(`${root}/admin/referee/qualifiers/${ids[0]}`);
+  await page.getByText('Session settings and deletion', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete sessions', exact: true }).click();
+  const confirmation = page.getByRole('dialog', { name: 'Delete qualifier sessions' });
+  await confirmation.getByLabel('Reason', { exact: true }).fill('Remove unused session');
+  await confirmation.getByRole('button', { name: 'Delete sessions', exact: true }).click();
+  await expect(
+    page.getByText('Deleted session. Scores and referee histories are preserved.', { exact: true }),
+  ).toBeVisible();
+  await page.goto(`${root}/admin/referee/qualifiers`);
+  await expect(page.getByRole('link', { name: 'Renamed session', exact: true })).toHaveCount(0);
+  for (const code of ['Session B', 'Session C'])
+    await page.getByLabel(`Select qualifier ${code}`, { exact: true }).check();
+  await page
+    .getByRole('toolbar', { name: 'Qualifier bulk actions' })
+    .getByRole('button', { name: 'Delete sessions', exact: true })
+    .click();
+  await confirmation.getByLabel('Reason', { exact: true }).fill('Remove unused session batch');
+  await confirmation.getByRole('button', { name: 'Delete sessions', exact: true }).click();
+  await expect(confirmation).toBeHidden();
+  expect(
+    await db.qualifierLobby.count({ where: { id: { in: ids }, deletedAt: { not: null } } }),
+  ).toBe(3);
+  expect(
+    await db.qualifierEvent.count({ where: { lobbyId: { in: ids }, kind: 'qualifier.delete' } }),
+  ).toBe(3);
+  await page.getByLabel('Filter qualifier lobbies').selectOption('deleted');
+  await expect(page.getByRole('link', { name: 'Renamed session', exact: true })).toBeVisible();
+  for (const theme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    for (const width of [1920, 1366, 768, 390, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.locator('body')).toHaveJSProperty('scrollWidth', width);
+      await page.screenshot({
+        path: `${evidence}/session-list-${theme}-${width}.png`,
+        fullPage: true,
+      });
+    }
+  }
+});
+test('reviews individual Freemod exceptions in bulk and automatically completes an eligible run', async ({
+  page,
+  context,
+}) => {
+  test.skip(!process.env.E2E_OSU_FIXTURE_DIR, 'Requires the explicit synthetic osu! provider.');
+  await login(context, 0);
+  const beatmap = await db.beatmap.findFirstOrThrow({ where: { mode: 'osu' } });
+  const fmRules = inheritedRules(
+    { teamSize: 1, multiplierMode: 'NONE', freeModRequiredHD: 0, freeModRequiredHR: 0 },
+    'SCORE_V2',
+  );
+  const stage = await db.tournamentStage.create({
+    data: {
+      tournamentId: slug,
+      slug: 'exceptions',
+      name: 'Qualifier exception review',
+      kind: 'QUALIFIERS',
+      matchRules: fmRules,
+      qualifierPolicy: policy,
+    },
+  });
+  const pool = await db.mappool.create({ data: { tournamentId: slug, stageId: stage.id } });
+  const revision = await db.mappoolRevision.create({
+    data: {
+      tournamentId: slug,
+      mappoolId: pool.id,
+      slots: {
+        create: [
+          {
+            name: 'FM1',
+            category: 'FM',
+            categoryName: 'FreeMod',
+            color: '#f2a6cf',
+            position: 0,
+            beatmapId: beatmap.id,
+            metadata: beatmap.metadata!,
+          },
+        ],
+      },
+    },
+  });
+  await db.mappool.update({
+    where: { id: pool.id },
+    data: { state: 'PUBLISHED', publishedRevisionId: revision.id },
+  });
+  await writeFile(
+    `${process.env.E2E_OSU_FIXTURE_DIR}/match-990002.json`,
+    JSON.stringify({
+      match: { id: 990002, name: 'Individual Freemod exceptions' },
+      first_event_id: 1,
+      events: [
+        {
+          id: 1,
+          game: {
+            id: 9900021,
+            beatmap_id: beatmap.id,
+            start_time: '2026-10-20T12:00:00Z',
+            end_time: '2026-10-20T12:03:00Z',
+            mode: 'osu',
+            scoring_type: 'scorev2',
+            mods: ['NF'],
+            scores: [
+              { user_id: accounts[1].osuId, score: 100, mods: ['HD'] },
+              { user_id: accounts[2].osuId, score: 200, mods: ['DT'] },
+            ],
+          },
+        },
+      ],
+    }),
+  );
+  const previewResponse = await context.request.post(
+    `/api/admin/qualifier-import?tournament=${slug}`,
+    {
+      headers: { Origin: 'http://localhost:3001' },
+      data: { stageId: stage.id, links: ['https://osu.ppy.sh/mp/990002'] },
+    },
+  );
+  expect(previewResponse.ok(), await previewResponse.text()).toBe(true);
+  const preview = await previewResponse.json();
+  const appliedResponse = await context.request.post(
+    `/api/admin/qualifier-import?tournament=${slug}`,
+    {
+      headers: { Origin: 'http://localhost:3001' },
+      data: {
+        stageId: stage.id,
+        jobId: preview.jobId,
+        fingerprint: preview.fingerprint,
+        apply: true,
+      },
+    },
+  );
+  expect(appliedResponse.ok(), await appliedResponse.text()).toBe(true);
+  const applied = await appliedResponse.json();
+  const id = applied.sessions[0];
+  await page.goto(`${root}/admin/referee/qualifiers/${id}`);
+  const exceptions = page.getByRole('region', { name: 'Qualifier exceptions' });
+  await expect(
+    exceptions.getByText('This mod is not allowed in FreeMod.', { exact: true }),
+  ).toBeVisible();
+  for (const width of [1366, 768, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.locator('body')).toHaveJSProperty('scrollWidth', width);
+    await page.screenshot({ path: `${evidence}/exceptions-${width}.png`, fullPage: true });
+  }
+  await exceptions.getByLabel('Select all excluded scores', { exact: true }).check();
+  await exceptions
+    .getByLabel('Override reason', { exact: true })
+    .fill('Organizer reviewed and accepted individual exception');
+  await exceptions.getByRole('button', { name: 'Include 1 selected scores', exact: true }).click();
+  await expect(
+    page.getByText(
+      'Complete eligible run verified. Optional runs can still synchronize. IRC stays open; official seedings are finalized separately.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  expect(await db.qualifierScore.count({ where: { lobbyId: id, eligible: true } })).toBe(2);
+  const providerFile = `${process.env.E2E_OSU_FIXTURE_DIR}/match-990002.json`;
+  const providerHistory = JSON.parse(await readFile(providerFile, 'utf8'));
+  providerHistory.events.push({
+    id: 2,
+    game: {
+      ...providerHistory.events[0].game,
+      id: 9900022,
+      start_time: new Date(Date.now() + 60000).toISOString(),
+      end_time: null,
+      scores: [],
+    },
+  });
+  await writeFile(providerFile, JSON.stringify(providerHistory));
+  await page.reload();
+  await page.getByText('Session settings and deletion', { exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Delete sessions', exact: true })).toBeDisabled();
+  const pendingLobby = await db.qualifierLobby.findUniqueOrThrow({ where: { id } });
+  const blockedDelete = await context.request.post(`/api/admin/action?tournament=${slug}`, {
+    headers: { Origin: 'http://localhost:3001' },
+    data: {
+      type: 'qualifier.delete',
+      lobbies: [{ id, baseVersion: pendingLobby.version }],
+      confirm: true,
+      reason: 'Do not strand optional-run scores',
+    },
+  });
+  expect(blockedDelete.status()).toBe(409);
+  providerHistory.events[1].game.end_time = new Date(Date.now() + 120000).toISOString();
+  providerHistory.events[1].game.scores = providerHistory.events[0].game.scores.map(
+    (score: { user_id: number }, index: number) => ({
+      user_id: score.user_id,
+      score: 300 + index * 100,
+      mods: index ? ['HR'] : ['HD'],
+    }),
+  );
+  await writeFile(providerFile, JSON.stringify(providerHistory));
+  await page.reload();
+  await page.getByText('Session settings and deletion', { exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Delete sessions', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Delete sessions', exact: true }).click();
+  const confirmation = page.getByRole('dialog', { name: 'Delete qualifier sessions' });
+  await confirmation
+    .getByLabel('Reason', { exact: true })
+    .fill('Remove completed session from operations');
+  await confirmation.getByRole('button', { name: 'Delete sessions', exact: true }).click();
+  await expect(
+    page.getByText('Deleted session. Scores and referee histories are preserved.', { exact: true }),
+  ).toBeVisible();
+  expect(await db.qualifierScore.count({ where: { lobbyId: id } })).toBe(4);
+  expect(await db.qualifierGame.count({ where: { lobbyId: id } })).toBe(2);
 });
 test('operates qualifier map, mods and player controls through the existing IRC gateway', async ({
   page,
@@ -510,6 +767,8 @@ test('registers through the real website API and publishes organizer rejection r
   await page.goto(`${root}/register`);
   await page.getByLabel('Entry name', { exact: true }).fill('New Native Solo Entrant');
   await page.getByRole('button', { name: 'Register', exact: true }).click();
+  await expect(page.getByText('Approved', { exact: true })).toBeVisible();
+  await page.getByText('Roster and registration details', { exact: true }).click();
   await expect(page.getByRole('button', { name: 'Save registration', exact: true })).toBeVisible();
   await expect(page.getByText('Approved', { exact: true })).toBeVisible();
   const team = await db.team.findFirstOrThrow({
@@ -558,12 +817,9 @@ test('previews actual provider histories, imports both runs and safely reimports
   await dialog
     .getByLabel('Multiplayer links (one per line)', { exact: true })
     .fill('https://osu.ppy.sh/mp/990001');
-  await dialog.getByRole('button', { name: 'Preview multiplayer histories' }).click();
+  await dialog.getByLabel('Warmup games per link', { exact: true }).fill('1');
+  await dialog.getByRole('button', { name: 'Import available scores', exact: true }).click();
   await expect(dialog.getByText('Shared external qualifier', { exact: true })).toBeVisible();
-  await dialog.getByLabel('Warmup games to exclude', { exact: true }).fill('1');
-  await dialog.getByRole('button', { name: 'Refresh import preview' }).click();
-  await expect(dialog.getByRole('button', { name: 'Import reviewed histories' })).toBeEnabled();
-  await dialog.getByRole('button', { name: 'Import reviewed histories' }).click();
   await expect(dialog.getByText('8 scores imported; 0 unchanged.', { exact: true })).toBeVisible();
   const lobby = await db.qualifierLobby.findFirstOrThrow({
     where: { tournamentId: slug, stageId: externalStageId, code: { startsWith: 'MP-' } },
@@ -598,4 +854,100 @@ test('previews actual provider histories, imports both runs and safely reimports
     element.scrollTop = 0;
   });
   await page.screenshot({ path: `${evidence}/bulk-import-mobile.png`, fullPage: true });
+});
+test('configures qualifier stages, finalizes actual imported standings and publishes a responsive public result', async ({
+  page,
+  context,
+}) => {
+  test.skip(!process.env.E2E_OSU_FIXTURE_DIR, 'Requires the explicit synthetic osu! provider.');
+  await login(context, 0);
+  await page.goto(`${root}/admin/mappools?view=stages`);
+  await page
+    .getByRole('button', {
+      name: 'Edit advanced settings for Imported qualifier stage',
+      exact: true,
+    })
+    .click();
+  const settings = page.getByRole('dialog', { name: 'Stage settings', exact: true });
+  await settings.getByLabel('Playthroughs', { exact: true }).selectOption('1');
+  await expect(settings.getByLabel('Run selection', { exact: true })).toHaveCount(0);
+  await settings.getByLabel('Playthroughs', { exact: true }).selectOption('2');
+  await expect(settings.getByLabel('Run selection', { exact: true })).toBeVisible();
+  for (const theme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    for (const width of [1920, 1366, 768, 390, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      await settings.getByLabel('Pool aggregation', { exact: true }).scrollIntoViewIfNeeded();
+      await expect(settings.getByLabel('Playthroughs', { exact: true })).toBeInViewport();
+      await expect(page.locator('body')).toHaveJSProperty('scrollWidth', width);
+      await page.screenshot({
+        path: `${evidence}/stage-policy-${theme}-${width}.png`,
+        fullPage: true,
+      });
+    }
+  }
+  page.once('dialog', (dialog) => dialog.accept());
+  await settings.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(settings).toBeHidden();
+  await page.goto(`${root}/admin/qualifier-results`);
+  await page.getByLabel('Qualifier stage', { exact: true }).selectOption(externalStageId);
+  await page.getByRole('button', { name: 'Calculate standings', exact: true }).click();
+  await expect(page.getByText('Provisional standings saved.', { exact: true })).toBeVisible();
+  for (const theme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    for (const width of [1920, 1366, 768, 390, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.locator('body')).toHaveJSProperty('scrollWidth', width);
+      await page.screenshot({
+        path: `${evidence}/standings-${theme}-${width}.png`,
+        fullPage: true,
+      });
+    }
+  }
+  await page
+    .getByLabel('Reviewed source scores, run selection and final seed order', { exact: true })
+    .check();
+  await page.getByRole('button', { name: 'Finalize seedings', exact: true }).click();
+  await expect(page.getByText('Qualifier seedings finalized.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Publish standings', exact: true }).click();
+  await expect(page.getByText('Standings published.', { exact: true })).toBeVisible();
+  await page.goto(`${root}/qualifiers`);
+  await expect(page.getByRole('rowheader', { name: /Northern Lights Community/ })).toBeVisible();
+  await expect(page.locator('body')).not.toContainText('Private captain answer');
+  for (const theme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    for (const width of [1920, 1366, 768, 390, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.locator('body')).toHaveJSProperty('scrollWidth', width);
+      await page.screenshot({
+        path: `${evidence}/public-standings-${theme}-${width}.png`,
+        fullPage: true,
+      });
+      if (width === 320) {
+        const scores = page.getByRole('region', { name: 'Qualifier standings table', exact: true });
+        await scores.focus();
+        for (let key = 0; key < 12; key++) {
+          await page.keyboard.press('ArrowRight', { delay: 80 });
+        }
+        await expect(page.getByRole('cell', { name: '1,177,777', exact: true })).toBeInViewport({
+          ratio: 1,
+        });
+        await page.screenshot({
+          path: `${evidence}/public-score-column-${theme}-320.png`,
+          fullPage: true,
+        });
+      }
+    }
+  }
+  const imported = await db.qualifierLobby.findFirstOrThrow({
+    where: { tournamentId: slug, stageId: externalStageId, code: { startsWith: 'MP-' } },
+  });
+  await page.goto(`${root}/admin/referee/qualifiers/${imported.id}`);
+  await expect(
+    page.getByText(
+      'Official seedings are finalized. Source scores are locked; IRC room controls remain separate.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Capture from osu!', exact: true })).toHaveCount(0);
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { qualifierGameProposals, qualifierCapturePlan } from '../src/lib/qualifier-multiplayer';
-import { qualifierProgress } from '../src/lib/qualifier-progress';
+import { qualifierProgress, qualifierCompletion } from '../src/lib/qualifier-progress';
+import { qualifierDefaultMods, qualifierScoreViolation } from '../src/lib/qualifier-eligibility';
 import { qualifierPolicySchema } from '../src/lib/qualifier-policy';
 import { inheritedRules } from '../src/lib/gameplay-scoring';
 import type { QualifierView } from '../src/lib/qualifiers-types';
@@ -23,6 +24,45 @@ const game = {
   scores: [{ user_id: 10, score: 0, mods: [] }],
 };
 describe('reviewed qualifier multiplayer capture', () => {
+  it('validates fixed category mods and initializes manual inputs from the same rules', () => {
+    expect(qualifierScoreViolation(lobby.rules, 'HD', ['NF'])).toBe(
+      'Player mods differ from the configured category mods.',
+    );
+    expect(qualifierScoreViolation(lobby.rules, 'DT', ['NF', 'NC'])).toBeNull();
+    expect(qualifierDefaultMods(lobby.rules, 'HR')).toEqual(['NF', 'HR']);
+    expect(qualifierScoreViolation(lobby.rules, 'TB', ['NF'])).toBeNull();
+  });
+  it('retains raw scores and original unsupported mods for individual exclusion', () => {
+    const result = qualifierGameProposals(
+      [{ game: { ...game, scores: [{ user_id: 10, score: 42, mods: ['RX'] }] } }],
+      lobby,
+    );
+    expect(result.proposals[0].players[0]).toMatchObject({
+      raw: 42,
+      originalMods: ['NF', 'RX'],
+      violation: 'Unsupported mods require manual review.',
+    });
+  });
+  it('keeps valid simultaneous players when another score is unknown, duplicated or malformed', () => {
+    const result = qualifierGameProposals(
+      [
+        {
+          game: {
+            ...game,
+            scores: [
+              game.scores[0],
+              { user_id: 999, score: 100, mods: [] },
+              { user_id: 11, score: 'missing', mods: [] },
+            ],
+          },
+        },
+      ],
+      lobby,
+    );
+    expect(result.proposals[0].players).toEqual([{ osuId: 10, raw: 0, mods: ['NF'] }]);
+    expect(result.proposals[0].issues).toHaveLength(2);
+    expect(result.rejected).toEqual([]);
+  });
   it('preserves real zero values, deduplicates API events and never invents participants', () => {
     const output = qualifierGameProposals([{ game }, { game }], lobby);
     expect(output.proposals).toHaveLength(1);
@@ -97,6 +137,7 @@ describe('reviewed qualifier multiplayer capture', () => {
       [false, null],
     ]);
     expect(progress[1].complete).toBe(false);
+    expect(qualifierCompletion(session).blockers).toHaveLength(1);
   });
   it('infers complete runs across rooms while flagging retries and excess performances', () => {
     const session = {

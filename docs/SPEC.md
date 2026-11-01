@@ -334,6 +334,14 @@ Never fabricate V1/V2/lazer conversion. Stages inherit the canonical choice.
 Qualifier sessions play a full stage pool with stable snapshots, rosters, scheduled
 staff, invites/pings, multiplayer links and individual map/run results. Batch create,
 schedule and compatible unstarted entrant transfers respect capacity and history.
+Edit session identity, notes, schedule, staff and booking settings in place. Single
+and bulk deletion remove reservations from operational lists, preserve scores and
+referee histories, and never close an IRC room. Confirm deletion; block active
+sessions, uncertain room creation and finalized sources. Retained completed sessions
+remain standings sources and keep their entrant ownership. Deleted histories are
+read-only and reachable through the session list's Deleted filter.
+Complete multiplayer history and resolve pending games before deleting a completed
+session, including an automatically completed session with an optional run underway.
 Support one/two runs and BEST_PER_MAP, BEST_COMPLETE_RUN, FIRST_RUN or SECOND_RUN;
 team aggregation SUM/AVERAGE/TOP_N. Empty sessions open before entrants are assigned;
 starting requires entrants, schedule and assigned staff. Multiple teams share one
@@ -349,10 +357,29 @@ players by permanent osu! IDs in frozen rosters, never team colors or display na
 Load complete paginated histories before applying scores. Exclude unrelated maps;
 warmups default to zero and require explicit count/selection. Review ambiguous
 players, retries, additional runs and missing evidence; never replace missing scores
-with zero. Previews show individual and team values and allow audited corrections.
+with zero. Preserve original provider evidence and each attributable score even
+when its mods violate rules. Record eligibility and the exclusion reason per score;
+valid simultaneous players continue through the same pipeline. Unknown/duplicate
+player evidence remains inspectable without inventing tournament identities.
+Team FreeMod quotas apply only to the affected team/map/run. Organizers can bulk
+exclude or explicitly override scores with an audited reason. Previews show eligible
+individual/team values and allow audited corrections.
 Re-import preserves accepted games and manual corrections unless replacement is
-explicitly reviewed. Incomplete histories and unresolved game evidence block
-submission/finalization; completed imports still require normal session confirmation.
+explicitly reviewed. Accepted partial games can receive newly available player
+scores on synchronization or re-import; intentional removals remain audited and
+require explicit replacement to restore. Incomplete histories and unresolved game evidence block
+official finalization. Imports can apply valid games while ambiguous games await
+review. A direct import uses an explicit warmup count (initially zero), while
+advanced preview permits different choices per link.
+
+Automatically complete imported/live sessions once each expected entrant has a
+complete eligible run under the configured selection policy. FIRST_RUN requires
+Run 1, SECOND_RUN requires Run 2; best policies allow an optional second run.
+Partial results stay Playing and resumable. Completion neither closes Bancho nor
+finalizes official seedings. Automatically completed sessions continue accepting
+optional runs and audited corrections until official finalization locks sources;
+removing required evidence resumes Playing. Show missing/excluded/run blockers.
+Manual-only sessions retain explicit referee submission and confirmation.
 
 Calculate Raw Score, sample-deviation Z-Sum, Team Average or the explicitly named
 osu!plus qualifier-cohort Match Cost adaptation. Preserve raw/provenance data,

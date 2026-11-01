@@ -6,11 +6,10 @@ import { Feedback, useLocale, useT } from '@/components/locale';
 
 import Link from '@/components/tournament-scope';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Copy, Plus, Save, CalendarClock, ArrowLeft, ExternalLink, Trash2 } from 'lucide-react';
+import { Copy, Plus, CalendarClock, ArrowLeft, ExternalLink, Trash2 } from 'lucide-react';
 import type { Actor } from '@/lib/permissions';
 import type { QualifierData } from '@/lib/qualifiers-types';
 import type { QualifierAction } from '@/lib/qualifiers-validation';
-import { MODS } from '@/lib/match-rules';
 import { lobbyCommands } from '@/lib/match-engine';
 import { matchPing } from '@/lib/discord-result';
 import { Button } from '../ui/button';
@@ -31,10 +30,13 @@ import { MATCH_STATUS_LABELS } from '@/lib/match-display';
 import { useTournamentTime } from '@/components/tournament-scope';
 import { QualifierCaptureDialog } from './qualifier-capture';
 import { QualifierLobbyList } from './qualifier-bulk-tools';
-import { qualifierProgress } from '@/lib/qualifier-progress';
+import { qualifierProgress, qualifierCompletion } from '@/lib/qualifier-progress';
+import { DeleteQualifierSessions, QualifierSessionIdentity } from './qualifier-session-tools';
+import { QualifierExceptions } from './qualifier-exceptions';
 import { QualifierMapBoard } from './qualifier-map-board';
 import { IrcPanel } from './irc-panel';
 import { QualifierSessionAssignments } from './qualifier-session-assignments';
+import styles from './qualifier-workflow.module.css';
 type StatusCommand = Extract<QualifierAction, { type: 'qualifier.status' }>['command'];
 export function QualifiersWorkspace({
   actor,
@@ -51,7 +53,7 @@ export function QualifiersWorkspace({
   const tr = useT();
   const matchTime = useTournamentTime();
   const { data, error, reload } = useResource<QualifierData>(
-    `qualifiers${id ? `&id=${encodeURIComponent(id)}` : ''}`,
+    `qualifiers${id ? `&id=${encodeURIComponent(id)}` : '&deleted=true'}`,
   );
   const { busy, run, notify } = useTask();
   const [create, setCreate] = useState(false),
@@ -63,15 +65,6 @@ export function QualifiersWorkspace({
       scheduledAt: '',
       notes: '',
     });
-  const [score, setScore] = useState<{
-    baseVersion: number;
-    osuId: number;
-    slotName: string;
-    run: number;
-    raw: number;
-    mods: string[];
-    reason: string;
-  } | null>(null);
   const [schedule, setSchedule] = useState<{
     baseVersion: number;
     scheduledAt: string;
@@ -97,7 +90,8 @@ export function QualifiersWorkspace({
   useEffect(() => {
     if (
       !session?.access.score ||
-      session.status !== 'IN_PROGRESS' ||
+      (session.status !== 'IN_PROGRESS' &&
+        !(session.status === 'COMPLETED' && session.autoCompleted)) ||
       !session.lobbyUrl ||
       session.gameplayScoring === 'LAZER'
     )
@@ -131,6 +125,7 @@ export function QualifiersWorkspace({
   }, [
     session?.id,
     session?.status,
+    session?.autoCompleted,
     session?.lobbyUrl,
     session?.access.score,
     session?.gameplayScoring,
@@ -140,6 +135,10 @@ export function QualifiersWorkspace({
   if (!data) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
   const m = id ? data.lobbies[0] : null;
   const manager = actor.permissions.includes('matches.manage');
+  const scoringOpen =
+    !!m &&
+    !m.deletedAt &&
+    (m.status === 'IN_PROGRESS' || (m.status === 'COMPLETED' && !!m.autoCompleted));
   const post = (body: object, message: string, close?: () => void) =>
     run(async () => {
       await action(body);
@@ -169,9 +168,6 @@ export function QualifiersWorkspace({
       ))}
     </fieldset>
   );
-  const selected = m?.scores.find(
-    (s) => s.osuId === score?.osuId && s.slotName === score?.slotName && s.run === score?.run,
-  );
 
   const roster =
     m?.participants.flatMap((team) => team.members.map((p) => ({ ...p, team: team.name }))) || [];
@@ -195,8 +191,8 @@ export function QualifiersWorkspace({
     progress.at(-1);
   if (!scoreDirty && m && current)
     retainedMap.current = { id: m.id, run: current.run, slotName: current.slot.name };
-  const nextTeam = current?.teams.find((team) => !team.complete);
   const selectMap = (run: number, slotName: string, warmup = false) => {
+    if (!m?.access.operate || m.scoringLocked || m.deletedAt) return;
     if (scoreDirty && !window.confirm(tr('Discard unsaved changes?'))) return;
     setScoreDirty(false);
     void post(
@@ -233,14 +229,24 @@ export function QualifiersWorkspace({
       ? `**Qualifiers:** Lobby ${m.code}\rMP Link: <${m.lobbyUrl}>`
       : '';
   return (
-    <>
+    <div className={styles.workspace}>
       <Link
         className="mb-4 inline-flex items-center gap-2 text-sm text-primary"
-        href="/admin/referee"
+        href={id ? '/admin/referee/qualifiers' : '/admin/referee'}
       >
         <ArrowLeft size={16} />
-        {tr('All tournament matches')}
+        {tr(id ? 'Qualifier sessions' : 'All tournament matches')}
       </Link>
+      {actor.permissions.some((permission) =>
+        ['matches.manage', 'matches.view_all', 'matches.manage_all'].includes(permission),
+      ) && (
+        <Link
+          className="mb-4 ml-4 inline-flex text-sm text-primary"
+          href="/admin/qualifier-results"
+        >
+          {tr('Qualifier results')}
+        </Link>
+      )}
       {error && (
         <p role="alert" className="mb-3 text-red-200">
           {tr('Updates unavailable:')} <Feedback message={error} />
@@ -323,34 +329,15 @@ export function QualifiersWorkspace({
                   {tr('Start qualifier lobby')}
                 </Button>
               )}
-              {m.status === 'IN_PROGRESS' && m.access.score && (
+              {scoringOpen && m.access.score && (
                 <QualifierCaptureDialog lobby={m} onChanged={reload} />
-              )}
-              {m.status === 'IN_PROGRESS' && m.access.score && (
-                <Button
-                  onClick={() =>
-                    setScore({
-                      baseVersion: m.version,
-                      osuId:
-                        nextTeam?.team.members.find(
-                          (p) => !nextTeam.scores.some((s) => s.osuId === p.osuId),
-                        )?.osuId ||
-                        roster[0]?.osuId ||
-                        0,
-                      slotName: current?.slot.name || m.poolRevision.slots[0]?.name || '',
-                      run: current?.run || 1,
-                      raw: 0,
-                      mods: m.rules.enforceNoFail ? ['NF'] : [],
-                      reason: '',
-                    })
-                  }
-                >
-                  <Save size={16} />
-                  {tr('Record qualifier score')}
-                </Button>
               )}
               {m.status === 'IN_PROGRESS' && m.access.submit && (
                 <Button
+                  disabled={
+                    !qualifierCompletion(m).complete ||
+                    m.games.some((game) => game.status === 'PENDING')
+                  }
                   onClick={() =>
                     setDecision({ command: 'SUBMIT', baseVersion: m.version, reason: '' })
                   }
@@ -368,7 +355,9 @@ export function QualifiersWorkspace({
                 </Button>
               )}
               {['COMPLETED', 'AWAITING_CONFIRMATION', 'DISPUTED', 'CANCELLED'].includes(m.status) &&
-                manager && (
+                manager &&
+                !m.autoCompleted &&
+                !m.deletedAt && (
                   <Button
                     variant="outline"
                     onClick={() =>
@@ -378,19 +367,59 @@ export function QualifiersWorkspace({
                     {tr('Reopen qualifier lobby')}
                   </Button>
                 )}
-              {!['COMPLETED', 'CANCELLED'].includes(m.status) && manager && (
-                <Button
-                  variant="destructive"
-                  onClick={() =>
-                    setDecision({ command: 'CANCEL', baseVersion: m.version, reason: '' })
-                  }
-                >
-                  {tr('Cancel qualifier lobby')}
-                </Button>
-              )}
             </div>
           </header>
-          <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+          {manager && !m.deletedAt && (
+            <details className="mb-3 border-b pb-3">
+              <summary className="cursor-pointer text-sm">
+                {tr('Session settings and deletion')}
+              </summary>
+              <div className="mt-3 space-y-3">
+                <QualifierSessionIdentity lobby={m} onChanged={reload} />
+                <DeleteQualifierSessions lobbies={[m]} onChanged={reload} />
+                {!['COMPLETED', 'CANCELLED'].includes(m.status) && (
+                  <Button
+                    variant="destructive"
+                    onClick={() =>
+                      setDecision({ command: 'CANCEL', baseVersion: m.version, reason: '' })
+                    }
+                  >
+                    {tr('Cancel qualifier lobby')}
+                  </Button>
+                )}
+              </div>
+            </details>
+          )}
+          <p role="status" className="mb-3 text-sm text-muted">
+            {m.scoringLocked
+              ? tr(
+                  'Official seedings are finalized. Source scores are locked; IRC room controls remain separate.',
+                )
+              : m.deletedAt
+                ? tr('Deleted session. Scores and referee histories are preserved.')
+                : m.autoCompleted
+                  ? tr(
+                      'Complete eligible run verified. Optional runs can still synchronize. IRC stays open; official seedings are finalized separately.',
+                    )
+                  : qualifierCompletion(m).complete
+                    ? tr(
+                        'Complete eligible run recorded. Review results before finalizing official seedings.',
+                      )
+                    : tr(
+                        'Results synchronize automatically. Only missing or excluded evidence needs attention.',
+                      )}
+          </p>
+          {(!qualifierCompletion(m).complete ||
+            m.scores.some((s) => s.eligible === false) ||
+            m.games.some((game) => game.status === 'PENDING')) && (
+            <a
+              className="mb-3 inline-block text-sm text-primary xl:hidden"
+              href="#qualifier-exceptions"
+            >
+              {tr('Needs attention')}
+            </a>
+          )}
+          <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(20rem,1fr)]">
             <div className="min-w-0">
               <p className="mb-3 text-sm text-muted">
                 {m.rules.gameplayScoring === 'LAZER'
@@ -416,7 +445,7 @@ export function QualifiersWorkspace({
                     <input
                       type="checkbox"
                       checked={!!selection?.warmup}
-                      disabled={!m.access.operate}
+                      disabled={!m.access.operate || m.scoringLocked}
                       onChange={(event) =>
                         selectMap(current.run, current.slot.name, event.target.checked)
                       }
@@ -433,7 +462,7 @@ export function QualifiersWorkspace({
                         current?.slot.name || m.poolRevision.slots[0].name,
                       )
                     }
-                    disabled={!m.access.operate}
+                    disabled={!m.access.operate || m.scoringLocked}
                   >
                     {Array.from({ length: m.policy.runs }, (_, i) => (
                       <option key={i} value={i + 1}>
@@ -445,7 +474,7 @@ export function QualifiersWorkspace({
                 {current && progress[progress.indexOf(current) + 1] && (
                   <Button
                     variant="outline"
-                    disabled={!m.access.operate}
+                    disabled={!m.access.operate || m.scoringLocked}
                     onClick={() => {
                       const item = progress[progress.indexOf(current) + 1];
                       selectMap(item.run, item.slot.name);
@@ -455,28 +484,52 @@ export function QualifiersWorkspace({
                   </Button>
                 )}
               </div>
-              <RefereePool
-                textActions
-                slots={m.poolRevision.slots}
-                rules={m.rules}
-                copy={copy}
-                label={tr('Qualifier mappool')}
-                state={(slot) =>
-                  slot.name === current?.slot.name ? tr('Selected map') : tr('Full qualifier pool')
-                }
-                action={(slot) => (
+              <details className="mb-3">
+                <summary className="cursor-pointer text-sm font-semibold">
+                  {tr('Qualifier mappool')}
+                </summary>
+                <RefereePool
+                  textActions
+                  slots={m.poolRevision.slots}
+                  rules={m.rules}
+                  copy={copy}
+                  label={tr('Qualifier mappool')}
+                  state={(slot) =>
+                    slot.name === current?.slot.name
+                      ? tr('Selected map')
+                      : tr('Full qualifier pool')
+                  }
+                  action={(slot) => (
+                    <Button
+                      style={{ width: 'auto', minWidth: 56 }}
+                      size="sm"
+                      variant={slot.name === current?.slot.name ? 'default' : 'ghost'}
+                      disabled={!m.access.operate || m.scoringLocked}
+                      onClick={() => selectMap(current?.run || 1, slot.name)}
+                      aria-label={tr('Select qualifier map {0}', slot.name)}
+                    >
+                      {tr('Select')}
+                    </Button>
+                  )}
+                />
+              </details>
+              <div
+                className="mb-3 flex max-w-full gap-1 overflow-x-auto pb-1"
+                aria-label={tr('Qualifier maps')}
+              >
+                {m.poolRevision.slots.map((slot) => (
                   <Button
-                    style={{ width: 'auto', minWidth: 56 }}
-                    size="sm"
-                    variant={slot.name === current?.slot.name ? 'default' : 'ghost'}
-                    disabled={!m.access.operate}
-                    onClick={() => selectMap(current?.run || 1, slot.name)}
+                    key={slot.name}
                     aria-label={tr('Select qualifier map {0}', slot.name)}
+                    size="sm"
+                    variant={slot.name === current?.slot.name ? 'default' : 'outline'}
+                    disabled={!m.access.operate || m.scoringLocked}
+                    onClick={() => selectMap(current?.run || 1, slot.name)}
                   >
-                    {tr('Select')}
+                    {slot.name}
                   </Button>
-                )}
-              />
+                ))}
+              </div>
               {current && (
                 <div className="mt-4">
                   <QualifierMapBoard
@@ -524,14 +577,29 @@ export function QualifiersWorkspace({
                   )}
                 </p>
               )}
-              <FreeModCalculator rules={m.rules} />
+              <details className="mt-3">
+                <summary className="cursor-pointer text-sm">{tr('FreeMod calculator')}</summary>
+                <FreeModCalculator rules={m.rules} />
+              </details>
             </div>
-            <div className="min-w-0 space-y-5">
+            <div className="min-w-0 space-y-4">
+              <QualifierExceptions
+                lobby={m}
+                manager={manager && m.access.score}
+                onChanged={reload}
+              />
               {m.access.operate && (
-                <QualifierSessionAssignments lobby={m} manager={manager} onChanged={reload} />
+                <details open={!m.participants.length} className="border-t pt-3">
+                  <summary className="cursor-pointer text-sm font-semibold">
+                    {tr('Session entrants and booking')}
+                  </summary>
+                  <QualifierSessionAssignments lobby={m} manager={manager} onChanged={reload} />
+                </details>
               )}
-              <section className="space-y-3">
-                <h2 className="font-semibold">{tr('Lobby preparation')}</h2>
+              <details className="space-y-3 border-t pt-3">
+                <summary className="cursor-pointer text-sm font-semibold">
+                  {tr('Lobby preparation')}
+                </summary>
                 {m.lobbyUrl && (
                   <a
                     className="inline-flex items-center gap-2 text-sm text-primary"
@@ -636,9 +704,11 @@ export function QualifiersWorkspace({
                     ))}
                   </details>
                 )}
-              </section>
-              <section>
-                <h2 className="mb-3 font-semibold">{tr('Qualifier scores')}</h2>
+              </details>
+              <details className="border-t pt-3">
+                <summary className="mb-3 cursor-pointer text-sm font-semibold">
+                  {tr('Qualifier scores')}
+                </summary>
                 <div className="max-h-80 overflow-auto">
                   <table className="admin-table">
                     <thead>
@@ -649,9 +719,7 @@ export function QualifiersWorkspace({
                         <th>{tr('Raw')}</th>
                         <th>{tr('Mods')}</th>
                         <th>{tr('Converted')}</th>
-                        {m.access.score && m.status === 'IN_PROGRESS' && (
-                          <th>{tr('Correction')}</th>
-                        )}
+                        {m.access.score && scoringOpen && <th>{tr('Correction')}</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -667,7 +735,7 @@ export function QualifiersWorkspace({
                               maximumFractionDigits: 8,
                             })}
                           </td>
-                          {m.access.score && m.status === 'IN_PROGRESS' && (
+                          {m.access.score && scoringOpen && (
                             <td>
                               <Button
                                 variant="ghost"
@@ -696,16 +764,21 @@ export function QualifiersWorkspace({
                       <dt>{team.name}</dt>
                       <dd>
                         {m.scores
-                          .filter((s) => team.members.some((p) => p.osuId === s.osuId))
+                          .filter(
+                            (s) =>
+                              s.eligible !== false && team.members.some((p) => p.osuId === s.osuId),
+                          )
                           .reduce((total, s) => total + s.adjusted, 0)
                           .toLocaleString(localeTag(language), { maximumFractionDigits: 8 })}
                       </dd>
                     </div>
                   ))}
                 </dl>
-              </section>
-              <section className="space-y-3">
-                <h2 className="font-semibold">{tr('Discord result')}</h2>
+              </details>
+              <details className="space-y-3 border-t pt-3">
+                <summary className="cursor-pointer text-sm font-semibold">
+                  {tr('Discord result')}
+                </summary>
                 <Button disabled={!qualifiedResult} onClick={() => copy(qualifiedResult)}>
                   <Copy size={16} />
                   {tr('Copy Discord Result')}
@@ -713,7 +786,7 @@ export function QualifiersWorkspace({
                 <pre className="whitespace-pre-wrap break-words text-sm">
                   {qualifiedResult.replaceAll('\r', '\n') || tr('Awaiting confirmed results')}
                 </pre>
-              </section>
+              </details>
               {m.notes && <p className="whitespace-pre-wrap border-y py-3 text-sm">{m.notes}</p>}
               <details>
                 <summary className="cursor-pointer font-semibold">
@@ -853,134 +926,6 @@ export function QualifiersWorkspace({
         </form>
       </Modal>
       <Modal
-        open={!!score}
-        onOpenChange={(open) => {
-          if (!open) setScore(null);
-        }}
-        title={tr('Record qualifier score')}
-      >
-        {score && m && (
-          <form
-            className="space-y-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void post(
-                {
-                  type: 'qualifier.score',
-                  id: m.id,
-                  ...score,
-                  representation: m.rules.gameplayScoring === 'LAZER' ? 'STANDARDIZED' : 'LEGACY',
-                },
-                'Qualifier score saved.',
-                () => setScore(null),
-              );
-            }}
-          >
-            {score.baseVersion !== m.version && (
-              <p role="alert">{tr('This lobby changed. Reopen the score form.')}</p>
-            )}
-            {m.policy.runs === 2 && (
-              <Field label={tr('Run')}>
-                <select
-                  value={score.run}
-                  onChange={(e) => setScore({ ...score, run: Number(e.target.value) })}
-                >
-                  <option value={1}>{tr('Run 1')}</option>
-                  <option value={2}>{tr('Run 2')}</option>
-                </select>
-              </Field>
-            )}
-            {m.rules.gameplayScoring === 'LAZER' && (
-              <label className="flex items-center gap-3 text-sm">
-                <input type="checkbox" required />
-                {tr(
-                  'Scores are actual standardized lazer values, not classic-scaled display values.',
-                )}
-              </label>
-            )}
-            <Field label={tr('Qualifier player')}>
-              <select
-                value={score.osuId}
-                onChange={(e) => {
-                  const osuId = Number(e.target.value),
-                    old = m.scores.find((s) => s.osuId === osuId && s.slotName === score.slotName);
-                  setScore({
-                    ...score,
-                    osuId,
-                    raw: old?.raw ?? 0,
-                    mods: old?.mods || (m.rules.enforceNoFail ? ['NF'] : []),
-                  });
-                }}
-              >
-                {roster.map((p) => (
-                  <option key={p.osuId} value={p.osuId}>
-                    {p.team} · {p.username}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={tr('Qualifier score slot')}>
-              <select
-                value={score.slotName}
-                onChange={(e) => {
-                  const slotName = e.target.value,
-                    old = m.scores.find((s) => s.osuId === score.osuId && s.slotName === slotName);
-                  setScore({
-                    ...score,
-                    slotName,
-                    raw: old?.raw ?? 0,
-                    mods: old?.mods || (m.rules.enforceNoFail ? ['NF'] : []),
-                  });
-                }}
-              >
-                {m.poolRevision.slots.map((s) => (
-                  <option key={s.name}>{s.name}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label={tr('Qualifier raw score')}>
-              <input
-                type="number"
-                step={m.rules.scoreMode === 'ACCURACY' ? 'any' : 1}
-                required
-                min={0}
-                value={score.raw}
-                onChange={(e) => setScore({ ...score, raw: Number(e.target.value) })}
-              />
-            </Field>
-            <div className="flex flex-wrap gap-3">
-              {MODS.map((mod) => (
-                <label key={mod} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={score.mods.includes(mod)}
-                    onChange={() => setScore({ ...score, mods: toggle(score.mods, mod) })}
-                  />
-                  {mod}
-                </label>
-              ))}
-            </div>
-            {selected && (
-              <p className="text-sm text-muted">
-                {tr('Existing score:')} {selected.raw}
-                {tr('. Saving records a correction.')}
-              </p>
-            )}
-            <Field label={tr('Qualifier score reason')}>
-              <textarea
-                required
-                minLength={3}
-                value={score.reason}
-                onChange={(e) => setScore({ ...score, reason: e.target.value })}
-              />
-            </Field>
-            <SaveButton busy={busy} disabled={score.baseVersion !== m.version}>
-              {tr('Save qualifier score')}
-            </SaveButton>
-          </form>
-        )}
-      </Modal>
-      <Modal
         open={!!schedule}
         onOpenChange={(open) => {
           if (!open) setSchedule(null);
@@ -1099,6 +1044,6 @@ export function QualifiersWorkspace({
           </form>
         )}
       </Modal>
-    </>
+    </div>
   );
 }

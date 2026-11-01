@@ -21,7 +21,12 @@ export function QualifierStandingsTable({
   const number = (value: number | null) =>
     value === null ? '-' : value.toLocaleString(localeTag(language), { maximumFractionDigits: 4 });
   return (
-    <div className="overflow-x-auto">
+    <div
+      className="overflow-x-auto"
+      role="region"
+      aria-label={tr('Qualifier standings table')}
+      tabIndex={0}
+    >
       <table className="w-full text-left text-sm">
         <caption className="sr-only">
           {tr('Qualifier standings:')} {tr(QUALIFIER_METHOD_LABELS[method])}
@@ -54,10 +59,10 @@ export function QualifierStandingsTable({
         <tbody>
           {rows.map((row) => (
             <tr key={row.participantId} className="border-b align-top">
-              <td className="px-3 py-4 tabular-nums">
+              <td className="px-3 py-2 tabular-nums">
                 {row.seed ?? (row.tied ? tr('T{0}', row.rank) : '-')}
               </td>
-              <th scope="row" className="min-w-40 max-w-96 px-3 py-4 font-medium break-words">
+              <th scope="row" className="min-w-40 max-w-96 px-3 py-2 font-medium break-words">
                 {row.name}
                 {details && (
                   <details className="mt-2 text-xs font-normal">
@@ -114,7 +119,7 @@ export function QualifierStandingsTable({
                   </details>
                 )}
               </th>
-              <td className="px-3 py-4 text-muted">
+              <td className="px-3 py-2 text-muted">
                 {!row.eligible
                   ? tr('Excluded')
                   : !row.complete

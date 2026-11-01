@@ -6,7 +6,8 @@ import {
   type QualifierPolicy,
 } from './qualifier-policy';
 
-export const QUALIFIER_CALCULATION_VERSION = 'qualifier-seeding/1';
+export const QUALIFIER_CALCULATION_VERSION = 'qualifier-seeding/2';
+export const LEGACY_QUALIFIER_CALCULATION_VERSION = 'qualifier-seeding/1';
 export const MATCH_COST_REFERENCE = {
   variant: 'OSUPLUS_QUALIFIER_COHORT_V1',
   formula: '2 / (p + 2) * sum(score / cohortMapMean)',
@@ -25,6 +26,8 @@ export type QualifierIssue = {
   scoreId?: string;
 };
 export type QualifierSourceScore = {
+  eligible?: boolean;
+  eligibilityReason?: string;
   id: string;
   lobbyId: string;
   participantId: string;
@@ -181,7 +184,11 @@ function evaluate(
   return total;
 }
 
-export function calculateQualifierStandings(input: QualifierSeedingInput): QualifierCalculation {
+export function calculateQualifierStandings(
+  input: QualifierSeedingInput,
+  calculationVersion = QUALIFIER_CALCULATION_VERSION,
+): QualifierCalculation {
+  const legacy = calculationVersion === LEGACY_QUALIFIER_CALCULATION_VERSION;
   const policy = qualifierPolicySchema.parse(input.policy);
   const source: QualifierSeedingInput = {
     ...input,
@@ -232,6 +239,13 @@ export function calculateQualifierStandings(input: QualifierSeedingInput): Quali
       slotName: score.slotName,
       scoreId: score.id,
     };
+    if (score.eligible === false) {
+      issue('EXCLUDED_SCORE', score.eligibilityReason || 'Score excluded by qualifier rules.', {
+        ...extra,
+        severity: 'WARNING',
+      });
+      continue;
+    }
     const key = canonicalQualifierJson([
       score.participantId,
       score.osuId,
@@ -340,7 +354,7 @@ export function calculateQualifierStandings(input: QualifierSeedingInput): Quali
         comparisonValue: null as number | null,
       };
     });
-    if (participant.eligible !== false)
+    if (legacy && participant.eligible !== false)
       for (const run of runs)
         if (!run.complete)
           issue(
@@ -348,6 +362,10 @@ export function calculateQualifierStandings(input: QualifierSeedingInput): Quali
             `${participant.name}: Run ${run.run} does not contain a complete eligible mappool.`,
             { participantId: participant.id },
           );
+    if (!legacy && participant.eligible !== false && !runs.some((run) => run.complete))
+      issue('INCOMPLETE_RUN', `${participant.name} does not contain a complete eligible run.`, {
+        participantId: participant.id,
+      });
     return { participant, runs };
   });
   // One equal-weight reference per entrant, averaged over their complete runs, is frozen before choosing runs.
@@ -397,7 +415,17 @@ export function calculateQualifierStandings(input: QualifierSeedingInput): Quali
         maps = choices[0].maps;
       }
     }
-    const complete = maps.length === mapNames.length && mapNames.length > 0;
+    const eligibleRun = runs.some(
+      (run) =>
+        run.complete &&
+        (policy.runSelection === 'FIRST_RUN'
+          ? run.run === 1
+          : policy.runSelection === 'SECOND_RUN' && policy.runs === 2
+            ? run.run === 2
+            : true),
+    );
+    const complete =
+      maps.length === mapNames.length && mapNames.length > 0 && (legacy || eligibleRun);
     if (!complete && participant.eligible !== false)
       issue(
         'INCOMPLETE_POOL',
@@ -509,8 +537,8 @@ export function calculateQualifierStandings(input: QualifierSeedingInput): Quali
           ? 'sum(selectedTeamMapScore) / mapCount'
           : 'sum(selectedTeamMapScore)';
   return {
-    calculationVersion: QUALIFIER_CALCULATION_VERSION,
-    sourceHash: qualifierSourceHash({ calculationVersion: QUALIFIER_CALCULATION_VERSION, source }),
+    calculationVersion,
+    sourceHash: qualifierSourceHash({ calculationVersion, source }),
     source,
     policy,
     gameplayScoring: source.gameplayScoring,

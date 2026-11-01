@@ -770,7 +770,7 @@ test('bulk qualifier sessions inherit stage policy and support scheduling and en
   expect(lobbies).toHaveLength(2);
   expect(lobbies[0].policy).toMatchObject({ runs: 2, requiredPlayers: 1 });
   await page
-    .getByRole('checkbox', { name: 'Select all visible scheduled qualifier sessions', exact: true })
+    .getByRole('checkbox', { name: 'Select all visible qualifier sessions', exact: true })
     .check();
   await page.getByRole('button', { name: 'Edit schedule and assignments', exact: true }).click();
   dialog = page.getByRole('dialog', { name: 'Bulk qualifier schedule', exact: true });
@@ -1967,7 +1967,8 @@ test('two-run raw qualifier scores are reviewed, finalized, published and seed a
     command: 'SUBMIT',
     reason: 'Incomplete qualifier must not submit',
   });
-  expect(incomplete.status()).toBe(400);
+  expect(incomplete.status()).toBe(409);
+  expect((await incomplete.json()).error).toContain('complete eligible qualifier run');
   // Run 1 wins NM1, Run 2 wins NM2. Better qualifier seeds deliberately reverse registration seeds.
   for (const [index, entrant] of f.entrants.entries())
     for (const run of [1, 2])

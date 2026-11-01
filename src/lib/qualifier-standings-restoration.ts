@@ -3,6 +3,7 @@ import { scopedDb } from './scoped-db';
 
 import {
   QUALIFIER_CALCULATION_VERSION,
+  LEGACY_QUALIFIER_CALCULATION_VERSION,
   canonicalQualifierJson,
   resolveQualifierTies,
   type QualifierCalculation,
@@ -78,13 +79,25 @@ export async function rebindImportedQualifierStandings(
   for (const record of records) {
     try {
       const stored = qualifierStandingSnapshot(record.snapshot);
-      if (stored.calculation.calculationVersion !== QUALIFIER_CALCULATION_VERSION)
+      if (
+        ![QUALIFIER_CALCULATION_VERSION, LEGACY_QUALIFIER_CALCULATION_VERSION].includes(
+          stored.calculation.calculationVersion,
+        )
+      )
         throw new Error('Unknown calculation formula/version.');
-      let fresh = calculations.get(record.stageId);
+      const key = `${record.stageId}:${stored.calculation.calculationVersion}`;
+      let fresh = calculations.get(key);
       if (!fresh) {
         await lockStage(tx, record.stageId, tournamentId);
-        fresh = (await loadQualifierCalculation(tx, record.stageId, tournamentId)).calculation;
-        calculations.set(record.stageId, fresh);
+        fresh = (
+          await loadQualifierCalculation(
+            tx,
+            record.stageId,
+            tournamentId,
+            stored.calculation.calculationVersion,
+          )
+        ).calculation;
+        calculations.set(key, fresh);
       }
       if (record.sourceHash === fresh.sourceHash) {
         report.skipped++;
@@ -126,7 +139,7 @@ export async function rebindImportedQualifierStandings(
             originalSourceHash: record.sourceHash,
             reboundSourceHash: fresh.sourceHash,
             reboundAt: new Date().toISOString(),
-            calculationVersion: QUALIFIER_CALCULATION_VERSION,
+            calculationVersion: fresh.calculationVersion,
           },
         ],
       };

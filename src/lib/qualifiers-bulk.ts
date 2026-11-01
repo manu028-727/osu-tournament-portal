@@ -151,11 +151,13 @@ export async function assertQualifierAvailability(
 }
 
 export function qualifierNeverStarted(lobby: {
+  deletedAt?: Date | null;
   status: string;
   scores: unknown[];
   events: { kind: string; data: unknown }[];
 }) {
   return (
+    !lobby.deletedAt &&
     lobby.status === 'SCHEDULED' &&
     !lobby.scores.length &&
     !lobby.events.some((event) => {
@@ -176,7 +178,7 @@ export async function applyQualifierBulkSchedule(
 ) {
   const ids = action.lobbies.map((lobby) => lobby.id);
   const records = await tx.qualifierLobby.findMany({
-    where: { tournamentId, id: { in: ids } },
+    where: { tournamentId, id: { in: ids }, deletedAt: null },
     include: { assignments: true },
   });
   if (records.length !== ids.length)
@@ -266,7 +268,7 @@ export async function applyQualifierParticipantMove(
 ) {
   const ids = [action.toLobbyId, ...(action.fromLobbyId ? [action.fromLobbyId] : [])];
   const records = await tx.qualifierLobby.findMany({
-    where: { tournamentId, id: { in: ids } },
+    where: { tournamentId, id: { in: ids }, deletedAt: null },
     include: { assignments: true, entries: true, scores: true, events: true },
   });
   if (records.length !== ids.length)
@@ -404,7 +406,7 @@ export async function removeQualifierParticipants(
   captain?: CaptainCapability,
 ) {
   const lobby = await tx.qualifierLobby.findFirst({
-    where: { id: action.id, tournamentId },
+    where: { id: action.id, tournamentId, deletedAt: null },
     include: { scores: true, events: true, assignments: true },
   });
   if (!lobby) throw new AppError('Qualifier lobby not found.', 404);

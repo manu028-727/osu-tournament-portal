@@ -8,6 +8,7 @@ import type { QualifierView } from '@/lib/qualifiers-types';
 import type { QualifierCapture } from '@/lib/qualifier-multiplayer';
 import { Button } from '../ui/button';
 import { api, Field, Modal, SaveButton, useTask } from './shared';
+import styles from './qualifier-workflow.module.css';
 type Preview = {
   proposals: QualifierCapture[];
   rejected: { gameId: string; issue: string }[];
@@ -63,7 +64,7 @@ export function QualifierCaptureDialog({
       </Button>
       <Modal open={open} onOpenChange={setOpen} title={tr('Review qualifier capture')} wide>
         <form
-          className="space-y-4"
+          className={`${styles.workspace} space-y-3`}
           onSubmit={(e) => {
             e.preventDefault();
             if (!preview) return;
@@ -164,6 +165,11 @@ export function QualifierCaptureDialog({
                     {lobby.participants.flatMap((t) => t.members).find((m) => m.osuId === p.osuId)
                       ?.username || p.osuId}
                     : {p.raw.toLocaleString(localeTag(language))} · {p.mods.join(' ') || tr('NM')}
+                    {p.violation && (
+                      <span className="ml-2 text-amber-200">
+                        <Feedback message={p.violation} />
+                      </span>
+                    )}
                   </p>
                 ))}
               {preview.rejected.length > 0 && (

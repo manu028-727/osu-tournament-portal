@@ -194,6 +194,9 @@ export async function executeAction(
           result = await applyStageReconciliation(tx, actor, a);
           break;
         case 'qualifier.create':
+        case 'qualifier.delete':
+        case 'qualifier.edit':
+        case 'qualifier.scores.resolve':
         case 'qualifier.batch.create':
         case 'qualifier.bulk.schedule':
         case 'qualifier.participants.move':

@@ -49,6 +49,49 @@ const hasIssue = (result: ReturnType<typeof calculateQualifierStandings>, code: 
   result.issues.some((i) => i.code === code);
 
 describe('qualifier policy', () => {
+  it('accepts a complete eligible run with an optional second run while retaining version-1 witnesses', () => {
+    const input = fixture([[[100, 200]], [[50, 75]]], { runs: 2 });
+    const current = calculateQualifierStandings(input);
+    expect(current.canFinalize).toBe(true);
+    expect(current.calculationVersion).toBe('qualifier-seeding/2');
+    const historical = calculateQualifierStandings(input, 'qualifier-seeding/1');
+    expect(historical.canFinalize).toBe(false);
+    expect(hasIssue(historical, 'INCOMPLETE_RUN')).toBe(true);
+    expect(historical.sourceHash).not.toBe(current.sourceHash);
+    expect(
+      calculateQualifierStandings({
+        ...input,
+        policy: qualifierPolicySchema.parse({ runs: 2, runSelection: 'SECOND_RUN' }),
+      }).canFinalize,
+    ).toBe(false);
+  });
+  it('retains excluded evidence but never counts it as zero or substitutes partial runs for a complete run', () => {
+    const input = fixture(
+      [
+        [
+          [100, 200],
+          [300, 400],
+        ],
+        [
+          [50, 70],
+          [60, 80],
+        ],
+      ],
+      { runs: 2 },
+    );
+    input.scores[0].eligible = false;
+    input.scores[0].eligibilityReason = 'Disallowed mods';
+    const result = calculateQualifierStandings(input);
+    expect(result.source.scores).toHaveLength(8);
+    expect(result.rows[0].complete).toBe(true);
+    expect(result.rows[0].selected.some((map) => map.scoreIds.includes(input.scores[0].id))).toBe(
+      false,
+    );
+    input.scores[3].eligible = false;
+    expect(
+      calculateQualifierStandings(input).rows.find((r) => r.participantId === 'team-1')!.complete,
+    ).toBe(false);
+  });
   it('defaults to raw total once without an editable gameplay scoring field', () => {
     expect(qualifierPolicySchema.parse({})).toEqual({
       method: 'RAW_SCORE',

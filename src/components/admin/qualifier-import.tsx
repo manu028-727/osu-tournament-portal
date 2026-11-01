@@ -8,6 +8,7 @@ import { QUALIFIER_METHOD_LABELS } from '@/lib/qualifier-policy';
 import { Button } from '../ui/button';
 import Link from '@/components/tournament-scope';
 import { api, Field, Modal, useResource, useTask } from './shared';
+import styles from './qualifier-workflow.module.css';
 
 export function QualifierImport({
   stageId,
@@ -20,6 +21,7 @@ export function QualifierImport({
   const language = useLocale();
   const [open, setOpen] = useState(false),
     [links, setLinks] = useState('');
+  const [warmups, setWarmups] = useState(0);
   const [preview, setPreview] = useState<QualifierImportPreview | null>(null);
   const [decisions, setDecisions] = useState<QualifierImportInput['decisions']>([]);
   const [dirty, setDirty] = useState(false),
@@ -34,17 +36,53 @@ export function QualifierImport({
   const { run, busy } = useTask();
   const review = async () => {
     setResult(null);
+    const choices = preview
+      ? decisions
+      : [...new Set(links.split(/\s+/).filter(Boolean))].map((link) => ({
+          multiplayerId: Number(link.match(/\/(\d+)\/?$/)?.[1]),
+          warmups,
+          lobbyId: null,
+          excludePlayers: [],
+          games: [],
+        }));
     const next = await api<QualifierImportPreview>('/api/admin/qualifier-import', {
       method: 'POST',
       body: JSON.stringify({
         stageId,
         links: links.split(/\s+/).filter(Boolean),
         jobId: preview?.jobId,
-        decisions,
+        decisions: choices,
       }),
     });
     setPreview(next);
+    setDecisions(choices);
     setDirty(false);
+    return { next, choices };
+  };
+  const applyPreview = async (
+    next: QualifierImportPreview,
+    choices: QualifierImportInput['decisions'],
+  ) => {
+    const result = await api<{
+      imported: number;
+      skipped: number;
+      errors: string[];
+      sessions: string[];
+    }>('/api/admin/qualifier-import', {
+      method: 'POST',
+      body: JSON.stringify({
+        stageId,
+        jobId: next.jobId,
+        fingerprint: next.fingerprint,
+        apply: true,
+        decisions: choices,
+        reason: reason || 'External qualifier multiplayer import',
+      }),
+    });
+    setResult(result);
+    setDirty(true);
+    onChanged();
+    await reload();
   };
   const decision = (multiplayerId: number): QualifierImportInput['decisions'][number] =>
     decisions.find((row) => row.multiplayerId === multiplayerId) || {
@@ -85,15 +123,7 @@ export function QualifierImport({
     });
   };
   const blocked =
-    !preview?.complete ||
-    dirty ||
-    preview.sources.some(
-      (source) =>
-        source.issues.length ||
-        source.games.some(
-          (game) => !game.ignored && !game.accepted && (!game.proposal || !game.run || game.issue),
-        ),
-    );
+    !preview?.complete || dirty || preview.sources.some((source) => source.issues.length);
   return (
     <>
       <Button
@@ -111,7 +141,7 @@ export function QualifierImport({
         title={tr('Import qualifier multiplayer links')}
         wide
       >
-        <div className="space-y-5">
+        <div className={`${styles.workspace} space-y-3`}>
           <p className="text-sm text-muted">
             {tr(
               "External refereeing fallback. Website sessions synchronize automatically. Imports use this stage's pool, rosters, scoring and run policy.",
@@ -131,8 +161,41 @@ export function QualifierImport({
               placeholder="https://osu.ppy.sh/community/matches/123456"
             />
           </Field>
+          {!preview && (
+            <Field label={tr('Warmup games per link')}>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={warmups}
+                onChange={(event) => setWarmups(Number(event.target.value))}
+              />
+            </Field>
+          )}
           <div className="flex flex-wrap gap-2">
+            {!preview && (
+              <Button
+                disabled={busy || !links.trim()}
+                onClick={() =>
+                  void run(async () => {
+                    const { next, choices } = await review();
+                    if (!next.complete)
+                      throw new Error(
+                        'Complete multiplayer history must finish loading before capture.',
+                      );
+                    if (next.sources.some((source) => source.issues.length))
+                      throw new Error(
+                        'Resolve the import warnings or explicitly exclude those games before importing.',
+                      );
+                    await applyPreview(next, choices);
+                  }, 'Qualifier import processed. Valid runs complete automatically; review remaining exceptions.')
+                }
+              >
+                {tr('Import available scores')}
+              </Button>
+            )}
             <Button
+              variant="outline"
               disabled={busy || (!preview && !links.trim())}
               onClick={() => void run(review, 'Qualifier import preview ready.')}
             >
@@ -189,18 +252,28 @@ export function QualifierImport({
                   )}
                 </p>
               )}
+              <p role="status" className="text-sm">
+                {tr(
+                  'Valid scores import automatically. Ambiguous games remain available for review; invalid player scores are preserved and excluded individually.',
+                )}
+              </p>
               {preview.sources.map((source) => {
                 const config = decision(source.multiplayerId);
                 return (
-                  <section
-                    key={source.multiplayerId}
-                    className="min-w-0 space-y-3 rounded-2xl border p-4"
-                  >
+                  <section key={source.multiplayerId} className="min-w-0 space-y-2 border-t py-3">
                     <h3 className="break-words font-semibold">{source.name}</h3>
                     <p className="text-sm text-muted">
                       {source.teams.map((team) => team.name).join(', ') ||
                         tr('No identified entrants')}
                     </p>
+                    {!!source.unknownPlayers.length && (
+                      <p className="text-xs text-amber-200">
+                        {tr(
+                          'Unregistered players retained as evidence: {0}',
+                          source.unknownPlayers.join(', '),
+                        )}
+                      </p>
+                    )}
                     <div className="grid-fields">
                       <Field label={tr('Warmup games to exclude')}>
                         <input
@@ -347,6 +420,7 @@ export function QualifierImport({
                                 <Field
                                   key={player.osuId}
                                   label={tr('Score for osu! ID {0}', player.osuId)}
+                                  hint={player.violation ? tr(player.violation) : undefined}
                                 >
                                   <input
                                     type="number"
@@ -407,28 +481,10 @@ export function QualifierImport({
               <Button
                 disabled={busy || blocked}
                 onClick={() =>
-                  void run(async () => {
-                    const result = await api<{
-                      imported: number;
-                      skipped: number;
-                      errors: string[];
-                      sessions: string[];
-                    }>('/api/admin/qualifier-import', {
-                      method: 'POST',
-                      body: JSON.stringify({
-                        stageId,
-                        jobId: preview.jobId,
-                        fingerprint: preview.fingerprint,
-                        apply: true,
-                        decisions,
-                        reason: reason || 'External qualifier multiplayer import',
-                      }),
-                    });
-                    setResult(result);
-                    setDirty(true);
-                    onChanged();
-                    await reload();
-                  }, 'Qualifier import processed. Review scores and confirm completed sessions.')
+                  void run(
+                    () => applyPreview(preview, decisions),
+                    'Qualifier import processed. Valid runs complete automatically; review remaining exceptions.',
+                  )
                 }
               >
                 {tr('Import reviewed histories')}

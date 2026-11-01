@@ -296,9 +296,22 @@ sit beside the board; Best-of, picks/bans and team-versus-team controls do not a
 Keep the existing Bancho panel, commands and delivery language consistent with normal
 Referee Mode. Empty sessions provide contextual entrant assignment and a disabled
 start action. Active assignment overrides require a reason and preserve scored entrants.
+Compact map buttons and the shared score board precede the existing IRC panel.
+Full map metadata, setup/invite commands, calculators, totals, Discord output and
+history use disclosures. The adjacent Needs attention panel shows individual
+exclusions, run blockers and unresolved games first. Audited eligibility changes
+use multi-selection and one reason; reviewing all scores exposes bulk exclusion.
+Completed imported sessions explicitly explain that optional runs and IRC can
+continue, while official seedings remain an organizer decision.
+
+Session tables support in-row identity/schedule editing, existing batch assignment
+and scheduling, and single/bulk deletion with visible selection scope. Delete
+confirmation explains retained history and independent IRC room closure. Active
+rows cannot be deleted; deleted rows are read-only under an explicit filter.
+Keep compact actions and contained table scrolling on narrow screens.
 
 Registration and qualifiers is reachable from tournament navigation and Teams.
-Captains see their own roster and existing session cards with timezone, deadline,
+Captains see their own roster and existing session rows with timezone, deadline,
 capacity and reserve/move/cancel actions. Private answers and administrative notes
 never appear in public Teams; rejected entries show the organizer's public reason.
 Organizer settings expose deadlines, limits, eligibility and custom fields together.
@@ -307,6 +320,19 @@ Each source shows warmup count, target session, roster ambiguities and expandabl
 individual/team scores. Changed decisions require a refreshed preview; exclusions
 and score replacements are explicit. Automatic website sync does not require an
 approval dialog. Preserve edits while polling, including the draft's original version.
+Untouched identity/schedule forms follow current versions; dirty forms keep their
+original witness. Row switches and filtering guard unsaved changes. Use the shared
+semantic warning color in both appearances; guidance text must not duplicate the
+standings state announcement. Standings tables support focused keyboard scrolling
+to their final columns on narrow screens.
+Existing roster editing collapses behind its details control. Captain booking uses
+compact session rows, stage/availability filters, highlighted own reservations and
+direct reserve/move/cancel actions. Import keeps per-link detail secondary; an
+explicit warmup count and direct Import available scores action process valid data
+without a separate approval. Advanced previews retain attribution, corrections and
+source diagnostics. Stage policy explains eligible/optional runs beside compact
+aggregation fields. Results share a stage/import toolbar, dense standings rows and
+progressive source diagnostics, preserving the established finalization review.
 
 ## Accessibility And States
 

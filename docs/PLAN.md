@@ -1251,6 +1251,89 @@ coverage is Chromium, not every browser/provider combination. The existing upstr
 pg concurrent-query deprecation warning remains visible. Next operational work is
 the operator-controlled update and live-provider verification described in ARCHITECTURE.
 
+## Qualifier Reliability And Compact Workflow Audit - 30 October 2026
+
+Scope: follow-up to `7d0eaeb`, covering qualifier management, capture/import,
+completion, booking and results. The normal head-to-head referee composition and
+state machine remain under their existing owners.
+
+- Added manager-only single/bulk session deletion with reviewed versions and
+  confirmation. Deletion removes operational/booking visibility, retains histories,
+  blocks active/uncertain/finalized sources and never closes Bancho. Deleted sessions
+  have an explicit read-only list filter. Existing sessions have inline identity,
+  notes, schedule/staff editing and the established bulk assignment/scheduling tools.
+- Individual imported rule violations retain raw/mod/provenance rows and exclusion
+  reasons; valid simultaneous players continue. Team FreeMod checks, progress and
+  standings share eligibility semantics. Bulk overrides/exclusions keep before/after
+  history, refreshed authorization, session witnesses and existing lock order.
+- Repaired accepted partial games: late player scores merge through the canonical
+  writer; source revisions preserve old evidence, corrections and intentional
+  removals. Stable re-imports avoid version churn. Reviewed run/map replacement
+  removes old linked rows atomically; completed preview refreshes retrieve late
+  provider data without discarding partial/failing-source checkpoints.
+- Imported/live sessions complete when each expected entrant has an eligible full
+  run under the selection policy. Optional second runs can continue, partial data
+  stays Playing, and removing required evidence resumes Playing. Completion does
+  not close IRC or finalize seeds. New calculation version 2 supports these rules;
+  finalized version-1 hashes/formulas remain intact until controlled reopening.
+- Reworked qualifier UI around compact rows, inline scores, contextual bulk actions,
+  exception review and disclosures. Removed the superseded single-score dialog.
+  Captain booking has stage/availability filters and a collapsed existing roster.
+  Imports have a direct action, explicit warmups and advanced diagnostics; stage
+  policy explains run eligibility. Results share scoped navigation, dense standings
+  and the existing controlled finalization workflow. Untouched identity/schedule
+  forms follow polling while dirty forms retain their reviewed version.
+- Reviewed scoped ownership, SQL/FK behavior, archive allowlists/defaults, public
+  projections and restoration witnesses for the additive
+  `20261030020000_qualifier_eligibility_lifecycle` migration. Applied it only to the
+  guarded isolated test database. Normal `./portal install` applies it on update.
+
+Resumed audit on 1 November 2026 verified the interrupted work against the full
+request. It also closed the optional-run deletion gap: completed sessions with
+pending games or incomplete provider history cannot be deleted into a read-only
+state. The UI and backend share that protection; regression coverage uses actual
+automatic synchronization to finish the second run and then permits deletion while
+preserving all four scores and both game receipts. Inline row/filter discard guards,
+untouched schedule witnesses, keyboard scrolling, semantic warning contrast and
+standings announcements were checked together. Bulk selection labels now describe
+the actual selectable session scope.
+
+Verification on 1 November 2026, against the uncommitted follow-up to `7d0eaeb`:
+
+- Node 22.23.3 with the existing lockfile installation; Prisma generation, format,
+  lint, generated route types, TypeScript and production build passed.
+- 393 unit tests in 31 files and 242 PostgreSQL integration tests in 28 files
+  passed. Integration suites ran sequentially against the guarded isolated test
+  database. Coverage includes transactional deletion rollback, pending optional
+  runs, eligibility overrides, late scores, intentional removals, historical
+  calculation witnesses, booking conflicts and tournament isolation.
+- 25 distinct production Chromium cases passed: eight connected qualifier cases,
+  two bulk-management/seeding cases and 15 existing referee, standings,
+  localization and stage regressions. The eight qualifier cases also passed in
+  development. Actual application HTTP routes and PostgreSQL cover empty-session
+  access, inline/bulk edits, registration/rejection, booking, shared-player score
+  capture, Freemod exceptions, automatic completion, optional runs, audited
+  corrections, duplicate-safe imports, publication and finalized seedings feeding
+  a native bracket. Existing head-to-head referee coverage remained successful.
+- Captured and inspected English/Italian, light/dark and empty/populated layouts.
+  Session, booking, configuration, import, exception and standings evidence covers
+  desktop and narrow mobile, including 1920, 1366, 768, 390 and 320px; session
+  layouts also cover 1024, 844, 683 and 375px. Verified keyboard access to the full
+  public score column within its horizontal container.
+- Source audit inspected 432 files with no issues; no new Markdown files were
+  created. Evidence is ignored under `.data/qualifier-audit-20261030/` and
+  `.data/qualifier-*.log`. Earlier failed/interrupted runs are not passes.
+
+The additive migration was applied only to the isolated test database. Operators
+must run the normal `./portal install` update before using this source. No live
+installation data was changed, no service was restarted and nothing was pushed.
+Browser upstream osu! responses and Bancho are synthetic: live OAuth, osu! API
+and Bancho behavior remain unverified. Native lazer Rooms API capture retains its
+existing manual fallback. Chromium coverage does not establish other browser or
+provider behavior. The existing upstream pg concurrent-query deprecation warning
+remains visible; operator-controlled live-provider verification is the next
+operational step.
+
 ## Completion Rules
 
 For each change: establish source behavior, implement within existing ownership

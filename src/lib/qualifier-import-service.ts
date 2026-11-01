@@ -18,10 +18,12 @@ import {
   currentQualifier,
   refreshedQualifierActor,
   ignoreQualifierGame,
+  completeImportedQualifier,
 } from './qualifier-capture-service';
-import { qualifierCapturePlan } from './qualifier-multiplayer';
+import { qualifierCapturePlan, type QualifierCapture } from './qualifier-multiplayer';
 import { convertedScore } from './match-engine';
 import { matchRulesSchema } from './match-rules';
+import { qualifierScoreViolation, qualifierTeamModViolation } from './qualifier-eligibility';
 import { z } from 'zod';
 import type { QualifierView } from './qualifiers-types';
 import type { QualifierImportInput, QualifierImportPreview } from './qualifier-import-contract';
@@ -231,8 +233,6 @@ async function buildPreview(
       issues.push((error as Error).message);
     }
     if (!teams.length) issues.push('No approved tournament entrants were identified.');
-    if (unknownPlayers.length)
-      issues.push('Unknown players require explicit exclusion or roster correction.');
     if (existing.length > 1 || (decision?.lobbyId && !target))
       issues.push(
         'Players belong to different sessions. Correct the session assignments before importing.',
@@ -241,7 +241,9 @@ async function buildPreview(
       issues.push('Assign all identified entrants to the selected session before importing.');
     if (
       target &&
-      (!['SCHEDULED', 'IN_PROGRESS'].includes(target.status) ||
+      (target.deletedAt ||
+        (!['SCHEDULED', 'IN_PROGRESS'].includes(target.status) &&
+          !(target.status === 'COMPLETED' && target.autoCompleted)) ||
         target.poolRevisionId !== ctx.stage.mappool!.publishedRevisionId ||
         canonicalQualifierJson(target.policy) !== canonicalQualifierJson(ctx.policy))
     )
@@ -269,7 +271,10 @@ async function buildPreview(
         const saved = lobby.games.find(
           (row) => row.multiplayerId === source.multiplayerId && row.gameId === String(game.id),
         );
-        if (saved) return saved;
+        if (saved)
+          return playedWarmups.has(String(game.id))
+            ? { ...saved, status: 'IGNORED', reason: 'Excluded warmup game.' }
+            : { ...saved, evidence: { ...(saved.evidence as object), game: event.game } };
         const ignore =
           playedWarmups.has(String(game.id)) ||
           (typeof game.beatmap_id === 'number' &&
@@ -361,12 +366,24 @@ async function buildPreview(
         if (proposal && choice?.corrections.length)
           proposal = {
             ...proposal,
-            players: proposal.players.map((player) => ({
-              ...player,
-              ...choice.corrections.find((row) => row.osuId === player.osuId),
-            })),
+            players: proposal.players.map((player) => {
+              const correction = choice.corrections.find((row) => row.osuId === player.osuId);
+              const corrected: QualifierCapture['players'][number] = correction
+                ? { ...correction }
+                : player;
+              const category = lobby.poolRevision.slots.find(
+                (s) => s.name === proposal!.slotName,
+              )!.category;
+              return {
+                ...corrected,
+                violation:
+                  corrected.violation ||
+                  qualifierScoreViolation(lobby.rules, category, corrected.mods) ||
+                  undefined,
+              };
+            }),
           };
-        const ignored = candidate.row.status === 'IGNORED' || !!choice?.ignore;
+        const ignored = choice?.ignore ?? candidate.row.status === 'IGNORED';
         const issue = ignored
           ? null
           : choice?.run && choice.run <= lobby.policy.runs && candidate.proposal
@@ -382,24 +399,31 @@ async function buildPreview(
           accepted: candidate.row.status === 'ACCEPTED',
           teams: proposal
             ? lobby.participants.map((team) => {
-                const players = proposal!.players.filter((player) =>
-                  team.members.some((member) => member.osuId === player.osuId),
+                const players = proposal!.players.filter(
+                  (player) =>
+                    !player.violation &&
+                    team.members.some((member) => member.osuId === player.osuId),
                 );
                 let value: number | null = null;
                 try {
-                  value =
-                    qualifierTeamAggregate(
-                      players.map((player) => ({
-                        ...player,
-                        adjusted: convertedScore(
-                          lobby.rules,
-                          player.raw,
-                          player.mods,
-                          proposal!.slotName,
-                        ).adjusted,
-                      })),
-                      lobby.policy,
-                    )?.value ?? null;
+                  value = qualifierTeamModViolation(
+                    lobby.rules,
+                    lobby.poolRevision.slots.find((s) => s.name === proposal!.slotName)!.category,
+                    players,
+                  )
+                    ? null
+                    : (qualifierTeamAggregate(
+                        players.map((player) => ({
+                          ...player,
+                          adjusted: convertedScore(
+                            lobby.rules,
+                            player.raw,
+                            player.mods,
+                            proposal!.slotName,
+                          ).adjusted,
+                        })),
+                        lobby.policy,
+                      )?.value ?? null);
                 } catch {
                   /* Canonical writer reports invalid mods without inventing a value. */
                 }
@@ -437,6 +461,15 @@ async function buildPreview(
 export async function previewQualifierImport(actor: Actor, input: QualifierImportInput) {
   assertPermission(actor, 'matches.manage');
   const { record, job } = await loadJob(actor, input);
+  if (
+    input.jobId &&
+    job.sources.every((source) => source.complete) &&
+    canonicalQualifierJson(job.decisions || []) === canonicalQualifierJson(input.decisions)
+  )
+    for (const source of job.sources) {
+      source.complete = false;
+      source.checkpoint = null;
+    }
   // Bound a bulk request below the shared provider budget; every continuation persists.
   const pagesPerSource = Math.min(
     6,
@@ -497,15 +530,7 @@ export async function applyQualifierImport(actor: Actor, input: QualifierImportI
   )
     throw new AppError('Review the complete current import preview first.', 409);
   const preview = await buildPreview(actor, job, record.id, record.fingerprint);
-  if (
-    preview.sources.some(
-      (source) =>
-        source.issues.length ||
-        source.games.some(
-          (game) => !game.ignored && !game.accepted && (!game.proposal || !game.run || game.issue),
-        ),
-    )
-  )
+  if (preview.sources.some((source) => source.issues.length))
     throw new AppError(
       'Resolve the import warnings or explicitly exclude those games before importing.',
       409,
@@ -625,7 +650,47 @@ export async function applyQualifierImport(actor: Actor, input: QualifierImportI
               },
             },
           });
-          if (before) continue;
+          if (before) {
+            const previousExcluded = z
+              .array(z.number())
+              .catch([])
+              .parse((before.evidence as { excludedPlayers?: unknown }).excludedPlayers);
+            const currentExcluded =
+              job.decisions?.find((d) => d.multiplayerId === source.multiplayerId)
+                ?.excludePlayers || [];
+            const updatedEvidence = {
+              ...(before.evidence as object),
+              game: raw!.game,
+              match: evidence.metadata,
+              ...(previousExcluded.length || currentExcluded.length
+                ? { excludedPlayers: [...new Set([...previousExcluded, ...currentExcluded])] }
+                : {}),
+            };
+            if (
+              canonicalQualifierJson(updatedEvidence) !== canonicalQualifierJson(before.evidence)
+            ) {
+              await tx.qualifierGame.update({
+                where: { id: before.id },
+                data: { evidence: json(updatedEvidence), version: { increment: 1 } },
+              });
+              await tx.qualifierEvent.create({
+                data: {
+                  lobbyId: target.id,
+                  version: ++version,
+                  actorId: actor.id,
+                  kind: 'qualifier.source.updated',
+                  reason: input.reason,
+                  data: json({
+                    gameId: game.gameId,
+                    before: before.evidence,
+                    after: updatedEvidence,
+                  }),
+                },
+              });
+              await tx.qualifierLobby.update({ where: { id: target.id }, data: { version } });
+            }
+            continue;
+          }
           await tx.qualifierGame.create({
             data: {
               lobbyId: target.id,
@@ -642,7 +707,7 @@ export async function applyQualifierImport(actor: Actor, input: QualifierImportI
                     ?.warmups || 0,
               }),
               status: game.ignored ? 'IGNORED' : 'PENDING',
-              reason: game.ignored ? input.reason : '',
+              reason: game.ignored ? input.reason : game.issue || '',
               startedAt: game.proposal ? new Date(game.proposal.startedAt) : null,
             },
           });
@@ -662,6 +727,30 @@ export async function applyQualifierImport(actor: Actor, input: QualifierImportI
             },
           });
           await tx.qualifierLobby.update({ where: { id: target.id }, data: { version } });
+        }
+        const exclusions =
+          job.decisions?.find((d) => d.multiplayerId === source.multiplayerId)?.excludePlayers ||
+          [];
+        if (exclusions.length) {
+          const affected = await tx.qualifierScore.findMany({
+            where: {
+              lobbyId: target.id,
+              osuId: { in: exclusions },
+              eligible: true,
+              gameId: { startsWith: `${source.multiplayerId}:` },
+            },
+          });
+          if (affected.length)
+            version = (
+              await applyQualifierAction(tx, actor, {
+                type: 'qualifier.scores.resolve',
+                id: target.id,
+                baseVersion: version,
+                scoreIds: affected.map((s) => s.id),
+                eligible: false,
+                reason: input.reason,
+              })
+            ).version!;
         }
         targets.push({ id: target.id, multiplayerId: source.multiplayerId, version });
       }
@@ -694,7 +783,7 @@ export async function applyQualifierImport(actor: Actor, input: QualifierImportI
         }
         continue;
       }
-      if (!game.proposal || !game.run) continue;
+      if (!game.proposal || !game.run || game.issue) continue;
       const choice = job.decisions
         ?.find((row) => row.multiplayerId === source.multiplayerId)
         ?.games.find((row) => row.gameId === game.gameId);
@@ -715,9 +804,11 @@ export async function applyQualifierImport(actor: Actor, input: QualifierImportI
         errors.push(
           `mp ${target.multiplayerId}, ${game.gameId}: ${error instanceof AppError ? error.message : 'This game cannot be imported. Review the preview warnings.'}`,
         );
-        break;
+        continue;
       }
     }
   }
+  for (const id of new Set(targets.map((target) => target.id)))
+    await completeImportedQualifier(actor, id);
   return { imported, skipped, errors, sessions: [...new Set(targets.map((target) => target.id))] };
 }

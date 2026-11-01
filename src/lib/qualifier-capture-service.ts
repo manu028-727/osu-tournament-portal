@@ -4,7 +4,11 @@ import { scopedDb } from './scoped-db';
 import { AppError, can, type Actor } from './permissions';
 import { matchAccess } from './match-access';
 import { actorForTournament } from './auth';
-import { qualifierData, applyQualifierAction } from './qualifiers-service';
+import {
+  qualifierData,
+  applyQualifierAction,
+  reconcileQualifierCompletion,
+} from './qualifiers-service';
 import { qualifierActionSchema } from './qualifiers-validation';
 import { qualifierCapturePlan, type QualifierCapture } from './qualifier-multiplayer';
 import { collectMultiplayerPages } from './multiplayer';
@@ -47,7 +51,10 @@ function multiplayerId(lobby: QualifierView) {
 function assertCapture(lobby: QualifierView) {
   if (!lobby.access.score)
     throw new AppError('Only assigned or authorized referees can capture qualifier scores.', 403);
-  if (lobby.status !== 'IN_PROGRESS')
+  if (
+    lobby.deletedAt ||
+    (lobby.status !== 'IN_PROGRESS' && !(lobby.status === 'COMPLETED' && lobby.autoCompleted))
+  )
     throw new AppError('Start or reopen the qualifier session first.', 409);
   if (lobby.gameplayScoring === 'LAZER')
     throw new AppError('Legacy matches cannot verify standardized lazer scores.', 409);
@@ -75,11 +82,21 @@ export async function captureQualifierGame(
       const tx = scopedDb(root, actor.tournamentId!);
       const record = await tx.qualifierLobby.findUniqueOrThrow({
         where: { id },
-        include: { assignments: true, scores: true, games: true },
+        include: {
+          assignments: true,
+          scores: true,
+          games: true,
+          events: { where: { kind: 'qualifier.score.remove' } },
+        },
       });
       const access = matchAccess(actor, record);
       const lobby = { ...record, access };
-      if (!access.score || record.status !== 'IN_PROGRESS')
+      if (
+        !access.score ||
+        record.deletedAt ||
+        (record.status !== 'IN_PROGRESS' &&
+          !(record.status === 'COMPLETED' && record.autoCompleted))
+      )
         throw new AppError('Qualifier scoring access changed. Reload.', 409);
       if (options.baseVersion !== undefined && record.version !== options.baseVersion)
         throw new AppError('The qualifier session changed. Reload the preview.', 409);
@@ -94,13 +111,52 @@ export async function captureQualifierGame(
       const receipt = record.games.find(
         (game) => game.multiplayerId === mp && game.gameId === proposal.gameId,
       );
-      if (receipt?.run && receipt.run !== run)
+      if (receipt?.run && receipt.run !== run && !options.replace)
         throw new AppError(
           'This multiplayer game is already recorded in another run. Each run requires a distinct performance.',
           409,
         );
-      if (receipt?.status === 'ACCEPTED' && !options.replace)
-        return { imported: 0, skipped: proposal.players.length, version: record.version };
+      if (receipt?.slotName && receipt.slotName !== proposal.slotName && !options.replace)
+        throw new AppError(
+          'Review and replace the existing map attribution before importing this game.',
+          409,
+        );
+      let version = lobby.version,
+        imported = 0,
+        skipped = 0;
+      if (
+        receipt &&
+        ((receipt.run && receipt.run !== run) ||
+          (receipt.slotName && receipt.slotName !== proposal.slotName))
+      ) {
+        const previousPlayers =
+          (receipt.evidence as { proposal?: QualifierCapture }).proposal?.players ||
+          proposal.players;
+        if (
+          record.scores.some(
+            (score) =>
+              score.run === receipt.run &&
+              score.slotName === receipt.slotName &&
+              score.gameId !== captureId &&
+              previousPlayers.some((p) => p.osuId === score.osuId),
+          )
+        )
+          throw new AppError(
+            'Resolve existing score corrections before moving this game to another run.',
+            409,
+          );
+        for (const score of record.scores.filter((score) => score.gameId === captureId)) {
+          const result = await applyQualifierAction(tx, actor, {
+            type: 'qualifier.score.remove',
+            id,
+            baseVersion: version,
+            scoreId: score.id,
+            reason: options.reason,
+          });
+          version = result.version!;
+        }
+        record.scores = record.scores.filter((score) => score.gameId !== captureId);
+      }
       if (
         await tx.qualifierScore.findFirst({
           where: {
@@ -115,10 +171,26 @@ export async function captureQualifierGame(
           'This multiplayer game is already recorded in another run. Each run requires a distinct performance.',
           409,
         );
-      let version = lobby.version,
-        imported = 0,
-        skipped = 0;
       for (const player of proposal.players) {
+        if (
+          !options.replace &&
+          receipt &&
+          record.events.some((event) => {
+            const before = (
+              event.data as { before?: { osuId?: number; slotName?: string; run?: number } }
+            ).before;
+            return (
+              event.kind === 'qualifier.score.remove' &&
+              event.createdAt >= receipt.createdAt &&
+              before?.osuId === player.osuId &&
+              before.slotName === proposal.slotName &&
+              before.run === run
+            );
+          })
+        ) {
+          skipped++;
+          continue;
+        }
         const previous = record.scores.find(
           (score) =>
             score.osuId === player.osuId &&
@@ -133,11 +205,10 @@ export async function captureQualifierGame(
           skipped++;
           continue;
         }
-        if (previous && !options.replace)
-          throw new AppError(
-            'A score already exists in this run. Explicitly approve replacement after reviewing the game.',
-            409,
-          );
+        if (previous && !options.replace) {
+          skipped++;
+          continue;
+        }
         const result = await applyQualifierAction(
           tx,
           actor,
@@ -156,11 +227,15 @@ export async function captureQualifierGame(
             source: options.source || 'OSU_API',
             gameId: captureId,
             verified: options.verified ?? true,
+            eligibilityReason: player.violation,
+            mods: player.originalMods,
           },
         );
         version = result.version!;
         imported++;
       }
+      if (!imported && receipt?.status === 'ACCEPTED' && !options.replace)
+        return { imported, skipped, version };
       await tx.qualifierGame.upsert({
         where: {
           lobbyId_multiplayerId_gameId: { lobbyId: id, multiplayerId: mp, gameId: proposal.gameId },
@@ -222,7 +297,8 @@ export async function captureQualifierGame(
           }),
         },
       });
-      return { imported, skipped, version: version + 1 };
+      const completedVersion = await reconcileQualifierCompletion(tx, actor, id);
+      return { imported, skipped, version: completedVersion ?? version + 1 };
     },
     { timeout: 30000 },
   );
@@ -275,13 +351,16 @@ export async function syncQualifier(actor: Actor, id: string, options: { apply?:
       });
       if (
         !matchAccess(current, fresh).score ||
-        fresh.status !== 'IN_PROGRESS' ||
+        fresh.deletedAt ||
+        (fresh.status !== 'IN_PROGRESS' &&
+          !(fresh.status === 'COMPLETED' && fresh.autoCompleted)) ||
         fresh.version !== lobby.version ||
         fresh.lobbyUrl !== lobby.lobbyUrl
       )
         throw new AppError('The qualifier session changed. Reload the preview.', 409);
       await assertQualifierMutable(tx, fresh.stageId, actor.tournamentId!);
       let received = 0;
+      const updates: { gameId: string; before: unknown; after: unknown }[] = [];
       for (const event of history.events) {
         const source = z
           .object({ game: z.object({ id: z.number().int().positive() }).passthrough().optional() })
@@ -290,11 +369,15 @@ export async function syncQualifier(actor: Actor, id: string, options: { apply?:
         const game = source.data.game;
         const key = String(game.id);
         const previous = fresh.games.find((row) => row.multiplayerId === mp && row.gameId === key);
-        if (previous?.status === 'ACCEPTED' || previous?.status === 'IGNORED') continue;
+        if (previous?.status === 'IGNORED') continue;
+        const nextEvidence = {
+          ...((previous?.evidence as object) || {}),
+          game,
+          match: history.metadata,
+        };
         if (
           previous &&
-          canonicalQualifierJson(previous.evidence) ===
-            canonicalQualifierJson({ game, match: history.metadata })
+          canonicalQualifierJson(previous.evidence) === canonicalQualifierJson(nextEvidence)
         )
           continue;
         const started = lobby.events
@@ -343,15 +426,16 @@ export async function syncQualifier(actor: Actor, id: string, options: { apply?:
             multiplayerId: mp,
             gameId: key,
             startedAt: gameTime.success ? new Date(gameTime.data) : null,
-            evidence: json({ game, match: history.metadata }),
+            evidence: json(nextEvidence),
             ...(ignored ? { status: 'IGNORED', reason: ignored } : {}),
           },
           update: {
-            evidence: json({ game, match: history.metadata }),
+            evidence: json(nextEvidence),
             version: { increment: 1 },
             ...(ignored ? { status: 'IGNORED', reason: ignored } : {}),
           },
         });
+        if (previous) updates.push({ gameId: key, before: previous.evidence, after: nextEvidence });
         received++;
       }
       await tx.qualifierLobby.update({
@@ -374,7 +458,7 @@ export async function syncQualifier(actor: Actor, id: string, options: { apply?:
             actorId: actor.id,
             version: fresh.version + 1,
             kind: 'qualifier.source.received',
-            data: { games: received },
+            data: json({ games: received, updates }),
           },
         });
     },
@@ -388,11 +472,23 @@ export async function syncQualifier(actor: Actor, id: string, options: { apply?:
     let version = fresh.version;
     for (const candidate of plan.games) {
       if (
+        candidate.row.status === 'ACCEPTED' &&
+        candidate.proposal?.players.every((p) =>
+          fresh.scores.some(
+            (s) =>
+              s.osuId === p.osuId &&
+              s.slotName === candidate.proposal!.slotName &&
+              s.run === candidate.run,
+          ),
+        )
+      )
+        continue;
+      if (
         candidate.row.multiplayerId !== mp ||
         !candidate.proposal ||
         candidate.issue ||
         !candidate.run ||
-        ['ACCEPTED', 'IGNORED'].includes(candidate.row.status)
+        candidate.row.status === 'IGNORED'
       )
         continue;
       try {
@@ -431,6 +527,7 @@ export async function syncQualifier(actor: Actor, id: string, options: { apply?:
         });
       }
     }
+    await completeImportedQualifier(actor, id);
     fresh = await currentQualifier(actor, id);
     plan = qualifierCapturePlan(fresh);
   }
@@ -470,6 +567,16 @@ export async function syncQualifier(actor: Actor, id: string, options: { apply?:
   };
 }
 
+// Completion records verified sporting evidence. It neither closes Bancho nor finalizes seedings.
+export async function completeImportedQualifier(actor: Actor, id: string) {
+  return db.$transaction(async (root) => {
+    await root.$executeRaw`SELECT pg_advisory_xact_lock(78214321)`;
+    actor = await refreshedQualifierActor(root, actor);
+    const tx = scopedDb(root, actor.tournamentId!);
+    return reconcileQualifierCompletion(tx, actor, id);
+  });
+}
+
 export async function ignoreQualifierGame(
   actor: Actor,
   id: string,
@@ -489,7 +596,9 @@ export async function ignoreQualifierGame(
       });
       if (
         !matchAccess(actor, lobby).score ||
-        lobby.status !== 'IN_PROGRESS' ||
+        lobby.deletedAt ||
+        (lobby.status !== 'IN_PROGRESS' &&
+          !(lobby.status === 'COMPLETED' && lobby.autoCompleted)) ||
         lobby.version !== baseVersion
       )
         throw new AppError('The qualifier session changed. Reload the preview.', 409);

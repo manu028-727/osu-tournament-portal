@@ -12,7 +12,8 @@ import { qualifierActionSchema } from '../src/lib/qualifiers-validation';
 import { publicTeamSelect, applyTeamAction } from '../src/lib/teams-service';
 import { teamActionSchema } from '../src/lib/teams-validation';
 import { executeGateway } from '../src/lib/irc-service';
-import { syncQualifier } from '../src/lib/qualifier-capture-service';
+import { syncQualifier, captureQualifierGame } from '../src/lib/qualifier-capture-service';
+import { qualifierGameProposals } from '../src/lib/qualifier-multiplayer';
 import { previewQualifierImport, applyQualifierImport } from '../src/lib/qualifier-import-service';
 import { qualifierImportSchema } from '../src/lib/qualifier-import-contract';
 import { loadQualifierCalculation } from '../src/lib/qualifier-standings-sources';
@@ -472,20 +473,7 @@ describe.sequential('complete native qualifier workflows', () => {
         })
       ).raw,
     ).toBe(150);
-    await action({
-      type: 'qualifier.status',
-      id,
-      baseVersion: (await current(id)).version,
-      command: 'SUBMIT',
-      reason: 'Review imported complete runs',
-    });
-    await action({
-      type: 'qualifier.status',
-      id,
-      baseVersion: (await current(id)).version,
-      command: 'CONFIRM',
-      reason: 'Confirm imported complete runs',
-    });
+    expect(await current(id)).toMatchObject({ status: 'COMPLETED', autoCompleted: true });
     const calculation = await loadQualifierCalculation(db, externalStageId, tournamentId);
     expect(calculation.calculation.rows).toHaveLength(3);
     expect(calculation.calculation.issues.filter((issue) => issue.severity === 'ERROR')).toEqual(
@@ -617,15 +605,13 @@ describe.sequential('complete native qualifier workflows', () => {
         where: { lobbyId: result.sessions[0], osuId: users[2].osuId, run: 2 },
       }),
     ).toBe(0);
-    await expect(
-      action({
-        type: 'qualifier.status',
-        id: result.sessions[0],
-        baseVersion: (await current(result.sessions[0])).version,
-        command: 'SUBMIT',
-        reason: 'Cannot submit missing performance',
-      }),
-    ).rejects.toThrow('needs 1 scores');
+    expect(await current(result.sessions[0])).toMatchObject({
+      status: 'COMPLETED',
+      autoCompleted: true,
+    });
+    expect((await loadQualifierCalculation(db, split, tournamentId)).calculation.canFinalize).toBe(
+      true,
+    );
   });
   it('attributes simultaneous teammates by permanent IDs, regardless of multiplayer colors', async () => {
     const scope = `${tournamentId}-teams`;
@@ -761,6 +747,451 @@ describe.sequential('complete native qualifier workflows', () => {
         })
       ).imported,
     ).toBe(6);
+  });
+  it('preserves individual invalid FreeMod scores, resolves exceptions in bulk and resumes optional runs', async () => {
+    const fmRules = inheritedRules(
+      { teamSize: 1, multiplierMode: 'NONE', freeModRequiredHD: 0, freeModRequiredHR: 0 },
+      'SCORE_V2',
+    );
+    const fmStage = await stage('Freemod exceptions', tournamentId, fmRules);
+    await db.mappoolSlot.updateMany({
+      where: { revision: { mappool: { stageId: fmStage } } },
+      data: { name: 'FM1', category: 'FM' },
+    });
+    const source = {
+      ...game(801, [100, 200]),
+      scores: [
+        { user_id: users[0].osuId, score: 100, mods: ['HD'] },
+        { user_id: users[1].osuId, score: 200, mods: ['DT'] },
+        { user_id: 2147000001, score: 900000, mods: [] },
+      ],
+    };
+    mock.load.mockResolvedValue({
+      match: { id: 99501 },
+      first_event_id: 1,
+      events: [{ id: 1, game: source }],
+    });
+    const input = qualifierImportSchema.parse({
+      stageId: fmStage,
+      links: ['https://osu.ppy.sh/mp/99501'],
+    });
+    const preview = await previewQualifierImport(organizer, input);
+    expect(preview.sources[0].issues).toEqual([]);
+    expect(preview.sources[0].unknownPlayers).toContain(2147000001);
+    const imported = await applyQualifierImport(organizer, {
+      ...input,
+      jobId: preview.jobId,
+      fingerprint: preview.fingerprint,
+      apply: true,
+    });
+    expect(imported.imported).toBe(2);
+    const id = imported.sessions[0];
+    expect(await current(id)).toMatchObject({ status: 'IN_PROGRESS', autoCompleted: false });
+    const scores = await db.qualifierScore.findMany({ where: { lobbyId: id } });
+    expect(scores.find((s) => s.osuId === users[0].osuId)).toMatchObject({
+      raw: 100,
+      eligible: true,
+    });
+    const invalid = scores.find((s) => s.osuId === users[1].osuId)!;
+    expect(invalid).toMatchObject({
+      raw: 200,
+      eligible: false,
+      eligibilityReason: 'This mod is not allowed in FreeMod.',
+    });
+    const evidence = await db.qualifierGame.findFirstOrThrow({ where: { lobbyId: id } });
+    expect((evidence.evidence as { game: { scores: unknown[] } }).game.scores).toHaveLength(3);
+    expect(
+      (await loadQualifierCalculation(db, fmStage, tournamentId)).calculation.canFinalize,
+    ).toBe(false);
+    const version = (await current(id)).version;
+    await expect(
+      db.$transaction((tx) =>
+        applyQualifierAction(
+          tx,
+          users[0],
+          qualifierActionSchema.parse({
+            type: 'qualifier.scores.resolve',
+            id,
+            baseVersion: version,
+            scoreIds: [invalid.id],
+            eligible: true,
+            reason: 'Unauthorized override',
+          }),
+        ),
+      ),
+    ).rejects.toThrow();
+    await action({
+      type: 'qualifier.scores.resolve',
+      id,
+      baseVersion: version,
+      scoreIds: [invalid.id],
+      eligible: true,
+      reason: 'Organizer approved exception after evidence review',
+    });
+    expect(await current(id)).toMatchObject({ status: 'COMPLETED', autoCompleted: true });
+    expect(
+      (await loadQualifierCalculation(db, fmStage, tournamentId)).calculation.canFinalize,
+    ).toBe(true);
+    await action({
+      type: 'qualifier.map',
+      id,
+      baseVersion: (await current(id)).version,
+      slotName: 'FM1',
+      run: 2,
+      warmup: false,
+      reason: 'Optional second run',
+    });
+    mock.load.mockResolvedValue({
+      match: { id: 99501 },
+      first_event_id: 1,
+      events: [
+        { id: 1, game: source },
+        {
+          id: 2,
+          game: {
+            ...game(802, [300, 400]),
+            scores: [
+              { user_id: users[0].osuId, score: 300, mods: ['HD'] },
+              { user_id: users[1].osuId, score: 400, mods: ['HR'] },
+            ],
+          },
+        },
+      ],
+    });
+    expect((await syncQualifier(organizer, id, { apply: true })).imported).toBe(2);
+    expect(await db.qualifierScore.count({ where: { lobbyId: id } })).toBe(4);
+    expect((await syncQualifier(organizer, id, { apply: true })).imported).toBe(0);
+    expect(await db.qualifierScore.findUniqueOrThrow({ where: { id: invalid.id } })).toMatchObject({
+      eligible: true,
+      eligibilityReason: 'Organizer approved exception after evidence review',
+    });
+    const lobbyView = JSON.parse(
+      JSON.stringify(
+        (await qualifierData(organizer, new URL(`https://local.invalid/?id=${id}`))).lobbies[0],
+      ),
+    );
+    const secondGame = lobbyView.games.find((g: { gameId: string }) => g.gameId === '802');
+    const proposal = qualifierGameProposals([secondGame.evidence], lobbyView, { historical: true })
+      .proposals[0];
+    await expect(
+      captureQualifierGame(organizer, id, proposal, 1, {
+        multiplayerId: 99501,
+        historical: true,
+        baseVersion: (await current(id)).version,
+        reason: 'Unapproved run relocation',
+      }),
+    ).rejects.toThrow('another run');
+    await captureQualifierGame(organizer, id, proposal, 1, {
+      multiplayerId: 99501,
+      historical: true,
+      baseVersion: (await current(id)).version,
+      replace: true,
+      reason: 'Reviewed run correction',
+    });
+    expect(await db.qualifierScore.count({ where: { lobbyId: id } })).toBe(2);
+    expect(await db.qualifierScore.count({ where: { lobbyId: id, run: 2 } })).toBe(0);
+    expect((await current(id)).autoCompleted).toBe(true);
+  });
+  it('edits sessions and deletes single/bulk reservations transactionally while retaining completed histories', async () => {
+    const deletionStage = await stage('Deletion');
+    const create = async (code: string) =>
+      (
+        await action({
+          type: 'qualifier.create',
+          code,
+          stageId: deletionStage,
+          teamIds: [],
+          refereeIds: [],
+          scheduledAt: null,
+        })
+      ).id;
+    const first = await create('DELETE-A'),
+      second = await create('DELETE-B');
+    await action({
+      type: 'qualifier.edit',
+      id: first,
+      baseVersion: 1,
+      code: 'EDITED-A',
+      notes: 'Updated in place',
+    });
+    await expect(
+      action({
+        type: 'qualifier.delete',
+        lobbies: [
+          { id: first, baseVersion: 1 },
+          { id: second, baseVersion: 1 },
+        ],
+        confirm: true,
+        reason: 'Stale batch deletion',
+      }),
+    ).rejects.toThrow('changed');
+    expect((await current(second)).deletedAt).toBeNull();
+    await action({
+      type: 'qualifier.delete',
+      lobbies: [
+        { id: first, baseVersion: 2 },
+        { id: second, baseVersion: 1 },
+      ],
+      confirm: true,
+      reason: 'Remove unused reservations',
+    });
+    expect(await current(first)).toMatchObject({
+      code: 'EDITED-A',
+      notes: 'Updated in place',
+      status: 'CANCELLED',
+    });
+    expect((await current(first)).deletedAt).not.toBeNull();
+    expect(
+      (await qualifierData(organizer, new URL('https://local.invalid/'))).lobbies.some(
+        (l) => l.id === first,
+      ),
+    ).toBe(false);
+    expect(
+      (await qualifierData(organizer, new URL(`https://local.invalid/?id=${first}`))).lobbies[0]
+        .access.editable,
+    ).toBe(false);
+    const active = await create('ACTIVE');
+    await db.qualifierLobby.update({ where: { id: active }, data: { status: 'IN_PROGRESS' } });
+    await expect(
+      action({
+        type: 'qualifier.delete',
+        lobbies: [{ id: active, baseVersion: 1 }],
+        confirm: true,
+        reason: 'Unsafe active deletion',
+      }),
+    ).rejects.toThrow('active');
+    await expect(
+      db.$transaction((tx) =>
+        applyQualifierAction(
+          tx,
+          users[0],
+          qualifierActionSchema.parse({
+            type: 'qualifier.delete',
+            lobbies: [{ id: active, baseVersion: 1 }],
+            confirm: true,
+            reason: 'Unauthorized deletion',
+          }),
+        ),
+      ),
+    ).rejects.toThrow();
+    const completed = await create('HISTORY');
+    await db.qualifierLobby.update({ where: { id: completed }, data: { status: 'COMPLETED' } });
+    const pending = await db.qualifierGame.create({
+      data: {
+        lobbyId: completed,
+        multiplayerId: 99504,
+        gameId: '1',
+        evidence: { game: { end_time: null } },
+      },
+    });
+    const unused = await create('BLOCKED-BATCH');
+    await expect(
+      action({
+        type: 'qualifier.delete',
+        lobbies: [
+          { id: unused, baseVersion: 1 },
+          { id: completed, baseVersion: 1 },
+        ],
+        confirm: true,
+        reason: 'Cannot strand pending optional-run history',
+      }),
+    ).rejects.toThrow('pending');
+    expect((await current(unused)).deletedAt).toBeNull();
+    await db.qualifierGame.update({
+      where: { id: pending.id },
+      data: { status: 'IGNORED', reason: 'Reviewed unfinished fixture game' },
+    });
+    await db.qualifierLobby.update({
+      where: { id: completed },
+      data: { multiplayerSync: { complete: false } },
+    });
+    await expect(
+      action({
+        type: 'qualifier.delete',
+        lobbies: [{ id: completed, baseVersion: 1 }],
+        confirm: true,
+        reason: 'Cannot strand incomplete provider history',
+      }),
+    ).rejects.toThrow('complete history');
+    await db.qualifierLobby.update({
+      where: { id: completed },
+      data: { multiplayerSync: { complete: true } },
+    });
+    const count = await db.qualifierEvent.count({ where: { lobbyId: completed } });
+    await action({
+      type: 'qualifier.delete',
+      lobbies: [{ id: completed, baseVersion: 1 }],
+      confirm: true,
+      reason: 'Remove completed session from operations',
+    });
+    expect((await current(completed)).status).toBe('COMPLETED');
+    expect(await db.qualifierEvent.count({ where: { lobbyId: completed } })).toBe(count + 1);
+    await expect(
+      action({ type: 'qualifier.edit', id: completed, baseVersion: 2, code: 'CHANGED', notes: '' }),
+    ).rejects.toThrow('read-only');
+  });
+  it('fills late API scores in accepted partial games without reviving intentional removals or replacing corrections', async () => {
+    const partialStage = await stage('Late scores');
+    const id = (
+      await action({
+        type: 'qualifier.create',
+        code: 'LATE',
+        stageId: partialStage,
+        teamIds: teamIds.slice(0, 2),
+        refereeIds: [organizer.id],
+        scheduledAt: new Date().toISOString(),
+      })
+    ).id;
+    await action({
+      type: 'qualifier.lobby',
+      id,
+      baseVersion: 1,
+      lobbyUrl: 'https://osu.ppy.sh/mp/99502',
+    });
+    await action({
+      type: 'qualifier.status',
+      id,
+      baseVersion: 2,
+      command: 'START',
+      reason: 'Start shared partial-score session',
+    });
+    let played = game(901, [100]),
+      multiplayer = 99502;
+    mock.load.mockImplementation(async () => ({
+      match: { id: multiplayer },
+      first_event_id: 1,
+      events: [{ id: 1, game: played }],
+    }));
+    expect((await syncQualifier(organizer, id, { apply: true })).imported).toBe(1);
+    expect((await current(id)).status).toBe('IN_PROGRESS');
+    played = {
+      ...played,
+      scores: [
+        ...played.scores,
+        { user_id: users[1].osuId, score: 200, mods: [], match: { team: 'red' } },
+      ],
+    };
+    expect((await syncQualifier(organizer, id, { apply: true })).imported).toBe(1);
+    expect(await current(id)).toMatchObject({ status: 'COMPLETED', autoCompleted: true });
+    const stableVersion = (await current(id)).version;
+    expect((await syncQualifier(organizer, id, { apply: true })).imported).toBe(0);
+    expect((await current(id)).version).toBe(stableVersion);
+    const removed = await db.qualifierScore.findFirstOrThrow({
+      where: { lobbyId: id, osuId: users[1].osuId },
+    });
+    await action({
+      type: 'qualifier.score.remove',
+      id,
+      baseVersion: stableVersion,
+      scoreId: removed.id,
+      reason: 'Intentional removal after evidence review',
+    });
+    expect((await current(id)).status).toBe('IN_PROGRESS');
+    expect((await syncQualifier(organizer, id, { apply: true })).imported).toBe(0);
+    expect(await db.qualifierScore.count({ where: { lobbyId: id } })).toBe(1);
+    const source = (await qualifierData(organizer, new URL(`https://local.invalid/?id=${id}`)))
+      .lobbies[0];
+    const proposal = qualifierGameProposals(
+      [{ game: played }],
+      JSON.parse(JSON.stringify(source)),
+      { historical: true },
+    ).proposals[0];
+    await captureQualifierGame(organizer, id, proposal, 1, {
+      multiplayerId: 99502,
+      baseVersion: (await current(id)).version,
+      replace: true,
+      reason: 'Explicitly restore reviewed missing score',
+    });
+    expect((await current(id)).status).toBe('COMPLETED');
+    played = {
+      ...played,
+      scores: played.scores.map((s, index) => (index ? s : { ...s, score: 999 })),
+    };
+    expect((await syncQualifier(organizer, id, { apply: true })).imported).toBe(0);
+    expect(
+      (await db.qualifierScore.findFirstOrThrow({ where: { lobbyId: id, osuId: users[0].osuId } }))
+        .raw,
+    ).toBe(100);
+    expect(
+      (
+        await db.qualifierEvent.findFirstOrThrow({
+          where: { lobbyId: id, kind: 'qualifier.source.received' },
+          orderBy: { version: 'desc' },
+        })
+      ).data,
+    ).toHaveProperty('updates');
+    const bulkStage = await stage('Late bulk scores');
+    multiplayer = 99503;
+    played = game(902, [100]);
+    const bulkId = (
+      await action({
+        type: 'qualifier.create',
+        code: 'LATE-BULK',
+        stageId: bulkStage,
+        teamIds: teamIds.slice(0, 2),
+        refereeIds: [organizer.id],
+        scheduledAt: new Date().toISOString(),
+      })
+    ).id;
+    await action({
+      type: 'qualifier.lobby',
+      id: bulkId,
+      baseVersion: 1,
+      lobbyUrl: 'https://osu.ppy.sh/mp/99503',
+    });
+    await action({
+      type: 'qualifier.status',
+      id: bulkId,
+      baseVersion: 2,
+      command: 'START',
+      reason: 'Start bulk continuation session',
+    });
+    expect((await syncQualifier(organizer, bulkId, { apply: true })).imported).toBe(1);
+    const input = qualifierImportSchema.parse({
+      stageId: bulkStage,
+      links: ['https://osu.ppy.sh/mp/99503'],
+    });
+    const cached = await previewQualifierImport(organizer, input);
+    expect(cached.sources[0].games[0].proposal!.players).toHaveLength(1);
+    played = {
+      ...played,
+      scores: [
+        ...played.scores,
+        { user_id: users[1].osuId, score: 200, mods: [], match: { team: 'red' } },
+      ],
+    };
+    const refreshed = await previewQualifierImport(organizer, { ...input, jobId: cached.jobId });
+    expect(refreshed.sources[0].games[0].proposal!.players).toHaveLength(2);
+    expect(
+      (
+        await applyQualifierImport(organizer, {
+          ...input,
+          jobId: refreshed.jobId,
+          fingerprint: refreshed.fingerprint,
+          apply: true,
+        })
+      ).imported,
+    ).toBe(1);
+    expect((await current(bulkId)).status).toBe('COMPLETED');
+    const exclude = qualifierImportSchema.parse({
+      ...input,
+      jobId: refreshed.jobId,
+      decisions: [{ multiplayerId: 99503, excludePlayers: [users[1].osuId] }],
+    });
+    const reviewed = await previewQualifierImport(organizer, exclude);
+    await applyQualifierImport(organizer, {
+      ...exclude,
+      fingerprint: reviewed.fingerprint,
+      apply: true,
+    });
+    expect(await db.qualifierScore.count({ where: { lobbyId: bulkId } })).toBe(2);
+    expect(
+      await db.qualifierScore.findFirstOrThrow({
+        where: { lobbyId: bulkId, osuId: users[1].osuId },
+      }),
+    ).toMatchObject({ raw: 200, eligible: false });
+    expect((await syncQualifier(organizer, bulkId, { apply: true })).imported).toBe(0);
+    expect((await current(bulkId)).status).toBe('IN_PROGRESS');
   });
   it('publishes a rejection reason while keeping private administrative notes separate', async () => {
     const team = await db.team.findUniqueOrThrow({ where: { id: teamIds[2] } });

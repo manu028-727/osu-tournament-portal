@@ -13,6 +13,10 @@ import { convertedScore } from './match-engine';
 import type { QualifierAction } from './qualifiers-validation';
 import { inheritedRules, historicalScoring, assertScoreRepresentation } from './gameplay-scoring';
 import { qualifierPolicySchema } from './qualifier-policy';
+import { qualifierScoreViolation } from './qualifier-eligibility';
+import { qualifierCompletion } from './qualifier-progress';
+import type { QualifierView } from './qualifiers-types';
+import { qualifierStandingSnapshot } from './qualifier-standings-contract';
 import { assertQualifierMutable } from './qualifier-standings-service';
 import {
   applyQualifierBulkSchedule,
@@ -41,6 +45,9 @@ const include = {
 export function qualifierPermission(a: QualifierAction): PermissionKey {
   if (
     a.type === 'qualifier.create' ||
+    a.type === 'qualifier.delete' ||
+    a.type === 'qualifier.edit' ||
+    a.type === 'qualifier.scores.resolve' ||
     a.type === 'qualifier.batch.create' ||
     a.type === 'qualifier.booking' ||
     (a.type === 'qualifier.status' && ['CONFIRM', 'REOPEN', 'CANCEL'].includes(a.command))
@@ -86,11 +93,31 @@ export async function qualifierData(actor: Actor, url: URL) {
   const scope = matchScope(actor) as Prisma.QualifierLobbyWhereInput;
   const id = url.searchParams.get('id');
   const records = await db.qualifierLobby.findMany({
-    where: { AND: [scope, ...(id ? [{ id }] : [])] },
+    where: {
+      AND: [
+        scope,
+        ...(id
+          ? [{ id }]
+          : url.searchParams.get('deleted') === 'true'
+            ? []
+            : [{ deletedAt: null }]),
+      ],
+    },
     include,
     orderBy: [{ scheduledAt: { sort: 'asc', nulls: 'last' } }, { code: 'asc' }],
   });
   if (id && !records.length) throw new AppError('Qualifier lobby not found.', 404);
+  const standings = await db.qualifierStanding.findMany({
+    where: { stageId: { in: records.map((record) => record.stageId) } },
+    orderBy: { version: 'desc' },
+    select: { stageId: true, snapshot: true },
+  });
+  const locked = new Set(
+    [...new Set(records.map((record) => record.stageId))].filter((stageId) => {
+      const standing = standings.find((row) => row.stageId === stageId);
+      return standing && qualifierStandingSnapshot(standing.snapshot).state === 'FINALIZED';
+    }),
+  );
   let options = null;
   if (can(actor, 'matches.manage') || can(actor, 'matches.assign_referees')) {
     const defaults = await matchOptions(actor);
@@ -137,6 +164,7 @@ export async function qualifierData(actor: Actor, url: URL) {
         : undefined,
     lobbies: records.map((lobby) => ({
       ...lobby,
+      scoringLocked: locked.has(lobby.stageId),
       ...(!matchAccess(actor, lobby).score &&
       !can(actor, 'matches.view_history') &&
       !can(actor, 'matches.manage')
@@ -146,7 +174,10 @@ export async function qualifierData(actor: Actor, url: URL) {
       policy: qualifierPolicySchema.parse(
         lobby.policy || { requiredPlayers: matchRulesSchema.parse(lobby.rules).teamSize },
       ),
-      access: matchAccess(actor, lobby),
+      access: {
+        ...matchAccess(actor, lobby),
+        score: !locked.has(lobby.stageId) && matchAccess(actor, lobby).score,
+      },
       selection: lobby.events.find((event) => event.kind === 'qualifier.map')?.data || null,
       canTransfer: qualifierNeverStarted(lobby),
       ...(!can(actor, 'matches.view_history') && !can(actor, 'matches.manage')
@@ -160,7 +191,13 @@ export async function applyQualifierAction(
   tx: Prisma.TransactionClient,
   actor: Actor,
   a: QualifierAction,
-  provenance?: { source: 'OSU_API' | 'IMPORT'; gameId: string; verified: boolean },
+  provenance?: {
+    source: 'OSU_API' | 'IMPORT';
+    gameId: string;
+    verified: boolean;
+    eligibilityReason?: string;
+    mods?: string[];
+  },
   external?: { multiplayerId: number },
 ): Promise<{
   id: string;
@@ -175,6 +212,62 @@ export async function applyQualifierAction(
   assertQualifierPermission(actor, a);
   // Use the admin mutation lock even when called directly by a transactional importer.
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(78214321)`;
+  if (a.type === 'qualifier.delete') {
+    // Retain histories and FK ownership. Empty reservations become cancelled and reusable.
+    for (const selected of a.lobbies) {
+      const lobby = await tx.qualifierLobby.findUniqueOrThrow({
+        where: { id: selected.id },
+        include,
+      });
+      if (lobby.version !== selected.baseVersion || lobby.deletedAt)
+        throw new AppError('A session changed. Reload before deleting.', 409);
+      await assertQualifierMutable(tx, lobby.stageId, tournamentId);
+      if (!['SCHEDULED', 'COMPLETED', 'CANCELLED'].includes(lobby.status))
+        throw new AppError('Finish or cancel active sessions before deleting them.', 409);
+      if (
+        lobby.status === 'COMPLETED' &&
+        (lobby.games.some((game) => game.status === 'PENDING') ||
+          (lobby.multiplayerSync as { complete?: boolean } | null)?.complete === false)
+      )
+        throw new AppError(
+          'Review pending multiplayer games and complete history before deleting.',
+          409,
+        );
+      if (
+        await tx.ircLobbyRequest.findFirst({
+          where: { qualifierLobbyId: lobby.id, status: { in: ['PENDING', 'UNKNOWN'] } },
+        })
+      )
+        throw new AppError(
+          'Resolve the outstanding IRC lobby creation request before deleting.',
+          409,
+        );
+      const version = lobby.version + 1;
+      await tx.qualifierLobby.update({
+        where: { id: lobby.id },
+        data: {
+          deletedAt: new Date(),
+          bookingOpen: false,
+          version,
+          ...(qualifierNeverStarted(lobby) ? { status: 'CANCELLED' } : {}),
+        },
+      });
+      await tx.qualifierEvent.create({
+        data: {
+          lobbyId: lobby.id,
+          version,
+          actorId: actor.id,
+          kind: a.type,
+          reason: a.reason,
+          data: json({
+            before: { status: lobby.status, code: lobby.code },
+            preservedHistory: true,
+          }),
+        },
+      });
+    }
+    return { id: 'bulk', updated: a.lobbies.length };
+  }
   if (a.type === 'qualifier.bulk.schedule')
     return applyQualifierBulkSchedule(tx, actor, tournamentId, a);
   if (a.type === 'qualifier.participants.move')
@@ -316,6 +409,8 @@ export async function applyQualifierAction(
     });
   }
   const lobby = await tx.qualifierLobby.findUniqueOrThrow({ where: { id: a.id }, include });
+  if (lobby.deletedAt)
+    throw new AppError('This session has been deleted. Its history is read-only.', 409);
   if (
     !can(actor, 'matches.manage') &&
     !can(actor, 'matches.manage_all') &&
@@ -331,8 +426,36 @@ export async function applyQualifierAction(
   const participants = lobby.participants as unknown as MatchParticipants['A'][];
   let changes: Prisma.QualifierLobbyUncheckedUpdateManyInput = {};
   let eventData: unknown = a;
-  if (a.type === 'qualifier.map') {
-    if (!['SCHEDULED', 'IN_PROGRESS'].includes(lobby.status))
+  if (a.type === 'qualifier.edit') {
+    if (await tx.qualifierLobby.findFirst({ where: { code: a.code, id: { not: lobby.id } } }))
+      throw new AppError('This session code is already in use.', 409);
+    changes = { code: a.code, notes: a.notes };
+  } else if (a.type === 'qualifier.scores.resolve') {
+    if (
+      !['IN_PROGRESS', 'COMPLETED'].includes(lobby.status) ||
+      (lobby.status === 'COMPLETED' && !lobby.autoCompleted)
+    )
+      throw new AppError('Reopen this session before correcting scores.', 409);
+    const selected = lobby.scores.filter((score) => a.scoreIds.includes(score.id));
+    if (selected.length !== new Set(a.scoreIds).size) throw new AppError('Score not found.', 404);
+    await tx.qualifierScore.updateMany({
+      where: { lobbyId: lobby.id, id: { in: a.scoreIds } },
+      data: {
+        eligible: a.eligible,
+        eligibilityReason: a.reason,
+      },
+    });
+    eventData = {
+      before: selected,
+      after: selected.map((score) => ({
+        ...score,
+        eligible: a.eligible,
+        eligibilityReason: a.reason,
+      })),
+      reason: a.reason,
+    };
+  } else if (a.type === 'qualifier.map') {
+    if (!['SCHEDULED', 'IN_PROGRESS'].includes(lobby.status) && !lobby.autoCompleted)
       throw new AppError('Reopen this lobby before editing.', 409);
     if (a.run > policy.runs || !lobby.poolRevision.slots.some((slot) => slot.name === a.slotName))
       throw new AppError('Select a configured qualifier map and run.');
@@ -370,7 +493,7 @@ export async function applyQualifierAction(
     });
     changes = { scheduledAt: date, notes: a.notes };
   } else if (a.type === 'qualifier.lobby') {
-    if (!['SCHEDULED', 'IN_PROGRESS'].includes(lobby.status))
+    if (!['SCHEDULED', 'IN_PROGRESS'].includes(lobby.status) && !lobby.autoCompleted)
       throw new AppError('Reopen this lobby before editing.', 409);
     changes.lobbyUrl = a.lobbyUrl ? lobbyInfo(a.lobbyUrl, null).lobbyUrl : '';
     if (changes.lobbyUrl !== lobby.lobbyUrl)
@@ -380,7 +503,7 @@ export async function applyQualifierAction(
         multiplayerError: null,
       });
   } else if (a.type === 'qualifier.score.remove') {
-    if (lobby.status !== 'IN_PROGRESS')
+    if (lobby.status !== 'IN_PROGRESS' && !(lobby.status === 'COMPLETED' && lobby.autoCompleted))
       throw new AppError('Reopen this lobby before correcting scores.', 409);
     const before = lobby.scores.find((score) => score.id === a.scoreId);
     if (!before) throw new AppError('Score not found.', 404);
@@ -395,7 +518,7 @@ export async function applyQualifierAction(
         409,
       );
     assertScoreRepresentation(scoring, scoring, a.representation, a.raw);
-    if (lobby.status !== 'IN_PROGRESS')
+    if (lobby.status !== 'IN_PROGRESS' && !(lobby.status === 'COMPLETED' && lobby.autoCompleted))
       throw new AppError('Start or reopen the lobby before recording scores.', 409);
     if (!participants.some((team) => team.members.some((p) => p.osuId === a.osuId)))
       throw new AppError('This player is not in the snapshotted qualifier roster.');
@@ -403,18 +526,9 @@ export async function applyQualifierAction(
     if (!slot) throw new AppError('This map is not in the qualifier pool snapshot.');
     if (rules.scoreMode === 'ACCURACY' ? a.raw > 100 : !Number.isSafeInteger(a.raw))
       throw new AppError('Use a valid raw score for the configured scoring mode.');
-    if (
-      (a.mods.includes('EZ') && a.mods.includes('HR')) ||
-      ((a.mods.includes('DT') || a.mods.includes('NC')) && a.mods.includes('HT')) ||
-      (a.mods.includes('NF') && (a.mods.includes('SD') || a.mods.includes('PF')))
-    )
-      throw new AppError('Incompatible mods.');
-    if (rules.enforceNoFail && !a.mods.includes('NF')) throw new AppError('NoFail is required.');
-    if (
-      rules.freeModCategories.includes(slot.category) &&
-      a.mods.some((mod) => !rules.freeModAllowed.includes(mod))
-    )
-      throw new AppError('This mod is not allowed in FreeMod.');
+    const violation =
+      provenance?.eligibilityReason || qualifierScoreViolation(rules, slot.category, a.mods);
+    if (violation && !provenance) throw new AppError(violation);
     const where = {
       lobbyId_osuId_slotName_run: {
         lobbyId: lobby.id,
@@ -425,9 +539,11 @@ export async function applyQualifierAction(
     };
     const before = await tx.qualifierScore.findUnique({ where });
     const data = {
+      eligible: !violation,
+      eligibilityReason: violation || '',
       raw: a.raw,
-      mods: json(a.mods),
-      adjusted: convertedScore(rules, a.raw, a.mods, slot.name).adjusted,
+      mods: json(provenance?.mods || a.mods),
+      adjusted: convertedScore(rules, a.raw, provenance?.mods || a.mods, slot.name).adjusted,
       actualScoring: historicalScoring(rules),
       representation: a.representation,
       source: provenance?.source || 'MANUAL',
@@ -475,39 +591,14 @@ export async function applyQualifierAction(
           409,
         );
       if (!lobby.lobbyUrl) throw new AppError('Record the multiplayer link before submitting.');
-      for (const run of Array.from({ length: policy.runs }, (_, i) => i + 1))
-        for (const slot of lobby.poolRevision.slots)
-          for (const team of participants) {
-            const scores = lobby.scores.filter(
-              (s) =>
-                s.slotName === slot.name &&
-                s.run === run &&
-                team.members.some((p) => p.osuId === s.osuId),
-            );
-            if (
-              policy.teamAggregation === 'TOP_N'
-                ? scores.length < policy.requiredPlayers
-                : scores.length !== policy.requiredPlayers
-            )
-              throw new AppError('{0} needs {1} scores on {2}, Run {3}.', 400, [
-                team.name,
-                policy.requiredPlayers,
-                slot.name,
-                run,
-              ]);
-            if (rules.freeModCategories.includes(slot.category)) {
-              const mods = scores.map((s) => s.mods as string[]);
-              if (
-                mods.filter((m) => m.includes('HR')).length < rules.freeModRequiredHR ||
-                mods.filter((m) => !m.includes('HR') && (m.includes('HD') || m.includes('EZ')))
-                  .length < rules.freeModRequiredHD
-              )
-                throw new AppError('{0} does not meet the FreeMod requirements on {1}.', 400, [
-                  team.name,
-                  slot.name,
-                ]);
-            }
-          }
+      if (
+        !qualifierCompletion({ ...lobby, policy, rules, participants } as unknown as QualifierView)
+          .complete
+      )
+        throw new AppError(
+          'A complete eligible qualifier run is required for every entrant. Review missing scores and FreeMod requirements.',
+          409,
+        );
     }
     if (
       a.command === 'CANCEL' &&
@@ -526,6 +617,7 @@ export async function applyQualifierAction(
       REOPEN: 'IN_PROGRESS',
       CANCEL: 'CANCELLED',
     }[a.command] as 'IN_PROGRESS';
+    changes.autoCompleted = false;
     eventData = {
       ...a,
       ...(external ? { external } : {}),
@@ -535,7 +627,7 @@ export async function applyQualifierAction(
       poolRevisionId: lobby.poolRevisionId,
     };
   }
-  const version = lobby.version + 1;
+  let version = lobby.version + 1;
   const update = await tx.qualifierLobby.updateMany({
     where: { id: lobby.id, version: a.baseVersion },
     data: { ...changes, version },
@@ -551,5 +643,63 @@ export async function applyQualifierAction(
       data: json(eventData),
     },
   });
+  if (
+    !provenance &&
+    ['qualifier.score', 'qualifier.scores.resolve', 'qualifier.score.remove'].includes(a.type)
+  )
+    version = (await reconcileQualifierCompletion(tx, actor, lobby.id)) ?? version;
   return { id: lobby.id, version };
+}
+
+// Caller holds the root mutation lock. This never sends an IRC command or finalizes standings.
+export async function reconcileQualifierCompletion(
+  tx: Prisma.TransactionClient,
+  actor: Actor,
+  id: string,
+) {
+  const lobby = await tx.qualifierLobby.findUniqueOrThrow({ where: { id }, include });
+  if (
+    lobby.deletedAt ||
+    !matchAccess(actor, lobby).score ||
+    (lobby.status !== 'IN_PROGRESS' && !(lobby.status === 'COMPLETED' && lobby.autoCompleted))
+  )
+    return null;
+  const rules = matchRulesSchema.parse(lobby.rules);
+  const completion = qualifierCompletion({
+    ...lobby,
+    rules,
+    policy: qualifierPolicySchema.parse(lobby.policy || { requiredPlayers: rules.teamSize }),
+  } as unknown as QualifierView);
+  const complete =
+    completion.complete &&
+    (lobby.multiplayerSync as { complete?: boolean } | null)?.complete !== false;
+  if (
+    complete === lobby.autoCompleted ||
+    (!lobby.autoCompleted &&
+      !lobby.scores.some((s) => s.source === 'IMPORT' || s.source === 'OSU_API'))
+  )
+    return null;
+  await assertQualifierMutable(tx, lobby.stageId, actor.tournamentId!);
+  const version = lobby.version + 1;
+  await tx.qualifierLobby.update({
+    where: { id, version: lobby.version },
+    data: {
+      status: complete ? 'COMPLETED' : 'IN_PROGRESS',
+      autoCompleted: complete,
+      version,
+    },
+  });
+  await tx.qualifierEvent.create({
+    data: {
+      lobbyId: id,
+      version,
+      actorId: actor.id,
+      kind: complete ? 'qualifier.auto.complete' : 'qualifier.auto.resume',
+      reason: complete
+        ? 'Complete eligible multiplayer run verified'
+        : 'Eligible run is no longer complete',
+      data: json(completion),
+    },
+  });
+  return version;
 }

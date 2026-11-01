@@ -199,7 +199,7 @@ export const ARCHIVE_TABLES = {
   ),
   qualifierLobbies: def(
     'qualifierLobby',
-    'id:s tournamentId:s code:s stageId:s poolRevisionId:s rules:j policy:j? gameplayScoring:s? participants:j scheduledAt:d? status:s lobbyUrl:s notes:s version:i capacity:i bookingOpen:b bookingClosesAt:d? multiplayerSyncedAt:d? multiplayerError:s? multiplayerSync:j? createdAt:d updatedAt:d',
+    'id:s tournamentId:s code:s stageId:s poolRevisionId:s rules:j policy:j? gameplayScoring:s? participants:j scheduledAt:d? status:s lobbyUrl:s notes:s version:i capacity:i bookingOpen:b bookingClosesAt:d? multiplayerSyncedAt:d? multiplayerError:s? multiplayerSync:j? deletedAt:d? autoCompleted:b createdAt:d updatedAt:d',
     { tournamentId: 'tournament', stageId: 'stages', poolRevisionId: 'poolRevisions' },
   ),
   qualifierEntries: def('qualifierEntry', 'tournamentId:s lobbyId:s teamId:s position:i', {
@@ -209,7 +209,7 @@ export const ARCHIVE_TABLES = {
   }),
   qualifierScores: def(
     'qualifierScore',
-    'id:s lobbyId:s osuId:i slotName:s run:i actualScoring:s? representation:s source:s gameId:s? verified:b raw:n mods:j adjusted:n updatedAt:d',
+    'id:s lobbyId:s osuId:i slotName:s run:i actualScoring:s? representation:s source:s gameId:s? verified:b eligible:b eligibilityReason:s raw:n mods:j adjusted:n updatedAt:d',
     { lobbyId: 'qualifierLobbies', osuId: 'participants' },
     ['lobby'],
   ),
@@ -452,6 +452,9 @@ function fieldSchema(table: ArchiveTable, name: string, type: string, nullable: 
     'teams.adminNotes': '',
     'qualifierLobbies.capacity': 16,
     'qualifierLobbies.bookingOpen': true,
+    'qualifierLobbies.autoCompleted': false,
+    'qualifierScores.eligible': true,
+    'qualifierScores.eligibilityReason': '',
     'qualifierScores.run': 1,
     'qualifierScores.representation': 'LEGACY',
     'qualifierScores.source': 'MANUAL',

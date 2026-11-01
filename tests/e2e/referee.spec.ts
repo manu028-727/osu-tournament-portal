@@ -914,6 +914,7 @@ test('qualifier lobby persists scores, commands, observing and a confirmed resul
     await expect(
       observer.getByRole('button', { name: 'Start qualifier lobby', exact: true }),
     ).toHaveCount(0);
+    await ref.getByText('Qualifier mappool', { exact: true }).first().click();
     await expect(
       ref.getByRole('button', { name: 'Copy NM1 map command', exact: true }),
     ).toBeVisible();
@@ -931,18 +932,13 @@ test('qualifier lobby persists scores, commands, observing and a confirmed resul
     await expect(
       ref.getByRole('status').filter({ hasText: 'Multiplayer link saved' }),
     ).toBeVisible();
-    for (const osuId of [962000001, 962000002]) {
-      await ref.getByRole('button', { name: 'Record qualifier score', exact: true }).click();
-      await ref.getByLabel('Qualifier player', { exact: true }).selectOption(String(osuId));
-      await ref.getByLabel('Qualifier raw score', { exact: true }).fill('123456');
-      await ref
-        .getByLabel('Qualifier score reason', { exact: true })
-        .fill('Multiplayer score verified');
-      await ref.getByRole('button', { name: 'Save qualifier score', exact: true }).click();
-      await expect(
-        ref.getByRole('status').filter({ hasText: 'Qualifier score saved' }),
-      ).toBeVisible();
-    }
+    const board = ref.getByRole('region', { name: 'Shared qualifier map scores' });
+    for (const input of await board.getByRole('spinbutton').all()) await input.fill('123456');
+    await board.getByRole('button', { name: 'Save map scores', exact: true }).click();
+    await expect(
+      ref.getByRole('status').filter({ hasText: 'Qualifier map scores saved' }),
+    ).toBeVisible();
+    await observer.getByText('Qualifier scores', { exact: true }).click();
     await expect(
       observer.getByRole('table').last().getByText('123,456', { exact: true }),
     ).toHaveCount(4, { timeout: 10000 });
@@ -961,6 +957,7 @@ test('qualifier lobby persists scores, commands, observing and a confirmed resul
     await expect(
       page.getByRole('status').filter({ hasText: 'Qualifier status saved' }),
     ).toBeVisible();
+    await observer.getByText('Discord result', { exact: true }).click();
     await expect(
       observer.getByRole('button', { name: 'Copy Discord Result', exact: true }),
     ).toBeEnabled({ timeout: 10000 });

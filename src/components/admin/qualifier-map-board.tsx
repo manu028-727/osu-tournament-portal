@@ -7,6 +7,8 @@ import { qualifierProgress } from '@/lib/qualifier-progress';
 import { MODS } from '@/lib/match-rules';
 import { Button } from '../ui/button';
 import { action, Field, useTask, useUnsaved } from './shared';
+import styles from './qualifier-workflow.module.css';
+import { qualifierDefaultMods } from '@/lib/qualifier-eligibility';
 
 export function QualifierMapBoard({
   lobby,
@@ -34,7 +36,10 @@ export function QualifierMapBoard({
     onDirty(dirty);
     return () => onDirty(false);
   }, [dirty, onDirty]);
-  const writable = lobby.access.score && lobby.status === 'IN_PROGRESS';
+  const writable =
+    lobby.access.score &&
+    !lobby.deletedAt &&
+    (lobby.status === 'IN_PROGRESS' || (lobby.status === 'COMPLETED' && lobby.autoCompleted));
   const edit = (osuId: number, value: Partial<{ raw: string; mods: string[] }>) => {
     if (baseVersion === null) setBaseVersion(lobby.version);
     const previous = lobby.scores.find(
@@ -46,7 +51,7 @@ export function QualifierMapBoard({
       [osuId]: {
         ...(values[osuId] || {
           raw: previous ? String(previous.raw) : '',
-          mods: previous?.mods || (lobby.rules.enforceNoFail ? ['NF'] : []),
+          mods: previous?.mods || qualifierDefaultMods(lobby.rules, current.slot.category),
         }),
         ...value,
       },
@@ -54,7 +59,7 @@ export function QualifierMapBoard({
   };
   return (
     <section
-      className="space-y-3 rounded-2xl border bg-card p-4"
+      className="space-y-3 rounded-xl border bg-card p-3"
       aria-label={tr('Shared qualifier map scores')}
     >
       <div className="flex flex-wrap justify-between gap-2">
@@ -104,7 +109,7 @@ export function QualifierMapBoard({
       >
         <fieldset disabled={busy || !writable} className="min-w-0 space-y-3">
           {current.teams.map(({ team, scores, complete, value }) => (
-            <section key={team.id} className="space-y-2 border-t pt-3">
+            <section key={team.id} className="space-y-1 border-t pt-2">
               <h3 className="text-sm font-semibold">
                 {team.name}{' '}
                 <span className="ml-2 font-normal text-muted">
@@ -116,12 +121,17 @@ export function QualifierMapBoard({
                 </span>
               </h3>
               {team.members.map((player) => {
-                const recorded = scores.find((score) => score.osuId === player.osuId),
+                const recorded = lobby.scores.find(
+                    (score) =>
+                      score.osuId === player.osuId &&
+                      score.slotName === selected.slotName &&
+                      score.run === selected.run,
+                  ),
                   value = draft[player.osuId];
                 return (
                   <div
                     key={player.osuId}
-                    className="grid min-w-0 items-start gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(6rem,0.7fr)]"
+                    className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(5.5rem,0.55fr)] items-center gap-2"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm">
@@ -134,27 +144,36 @@ export function QualifierMapBoard({
                           ? ` · ${tr('Converted')}: ${recorded.adjusted.toLocaleString(localeTag(language))}`
                           : ` · ${tr('Not recorded')}`}
                       </p>
+                      {recorded?.eligible === false && (
+                        <p className="text-xs text-amber-200">
+                          {tr('Excluded')}:{' '}
+                          {tr(recorded.eligibilityReason || 'Score excluded by qualifier rules.')}
+                        </p>
+                      )}
                     </div>
-                    <Field label={tr('Score for {0}', player.username)}>
-                      <input
-                        type="number"
-                        min={0}
-                        max={1000000000000}
-                        step={lobby.rules.scoreMode === 'ACCURACY' ? 'any' : 1}
-                        inputMode="numeric"
-                        value={value?.raw ?? (recorded ? String(recorded.raw) : '')}
-                        placeholder={tr('Missing')}
-                        onChange={(event) => edit(player.osuId, { raw: event.target.value })}
-                      />
-                    </Field>
-                    {lobby.rules.freeModCategories.includes(current.slot.category) && (
-                      <details className="sm:col-span-2">
+                    <div className={styles.scoreInput}>
+                      <Field label={tr('Score for {0}', player.username)}>
+                        <input
+                          type="number"
+                          min={0}
+                          max={1000000000000}
+                          step={lobby.rules.scoreMode === 'ACCURACY' ? 'any' : 1}
+                          inputMode="numeric"
+                          value={value?.raw ?? (recorded ? String(recorded.raw) : '')}
+                          placeholder={tr('Missing')}
+                          onChange={(event) => edit(player.osuId, { raw: event.target.value })}
+                        />
+                      </Field>
+                    </div>
+                    {(lobby.rules.freeModCategories.includes(current.slot.category) ||
+                      recorded?.eligible === false) && (
+                      <details className="col-span-2">
                         <summary className="cursor-pointer text-xs">
                           {tr('Player mods')}:{' '}
                           {(value?.mods || recorded?.mods || []).join(' ') || tr('NM')}
                         </summary>
                         <div className="mt-2 flex flex-wrap gap-3">
-                          {MODS.map((mod) => (
+                          {[...new Set([...MODS, ...(recorded?.mods || [])])].map((mod) => (
                             <label key={mod} className="flex items-center gap-1 text-xs">
                               <input
                                 type="checkbox"
@@ -179,15 +198,20 @@ export function QualifierMapBoard({
               })}
             </section>
           ))}
-          {writable && (
+          {writable && dirty && (
             <>
-              <Field label={tr('Correction note (optional)')}>
-                <input
-                  maxLength={2000}
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                />
-              </Field>
+              <details>
+                <summary className="cursor-pointer text-xs">
+                  {tr('Correction note (optional)')}
+                </summary>
+                <Field label={tr('Correction note (optional)')}>
+                  <input
+                    maxLength={2000}
+                    value={reason}
+                    onChange={(event) => setReason(event.target.value)}
+                  />
+                </Field>
+              </details>
               <div className="flex flex-wrap gap-2">
                 <Button type="submit" disabled={!dirty || busy}>
                   {tr('Save map scores')}

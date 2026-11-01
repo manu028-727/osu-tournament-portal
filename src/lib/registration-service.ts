@@ -126,6 +126,7 @@ export async function registrationData(
       })));
   const sessions = await db.qualifierLobby.findMany({
     where: {
+      deletedAt: null,
       tournamentId,
       status: { not: 'CANCELLED' },
       stage: { kind: 'QUALIFIERS', archivedAt: null },
@@ -277,6 +278,7 @@ export async function applyRegistration(
     } else {
       const target = await tx.qualifierLobby.findFirst({
         where: {
+          deletedAt: null,
           id: input.lobbyId,
           tournamentId,
           stageId: input.stageId,

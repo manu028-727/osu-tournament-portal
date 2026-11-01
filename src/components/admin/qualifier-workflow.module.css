@@ -1,0 +1,67 @@
+.workspace {
+  min-width: 0;
+}
+.scoreInput :global(.field) > span:first-child {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.workspace :global(.admin-table) {
+  font-size: 0.8125rem;
+}
+.workspace :global(.admin-table) td,
+.workspace :global(.admin-table) th {
+  padding: 0.5rem 0.625rem;
+}
+.workspace details > summary {
+  min-height: 2rem;
+  align-content: center;
+}
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem 1rem;
+  border-bottom: 1px solid var(--separator);
+  padding-bottom: 0.75rem;
+}
+.toolbar > :global(.field) {
+  flex: 1 1 16rem;
+  max-width: 30rem;
+}
+.booking {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.25rem 1rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--separator);
+}
+.booking > :first-child {
+  grid-column: 1;
+}
+.booking > button {
+  grid-column: 2;
+  grid-row: 1 / span 4;
+}
+.booking[aria-current='true'] {
+  border-left: 3px solid var(--accent);
+  padding-left: 0.75rem;
+  background: var(--accent-subtle);
+}
+@media (max-width: 600px) {
+  .booking {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .booking > button {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+  }
+  .workspace :global(.admin-table) {
+    min-width: 34rem;
+  }
+}

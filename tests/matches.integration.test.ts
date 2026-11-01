@@ -9,6 +9,7 @@ import { assertMatchActionPermission } from '../src/lib/matches-service';
 import type { MatchView } from '../src/lib/matches-types';
 import { type Actor, type PermissionKey } from '../src/lib/permissions';
 import { qualifierData } from '../src/lib/qualifiers-service';
+import { qualifierDefaultMods } from '../src/lib/qualifier-eligibility';
 import { actionSchema } from '../src/lib/validation';
 const prefix = `ref-${Date.now()}`;
 const testOffset = Date.now() % 1_000_000;
@@ -637,13 +638,14 @@ describe.sequential('assigned referee and persistent match workflows', () => {
       }),
     ).rejects.toThrow('snapshotted');
     const slots = await db.mappoolSlot.findMany({ where: { revisionId } });
+    const qualifierRules = matchRulesSchema.parse(source.matchRules);
     for (const slot of slots)
       for (const [i, osuId] of participantOsuIds.slice(0, 2).entries())
         await update(referee, 'qualifier.score', {
           osuId,
           slotName: slot.name,
           raw: 1000 + i,
-          mods: ['NF'],
+          mods: qualifierDefaultMods(qualifierRules, slot.category),
           reason: 'Recorded multiplayer score',
         });
     const first = await db.qualifierScore.findFirstOrThrow({

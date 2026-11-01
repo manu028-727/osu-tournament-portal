@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { MODS } from './match-rules';
 import { historicalScoring } from './gameplay-scoring';
 import type { QualifierView } from './qualifiers-types';
+import { qualifierScoreViolation } from './qualifier-eligibility';
 const mod = z.union([z.string(), z.object({ acronym: z.string() }).transform((v) => v.acronym)]);
 const gameSchema = z.object({
   id: z.number().int().positive().safe(),
@@ -11,20 +12,26 @@ const gameSchema = z.object({
   mode: z.string(),
   scoring_type: z.string(),
   mods: z.array(mod),
-  scores: z.array(
-    z.object({
-      user_id: z.number().int().positive(),
-      score: z.number().int().nonnegative().safe(),
-      mods: z.array(mod),
-    }),
-  ),
+  scores: z.array(z.unknown()),
+});
+const playerSchema = z.object({
+  user_id: z.number().int().positive(),
+  score: z.number().int().nonnegative().safe(),
+  mods: z.array(mod),
 });
 export type QualifierCapture = {
   gameId: string;
   slotName: string;
   beatmapId: number;
   startedAt: string;
-  players: { osuId: number; raw: number; mods: (typeof MODS)[number][] }[];
+  players: {
+    osuId: number;
+    raw: number;
+    mods: (typeof MODS)[number][];
+    originalMods?: string[];
+    violation?: string;
+  }[];
+  issues?: { osuId: number | null; reason: string }[];
 };
 export function qualifierCapturePlan(
   lobby: QualifierView,
@@ -74,9 +81,11 @@ export function qualifierCapturePlan(
             (issue) => issue.gameId === row.gameId && issue.multiplayerId === row.multiplayerId,
           )?.issue || 'Incomplete game evidence.',
       };
-    if (row.status === 'ACCEPTED' && row.run && row.run > run) {
-      run = row.run;
-      played.clear();
+    if (row.status === 'ACCEPTED' && row.run) {
+      if (row.run !== run) {
+        run = row.run;
+        played.clear();
+      }
     } else if (played.size === required.size) {
       run++;
       played.clear();
@@ -123,7 +132,9 @@ export function qualifierGameProposals(
     );
   });
   for (const event of ordered) {
-    const input = z.object({ game: z.unknown().optional() }).safeParse(event);
+    const input = z
+      .object({ game: z.unknown().optional(), excludedPlayers: z.array(z.number()).optional() })
+      .safeParse(event);
     if (!input.success || !input.data.game) continue;
     const parsed = gameSchema.safeParse(input.data.game);
     if (!parsed.success) {
@@ -153,25 +164,56 @@ export function qualifierGameProposals(
         throw Error('Gameplay mode or scoring differs from the session snapshot.');
       const slots = lobby.poolRevision.slots.filter((s) => s.beatmapId === g.beatmap_id);
       if (slots.length !== 1) throw Error('Game is not uniquely identified in the qualifier pool.');
-      if (!g.scores.length || new Set(g.scores.map((s) => s.user_id)).size !== g.scores.length)
-        throw Error('Missing or duplicate player scores.');
-      const players = g.scores
-        .filter((score) => !options.excludePlayers?.includes(score.user_id))
-        .map((s) => {
-          if (!roster.has(s.user_id))
-            throw Error('A player is outside the snapshotted qualifier roster.');
-          const mods = [...new Set([...g.mods, ...s.mods])];
-          if (mods.some((m) => !MODS.includes(m as never)))
-            throw Error('Unsupported mods require manual review.');
-          return { osuId: s.user_id, raw: s.score, mods: mods as (typeof MODS)[number][] };
-        });
-      if (!players.length) throw Error('No counting player scores remain.');
+      const issues: NonNullable<QualifierCapture['issues']> = [];
+      const parsedScores = g.scores.map((s) => playerSchema.safeParse(s));
+      const players = parsedScores.flatMap((result) => {
+        if (!result.success) {
+          issues.push({ osuId: null, reason: 'Incomplete player score evidence.' });
+          return [];
+        }
+        const s = result.data;
+        if (
+          options.excludePlayers?.includes(s.user_id) ||
+          input.data.excludedPlayers?.includes(s.user_id)
+        )
+          return [];
+        const reason = !roster.has(s.user_id)
+          ? 'Player is outside the snapshotted qualifier roster.'
+          : parsedScores.filter((p) => p.success && p.data.user_id === s.user_id).length > 1
+            ? 'Duplicate player score evidence.'
+            : null;
+        const mods = [...new Set([...g.mods, ...s.mods])];
+        if (reason) {
+          issues.push({
+            osuId: s.user_id,
+            reason: reason || 'Unsupported mods require manual review.',
+          });
+          return [];
+        }
+        return [
+          {
+            osuId: s.user_id,
+            raw: s.score,
+            mods: mods.filter((m) => MODS.includes(m as never)) as (typeof MODS)[number][],
+            ...(mods.some((m) => !MODS.includes(m as never))
+              ? { originalMods: mods, violation: 'Unsupported mods require manual review.' }
+              : qualifierScoreViolation(lobby.rules, slots[0].category, mods)
+                ? { violation: qualifierScoreViolation(lobby.rules, slots[0].category, mods)! }
+                : {}),
+          },
+        ];
+      });
+      if (!players.length)
+        throw Error(
+          'No eligible roster scores could be attributed. Original player evidence is retained.',
+        );
       proposals.push({
         gameId,
         slotName: slots[0].name,
         beatmapId: g.beatmap_id,
         startedAt: g.start_time,
         players,
+        ...(issues.length ? { issues } : {}),
       });
     } catch (e) {
       rejected.push({ gameId, issue: (e as Error).message });

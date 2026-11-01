@@ -30,6 +30,23 @@ const selectedLobbies = z
     'Select each lobby only once.',
   );
 export const qualifierActionOptions = [
+  z.object({
+    type: z.literal('qualifier.delete'),
+    lobbies: selectedLobbies,
+    reason: z.string().trim().min(3).max(2000),
+    confirm: z.literal(true),
+  }),
+  base.extend({
+    type: z.literal('qualifier.edit'),
+    code: createFields.shape.code,
+    notes,
+  }),
+  base.extend({
+    type: z.literal('qualifier.scores.resolve'),
+    scoreIds: z.array(id).min(1).max(4096),
+    eligible: z.boolean(),
+    reason: z.string().trim().min(3).max(2000),
+  }),
   base.extend({
     type: z.literal('qualifier.map'),
     slotName: z.string().min(1).max(20),

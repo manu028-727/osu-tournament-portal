@@ -883,8 +883,13 @@ export function StagesEditor({
               )}
             </details>
             {can(actor, 'matches.manage') && draft.kind === 'QUALIFIERS' && (
-              <section className="space-y-4 border-t pt-5">
+              <section className="space-y-3 border-t pt-3">
                 <h2 className="font-semibold">{tr('Qualifier policy')}</h2>
+                <p className="text-xs text-muted">
+                  {tr(
+                    'Gameplay scoring belongs to the tournament. These settings control qualifier aggregation, eligible runs and seedings.',
+                  )}
+                </p>
                 <div className="grid-fields">
                   <Field label={tr('Seeding method')}>
                     <select
@@ -994,6 +999,13 @@ export function StagesEditor({
                     </Field>
                   )}
                 </div>
+                <p role="status" className="text-xs text-muted">
+                  {tr(
+                    draft.qualifierPolicy?.runSelection === 'SECOND_RUN'
+                      ? 'Run 2 must be complete. Run 1 never substitutes for missing Run 2 scores.'
+                      : 'One complete eligible run can finish a session. An optional second run remains available until official seedings are finalized.',
+                  )}
+                </p>
               </section>
             )}
             <div className="flex justify-end gap-3">

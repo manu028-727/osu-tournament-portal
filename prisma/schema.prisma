@@ -618,6 +618,8 @@ enum MatchResultMode {
 }
 
 model QualifierLobby {
+  deletedAt           DateTime?
+  autoCompleted       Boolean               @default(false)
   multiplayerSync     Json?
   capacity            Int                   @default(16)
   bookingOpen         Boolean               @default(true)
@@ -695,6 +697,8 @@ model QualifierAssignment {
 }
 
 model QualifierScore {
+  eligible       Boolean        @default(true)
+  eligibilityReason String      @default("")
   run            Int            @default(1)
   actualScoring  String?
   representation String         @default("LEGACY")

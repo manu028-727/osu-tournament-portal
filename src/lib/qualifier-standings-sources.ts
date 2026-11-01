@@ -7,10 +7,13 @@ import { matchRulesSchema } from './match-rules';
 import { AppError, can, type Actor } from './permissions';
 import { publicTournamentWhere } from './public-visibility';
 import { qualifierPolicySchema } from './qualifier-policy';
+import { qualifierTeamModViolation } from './qualifier-eligibility';
 import { scopedDb } from './scoped-db';
 
 import {
   calculateQualifierStandings,
+  QUALIFIER_CALCULATION_VERSION,
+  LEGACY_QUALIFIER_CALCULATION_VERSION,
   canonicalQualifierJson,
   qualifierSourceHash,
   type QualifierIssue,
@@ -174,8 +177,24 @@ export async function loadQualifierCalculation(
   tx: Prisma.TransactionClient,
   stageId: string,
   tournamentId: string,
+  requestedVersion?: string,
 ) {
   tx = scopedDb(tx, tournamentId);
+  let calculationVersion = requestedVersion || QUALIFIER_CALCULATION_VERSION;
+  if (!requestedVersion) {
+    const latest = await tx.qualifierStanding.findFirst({
+      where: { stageId, tournamentId },
+      orderBy: { version: 'desc' },
+    });
+    if (latest) {
+      const saved = qualifierStandingSnapshot(latest.snapshot);
+      if (
+        saved.state === 'FINALIZED' &&
+        saved.calculation.calculationVersion === LEGACY_QUALIFIER_CALCULATION_VERSION
+      )
+        calculationVersion = LEGACY_QUALIFIER_CALCULATION_VERSION;
+    }
+  }
   const stage = await tx.tournamentStage.findFirst({
     where: { id: stageId, tournamentId },
     include: { mappool: { include: { publishedRevision: { include: { slots: true } } } } },
@@ -237,7 +256,11 @@ export async function loadQualifierCalculation(
       maps: lobby.poolRevision.slots
         .map((s) => ({ slotName: s.name, beatmapId: s.beatmapId }))
         .sort((a, b) => (a.slotName < b.slotName ? -1 : a.slotName > b.slotName ? 1 : 0)),
-      originalScores: lobby.scores.map((s) => ({ ...s, updatedAt: s.updatedAt.toISOString() })),
+      originalScores: lobby.scores.map(({ eligible, eligibilityReason, ...s }) => ({
+        ...s,
+        ...(eligible === false || eligibilityReason ? { eligible, eligibilityReason } : {}),
+        updatedAt: s.updatedAt.toISOString(),
+      })),
       ...(lobby.games.length
         ? {
             games: lobby.games.map((game) => ({
@@ -321,6 +344,23 @@ export async function loadQualifierCalculation(
       if (!parsedMods.success)
         add('INVALID_MODS', `${lobby.code}: ${score.slotName} has invalid mod metadata.`);
       const mods = parsedMods.success ? parsedMods.data : [];
+      const slot = lobby.poolRevision.slots.find((s) => s.name === score.slotName);
+      const team = parsed.data.find((team) => team.members.some((p) => p.osuId === score.osuId));
+      const teamScores = lobby.scores.filter(
+        (s) =>
+          s.eligible &&
+          s.slotName === score.slotName &&
+          s.run === score.run &&
+          team?.members.some((p) => p.osuId === s.osuId),
+      );
+      const teamViolation =
+        calculationVersion === LEGACY_QUALIFIER_CALCULATION_VERSION || !slot
+          ? null
+          : qualifierTeamModViolation(
+              rules,
+              slot.category,
+              teamScores.map((s) => ({ ...s, mods: s.mods as string[] })),
+            );
       try {
         const expected = convertedScore(rules, score.raw, mods, score.slotName).adjusted;
         if (expected !== score.adjusted)
@@ -355,24 +395,33 @@ export async function loadQualifierCalculation(
         source: score.source,
         gameId: score.gameId,
         verified: score.verified,
+        ...(score.eligible === false || score.eligibilityReason || teamViolation
+          ? {
+              eligible: score.eligible && !teamViolation,
+              eligibilityReason: score.eligibilityReason || teamViolation || '',
+            }
+          : {}),
       });
     }
   }
-  const calculation = calculateQualifierStandings({
-    tournamentId,
-    stageId,
-    gameplayScoring,
-    policy,
-    maps,
-    participants: [...participants.values()],
-    scores,
-    context: {
-      stagePolicy: stage.qualifierPolicy,
-      poolRevisionId: stage.mappool?.publishedRevisionId,
-      lobbies: context,
+  const calculation = calculateQualifierStandings(
+    {
+      tournamentId,
+      stageId,
+      gameplayScoring,
+      policy,
+      maps,
+      participants: [...participants.values()],
+      scores,
+      context: {
+        stagePolicy: stage.qualifierPolicy,
+        poolRevisionId: stage.mappool?.publishedRevisionId,
+        lobbies: context,
+      },
+      issues,
     },
-    issues,
-  });
+    calculationVersion,
+  );
   return { stage: { id: stage.id, name: stage.name }, calculation };
 }
 export async function qualifierStandingsData(

@@ -537,8 +537,14 @@ formula in [osu!plus revision b143241](https://github.com/limjeck/osuplus/blob/b
 without copying incompatible code; general methods follow the
 [osu! seeding definitions](https://osu.ppy.sh/wiki/en/Tournaments/Common_seeding_methods).
 
-Incomplete entrants get no seed and do not affect official references. Every
-configured run must be complete to finalize, including unused second runs. Duplicate
+Incomplete entrants get no seed and do not affect official references. New
+`qualifier-seeding/2` calculations require a complete eligible run per entrant,
+respecting FIRST_RUN/SECOND_RUN; optional incomplete runs do not block an otherwise
+eligible entrant. BEST_PER_MAP still requires a complete run before mixed-map
+selection can qualify. Excluded scores remain in the hashed source but do not become
+zero. Version 1 retains its requirement that every configured run be complete.
+Existing finalized version-1 calculations keep that exact owner/hash until reviewed
+reopening; archive restoration explicitly reproduces either known version. Duplicate
 plays/ownership, unverified/inconsistent provenance and unconfirmed sessions block.
 Zero deviation contributes zero/warning; fewer than two complete entrants blocks
 sample Z-Sum; zero Match Cost reference blocks instead of inventing a denominator.
@@ -592,9 +598,28 @@ original provider evidence plus the accepted proposal or explicit exclusion. Its
 session/MP/game key makes re-import duplicate-safe; stage/player/game checks prevent
 reusing a performance in another session/run. Accepted games preserve later manual
 corrections. Missing scores never become zero and pending receipts block finalization.
+Accepted partial receipts can gain new player rows through the same writer. Source
+revisions retain before/after evidence; existing scores and intentional removal
+events protect corrections from automatic replacement/resurrection. Explicit
+replacement can relocate a game between reviewed runs/maps by removing its old
+linked rows through the canonical audited owner, preventing double counting.
+Individual rule violations persist as QualifierScore.eligible=false with an
+eligibilityReason; their raw/mod/adjusted/provenance fields remain evidence.
+Unsupported mods retain their original list. Parsing malformed, unknown or duplicate
+player rows preserves their game evidence and does not discard other players.
+FreeMod quotas are evaluated for the affected team/map/run, consistently in progress,
+exception review and standings. Canonical bulk eligibility overrides require manager
+permission, reviewed session version, a reason and before/after history.
+
+`reconcileQualifierCompletion` owns automatic completion/resumption under the root
+lock followed by the existing stage lock. It checks complete eligible runs per
+entrant, selection policy and complete API history. API/import completion records
+autoCompleted and a versioned event; later optional scores remain writable through
+the same canonical owner. Manual-only confirmation stays explicit. No completion
+path sends IRC commands or finalizes standings. Finalized sources stop score polling.
 
 Qualifier ref pages poll score synchronization every 20 seconds while visible and
-running; the persistent checkpoint resumes bounded six-page API requests until
+running or automatically completed; the persistent checkpoint resumes bounded six-page API requests until
 history is complete. No partial history is scored. Referee-selected warmup events,
 unrelated maps and pre-start games are excluded; other ambiguities remain reviewable.
 `qualifier-import-service.ts` uses the same parser/writer for stage-selected bulk
@@ -603,12 +628,32 @@ QUALIFIER_MP_V1 discriminator, source checkpoints and stage/roster/session witne
 Bulk preview bounds the total page budget, persists successful sources even if
 another source fails, and resumes remaining sources without re-fetching completed
 histories. No partially loaded batch can apply scores.
+Once every source is complete, refreshing unchanged decisions reloads provider
+history to find late scores. A partially loaded/failed batch instead resumes its
+checkpoints without re-fetching already successful sources. Reviewed player
+exclusions also update linked existing source scores through the eligibility owner;
+raw rows, manual corrections and durable source exclusions remain preserved.
 Workbook readers explicitly reject that discriminator. Apply rechecks the witness
 under the root/stage locks before creating external sessions/evidence; individual
 game transactions use reviewed versions and report partial failures for resumable
 review. External starts carry explicit provenance, without inventing website staff
 or IRC execution. Configured runs follow complete pool cycles; retries require
 explicit review. Exclusions and corrections retain original evidence and audit.
+Valid games can apply despite game-level ambiguities elsewhere in the loaded source.
+An import's proposed team totals exclude ineligible scores. The direct-import action
+shares the exact preview/fingerprint/decision writer with advanced review.
+
+Session deletion is a guarded soft deletion: deletedAt removes operational visibility
+and booking; unused SCHEDULED reservations become CANCELLED, while completed sources
+keep their status, scores, entries, games and events. All protected single/bulk,
+booking, capture and IRC paths enforce the retained record's read-only state.
+Pending/unknown room creation and active sessions block deletion. IRC room closure
+is independent. Completed sessions with pending games or incomplete provider history
+also block deletion, preventing stranded read-only evidence during optional runs.
+Canonical archive allowlists include deletedAt, autoCompleted,
+eligible and eligibilityReason, with backward defaults for older archives.
+`20261030020000_qualifier_eligibility_lifecycle` is additive and applied by the normal
+`./portal install` migration step; it does not recalculate historical results.
 
 Evidence is not automatically an official result or duplicate run.
 Organizer imports use `POST /api/admin/match-results` for impact/source preview and

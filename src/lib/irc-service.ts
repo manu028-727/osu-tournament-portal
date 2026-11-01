@@ -78,6 +78,7 @@ export async function authorizeIrc(
     identity.kind === 'qualifier'
       ? await tx.qualifierLobby.findFirst({
           where: {
+            deletedAt: null,
             AND: [{ id: identity.matchId }, matchScope(actor) as Prisma.QualifierLobbyWhereInput],
           },
           include: { assignments: true },
@@ -132,7 +133,12 @@ export async function executeGateway(input: GatewayRequest) {
           activeRequest: active,
           createdLobby,
         };
-      if (!access.operate || ['COMPLETED', 'CANCELLED'].includes(match.status))
+      const qualifierCanContinue =
+        input.identity.kind === 'qualifier' && 'autoCompleted' in match && match.autoCompleted;
+      if (
+        !access.operate ||
+        (['COMPLETED', 'CANCELLED'].includes(match.status) && !qualifierCanContinue)
+      )
         throw new AppError('This match is read only. Reopen it or ask an authorized referee.', 403);
       if (input.operation === 'control') {
         if (
