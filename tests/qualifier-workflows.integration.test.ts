@@ -12,7 +12,11 @@ import { qualifierActionSchema } from '../src/lib/qualifiers-validation';
 import { publicTeamSelect, applyTeamAction } from '../src/lib/teams-service';
 import { teamActionSchema } from '../src/lib/teams-validation';
 import { executeGateway } from '../src/lib/irc-service';
-import { syncQualifier, captureQualifierGame } from '../src/lib/qualifier-capture-service';
+import {
+  syncQualifier,
+  captureQualifierGame,
+  ignoreQualifierGame,
+} from '../src/lib/qualifier-capture-service';
 import { qualifierGameProposals } from '../src/lib/qualifier-multiplayer';
 import { previewQualifierImport, applyQualifierImport } from '../src/lib/qualifier-import-service';
 import { qualifierImportSchema } from '../src/lib/qualifier-import-contract';
@@ -747,6 +751,111 @@ describe.sequential('complete native qualifier workflows', () => {
         })
       ).imported,
     ).toBe(6);
+  });
+  it('resumes historical imported runs without applying the website start boundary or reviving explicit exclusions', async () => {
+    const historicalStage = await stage(
+      'Historical synchronization',
+      tournamentId,
+      inheritedRules(
+        { teamSize: 1, multiplierMode: 'NONE', freeModRequiredHD: 0, freeModRequiredHR: 0 },
+        'SCORE_V2',
+      ),
+    );
+    await db.mappoolSlot.updateMany({
+      where: { revision: { mappool: { stageId: historicalStage } } },
+      data: { name: 'FM1', category: 'FM' },
+    });
+    const historical = [1101, 1102].map((id, index) => ({
+      ...game(id, [100 + index, 200 + index]),
+      start_time: new Date(Date.now() - 86400000 + index * 300000).toISOString(),
+      end_time: new Date(Date.now() - 86400000 + index * 300000 + 120000).toISOString(),
+      mods: [],
+      scores: [
+        { user_id: users[0].osuId, score: 100 + index, mods: index ? ['NF', 'HD'] : ['HD'] },
+        { user_id: users[1].osuId, score: 200 + index, mods: ['NF', 'HR'] },
+      ],
+    }));
+    const response = {
+      match: { id: 99670 },
+      first_event_id: 1,
+      events: historical.map((game, index) => ({ id: index + 1, game })),
+    };
+    mock.load.mockResolvedValue(response);
+    const input = qualifierImportSchema.parse({
+      stageId: historicalStage,
+      links: ['https://osu.ppy.sh/mp/99670'],
+    });
+    const preview = await previewQualifierImport(organizer, input);
+    const imported = await applyQualifierImport(organizer, {
+      ...input,
+      jobId: preview.jobId,
+      fingerprint: preview.fingerprint,
+      apply: true,
+    });
+    expect(imported).toMatchObject({ imported: 4, errors: [] });
+    const id = imported.sessions[0];
+    // Isolated fixtures reproduce old retained receipts without removal tombstones.
+    await db.qualifierScore.deleteMany({ where: { lobbyId: id } });
+    await db.qualifierGame.updateMany({
+      where: { lobbyId: id },
+      data: { status: 'PENDING', run: null, slotName: null },
+    });
+    await db.qualifierLobby.update({
+      where: { id },
+      data: { status: 'IN_PROGRESS', autoCompleted: false, version: { increment: 1 } },
+    });
+    const resumed = await syncQualifier(organizer, id, { apply: true });
+    expect(resumed).toMatchObject({ complete: true, imported: 4, rejected: [] });
+    expect(resumed.proposals.map((proposal) => proposal.run)).toEqual([1, 2]);
+    expect(await db.qualifierScore.count({ where: { lobbyId: id } })).toBe(4);
+    expect(
+      await db.qualifierScore.findFirstOrThrow({ where: { lobbyId: id, eligible: false } }),
+    ).toMatchObject({ run: 1, eligibilityReason: 'NoFail is required.' });
+    expect(await current(id)).toMatchObject({ status: 'COMPLETED', autoCompleted: true });
+    expect((await syncQualifier(organizer, id, { apply: true })).imported).toBe(0);
+    const first = await db.qualifierGame.findFirstOrThrow({
+      where: { lobbyId: id, gameId: '1101' },
+    });
+    await db.qualifierGame.update({
+      where: { id: first.id },
+      data: { status: 'IGNORED', reason: 'Game before the website qualifier start' },
+    });
+    expect((await syncQualifier(organizer, id, { apply: true })).imported).toBe(0);
+    expect(await db.qualifierGame.findUniqueOrThrow({ where: { id: first.id } })).toMatchObject({
+      status: 'ACCEPTED',
+    });
+    expect(
+      await db.qualifierEvent.findFirst({
+        where: { lobbyId: id, kind: 'qualifier.source.received' },
+        orderBy: { version: 'desc' },
+      }),
+    ).toMatchObject({
+      data: {
+        updates: expect.arrayContaining([
+          expect.objectContaining({ classification: { before: 'IGNORED', after: 'PENDING' } }),
+        ]),
+      },
+    });
+    await ignoreQualifierGame(
+      organizer,
+      id,
+      first.id,
+      (await current(id)).version,
+      'Game before the website qualifier start',
+      true,
+    );
+    mock.load.mockResolvedValue({
+      ...response,
+      events: [...response.events, { id: 3, game: { ...historical[1], id: 1103 } }],
+    });
+    expect((await syncQualifier(organizer, id, { apply: true })).imported).toBe(0);
+    expect(await db.qualifierGame.findUniqueOrThrow({ where: { id: first.id } })).toMatchObject({
+      status: 'IGNORED',
+    });
+    expect(await db.qualifierScore.count({ where: { lobbyId: id } })).toBe(2);
+    expect(
+      await db.qualifierGame.findFirstOrThrow({ where: { lobbyId: id, gameId: '1103' } }),
+    ).toMatchObject({ status: 'IGNORED', reason: 'Game before the website qualifier start' });
   });
   it('preserves individual invalid FreeMod scores, resolves exceptions in bulk and resumes optional runs', async () => {
     const fmRules = inheritedRules(

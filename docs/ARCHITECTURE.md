@@ -598,6 +598,13 @@ original provider evidence plus the accepted proposal or explicit exclusion. Its
 session/MP/game key makes re-import duplicate-safe; stage/player/game checks prevent
 reusing a performance in another session/run. Accepted games preserve later manual
 corrections. Missing scores never become zero and pending receipts block finalization.
+The exact multiplayer/game pair in a server-recorded `qualifier.source.imported`
+event identifies reviewed historical evidence. Capture previews, player exclusions
+and automatic synchronization reuse that provenance instead of comparing historical
+games with the later website START time. Other games retain the live start boundary.
+Synchronization can repair an automatic pre-start exclusion only for witnessed
+imports without an explicit game/import exclusion; it audits the classification
+change and preserves score corrections and intentional-removal tombstones.
 Accepted partial receipts can gain new player rows through the same writer. Source
 revisions retain before/after evidence; existing scores and intentional removal
 events protect corrections from automatic replacement/resurrection. Explicit

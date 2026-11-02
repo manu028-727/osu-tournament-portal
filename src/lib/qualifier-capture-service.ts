@@ -10,7 +10,11 @@ import {
   reconcileQualifierCompletion,
 } from './qualifiers-service';
 import { qualifierActionSchema } from './qualifiers-validation';
-import { qualifierCapturePlan, type QualifierCapture } from './qualifier-multiplayer';
+import {
+  qualifierCapturePlan,
+  qualifierImportedGame,
+  type QualifierCapture,
+} from './qualifier-multiplayer';
 import { collectMultiplayerPages } from './multiplayer';
 import { osuGet } from './osu';
 import { assertQualifierMutable } from './qualifier-standings-service';
@@ -360,7 +364,12 @@ export async function syncQualifier(actor: Actor, id: string, options: { apply?:
         throw new AppError('The qualifier session changed. Reload the preview.', 409);
       await assertQualifierMutable(tx, fresh.stageId, actor.tournamentId!);
       let received = 0;
-      const updates: { gameId: string; before: unknown; after: unknown }[] = [];
+      const updates: {
+        gameId: string;
+        before: unknown;
+        after: unknown;
+        classification?: { before: string; after: string };
+      }[] = [];
       for (const event of history.events) {
         const source = z
           .object({ game: z.object({ id: z.number().int().positive() }).passthrough().optional() })
@@ -369,7 +378,26 @@ export async function syncQualifier(actor: Actor, id: string, options: { apply?:
         const game = source.data.game;
         const key = String(game.id);
         const previous = fresh.games.find((row) => row.multiplayerId === mp && row.gameId === key);
-        if (previous?.status === 'IGNORED') continue;
+        const imported = qualifierImportedGame(lobby, mp, key);
+        const recoverHistorical =
+          imported &&
+          previous?.status === 'IGNORED' &&
+          previous.reason === 'Game before the website qualifier start' &&
+          !lobby.events.some((event) => {
+            if (!['qualifier.source.imported', 'qualifier.game.ignored'].includes(event.kind))
+              return false;
+            const data = event.data as {
+              multiplayerId?: number;
+              gameId?: string;
+              ignored?: boolean;
+            } | null;
+            return (
+              data?.multiplayerId === mp &&
+              data.gameId === key &&
+              (event.kind === 'qualifier.game.ignored' || data.ignored === true)
+            );
+          });
+        if (previous?.status === 'IGNORED' && !recoverHistorical) continue;
         const nextEvidence = {
           ...((previous?.evidence as object) || {}),
           game,
@@ -377,6 +405,7 @@ export async function syncQualifier(actor: Actor, id: string, options: { apply?:
         };
         if (
           previous &&
+          !recoverHistorical &&
           canonicalQualifierJson(previous.evidence) === canonicalQualifierJson(nextEvidence)
         )
           continue;
@@ -412,7 +441,10 @@ export async function syncQualifier(actor: Actor, id: string, options: { apply?:
         const ignored =
           typeof game.beatmap_id === 'number' && !knownMap
             ? 'Map outside the qualifier pool'
-            : started && gameTime.success && new Date(gameTime.data).getTime() < started
+            : !imported &&
+                started &&
+                gameTime.success &&
+                new Date(gameTime.data).getTime() < started
               ? 'Game before the website qualifier start'
               : (selected?.data as { warmup?: boolean })?.warmup
                 ? 'Referee selected warmup mode'
@@ -432,10 +464,19 @@ export async function syncQualifier(actor: Actor, id: string, options: { apply?:
           update: {
             evidence: json(nextEvidence),
             version: { increment: 1 },
+            ...(recoverHistorical ? { status: 'PENDING', reason: '' } : {}),
             ...(ignored ? { status: 'IGNORED', reason: ignored } : {}),
           },
         });
-        if (previous) updates.push({ gameId: key, before: previous.evidence, after: nextEvidence });
+        if (previous)
+          updates.push({
+            gameId: key,
+            before: previous.evidence,
+            after: nextEvidence,
+            ...(recoverHistorical
+              ? { classification: { before: previous.status, after: 'PENDING' } }
+              : {}),
+          });
         received++;
       }
       await tx.qualifierLobby.update({

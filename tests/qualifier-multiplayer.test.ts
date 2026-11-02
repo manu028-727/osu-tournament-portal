@@ -92,6 +92,43 @@ describe('reviewed qualifier multiplayer capture', () => {
     expect(result.proposals).toEqual([]);
     expect(result.rejected[0].issue).toContain('lazer');
   });
+  it('recognizes exact audited imported games before the website start without exempting live games', () => {
+    const old = { ...game, start_time: '2026-10-21T11:00:00Z' };
+    const imported = {
+      ...lobby,
+      policy: qualifierPolicySchema.parse({ runs: 2 }),
+      events: [
+        ...lobby.events,
+        ...[1, 2].map((id) => ({
+          kind: 'qualifier.source.imported',
+          data: { multiplayerId: 20, gameId: String(id), ignored: false },
+        })),
+      ],
+      games: [1, 2].map((id) => ({
+        multiplayerId: 20,
+        gameId: String(id),
+        status: 'PENDING',
+        run: null,
+        evidence: { game: { ...old, id } },
+      })),
+    } as unknown as QualifierView;
+    expect(qualifierCapturePlan(imported).games.map((row) => [row.run, row.issue])).toEqual([
+      [1, null],
+      [2, null],
+    ]);
+    expect(
+      qualifierGameProposals([{ game: old }], imported, { multiplayerId: 20 }).proposals,
+    ).toHaveLength(1);
+    for (const multiplayerId of [undefined, 21]) {
+      const result = qualifierGameProposals([{ game: old }], imported, { multiplayerId });
+      expect(result.proposals).toEqual([]);
+      expect(result.rejected[0].issue).toContain('predates');
+    }
+    expect(
+      qualifierGameProposals([{ game: { ...old, id: 3 } }], imported, { multiplayerId: 20 })
+        .rejected[0].issue,
+    ).toContain('predates');
+  });
   it('does not import unfinished games or missing API data as zero', () => {
     expect(
       qualifierGameProposals([{ game: { ...game, end_time: null } }], lobby).proposals,

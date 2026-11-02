@@ -354,6 +354,9 @@ Running website sessions automatically synchronize official multiplayer evidence
 while the referee workspace is open. Live sync and stage-selected bulk multiplayer
 imports share the canonical conversion, score writer and audit history. Attribute
 players by permanent osu! IDs in frozen rosters, never team colors or display names.
+Reviewed historical imports remain historical when reopened in Referee Mode or
+synchronized later; their games do not need to postdate the website session start.
+Unimported live games retain the start-time guard. Preserve explicit exclusions.
 Load complete paginated histories before applying scores. Exclude unrelated maps;
 warmups default to zero and require explicit count/selection. Review ambiguous
 players, retries, additional runs and missing evidence; never replace missing scores

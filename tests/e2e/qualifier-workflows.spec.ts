@@ -854,6 +854,21 @@ test('previews actual provider histories, imports both runs and safely reimports
     element.scrollTop = 0;
   });
   await page.screenshot({ path: `${evidence}/bulk-import-mobile.png`, fullPage: true });
+  const automaticSync = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/admin/qualifier-multiplayer') &&
+      response.request().postDataJSON()?.sync === true,
+  );
+  await page.goto(`${root}/admin/referee/qualifiers/${lobby.id}`);
+  const synced = await automaticSync;
+  expect(synced.ok()).toBe(true);
+  expect(await synced.json()).toMatchObject({ complete: true, imported: 0, rejected: [] });
+  await page.getByRole('button', { name: 'Capture from osu!', exact: true }).click();
+  const capture = page.getByRole('dialog', { name: 'Review qualifier capture', exact: true });
+  await expect(capture.getByRole('option', { name: /Already imported/ })).toHaveCount(4);
+  await expect(capture).not.toContainText('Game predates');
+  await expect(capture.getByText('games need manual review', { exact: false })).toHaveCount(0);
+  expect(await db.qualifierScore.count({ where: { lobbyId: lobby.id } })).toBe(8);
 });
 test('configures qualifier stages, finalizes actual imported standings and publishes a responsive public result', async ({
   page,

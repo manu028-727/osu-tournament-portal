@@ -59,8 +59,10 @@ export async function POST(request: Request) {
     );
     const proposal =
       input.excludePlayers.length && row
-        ? qualifierGameProposals([row.evidence], lobby, { excludePlayers: input.excludePlayers })
-            .proposals[0]
+        ? qualifierGameProposals([row.evidence], lobby, {
+            multiplayerId: row.multiplayerId,
+            excludePlayers: input.excludePlayers,
+          }).proposals[0]
         : preview.proposals.find((game) => game.gameId === input.gameId);
     if (!proposal)
       throw new AppError('This game cannot be imported. Review the preview warnings.', 409);

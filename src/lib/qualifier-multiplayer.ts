@@ -33,6 +33,18 @@ export type QualifierCapture = {
   }[];
   issues?: { osuId: number | null; reason: string }[];
 };
+// Only server-recorded import provenance exempts a game from the live start boundary.
+export function qualifierImportedGame(
+  lobby: Pick<QualifierView, 'events'>,
+  multiplayerId: number,
+  gameId: string,
+) {
+  return lobby.events.some((event) => {
+    if (event.kind !== 'qualifier.source.imported') return false;
+    const data = event.data as { multiplayerId?: number; gameId?: string } | null;
+    return data?.multiplayerId === multiplayerId && data.gameId === gameId;
+  });
+}
 export function qualifierCapturePlan(
   lobby: QualifierView,
   options: { historical?: boolean; warmups?: number } = {},
@@ -51,7 +63,7 @@ export function qualifierCapturePlan(
     ...qualifierGameProposals(
       rows.filter((row) => row.multiplayerId === mp).map((row) => row.evidence),
       lobby,
-      options,
+      { ...options, multiplayerId: mp },
     ),
   }));
   const rejected = sources.flatMap((source) =>
@@ -109,7 +121,12 @@ export function qualifierCapturePlan(
 export function qualifierGameProposals(
   events: unknown[],
   lobby: QualifierView,
-  options: { historical?: boolean; warmups?: number; excludePlayers?: number[] } = {},
+  options: {
+    historical?: boolean;
+    multiplayerId?: number;
+    warmups?: number;
+    excludePlayers?: number[];
+  } = {},
 ) {
   const proposals: QualifierCapture[] = [],
     rejected: { gameId: string; issue: string }[] = [];
@@ -151,7 +168,14 @@ export function qualifierGameProposals(
     try {
       if (!g.end_time) continue;
       if (played++ < (options.warmups || 0)) throw Error('Excluded warmup game.');
-      if (!options.historical && (!started || new Date(g.start_time).getTime() < started))
+      const imported =
+        options.multiplayerId !== undefined &&
+        qualifierImportedGame(lobby, options.multiplayerId, gameId);
+      if (
+        !options.historical &&
+        !imported &&
+        (!started || new Date(g.start_time).getTime() < started)
+      )
         throw Error('Game predates the qualifier session or its start is unverified.');
       const scoring = historicalScoring(lobby.rules);
       if (scoring === 'LAZER')

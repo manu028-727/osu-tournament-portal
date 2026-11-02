@@ -1334,6 +1334,39 @@ provider behavior. The existing upstream pg concurrent-query deprecation warning
 remains visible; operator-controlled live-provider verification is the next
 operational step.
 
+## Historical Qualifier Capture Repair - 1 November 2026
+
+Follow-up to `71ca4af`: a reported historical multiplayer session showed pre-start
+warnings for every game in Referee Mode. The bulk importer used historical parsing,
+but subsequent capture/synchronization used the later website START boundary.
+The older writer also rejected an entire game for one missing NoFail score and
+stopped the source loop, explaining why older partial imports ended at Freemod.
+
+- Shared parsing now recognizes the exact multiplayer/game pair in server-recorded
+  import provenance. Normal live games retain their timestamp checks, including
+  other games in the same room and identically numbered games from another room.
+- Synchronization resumes retained historical receipts and audits recovery of an
+  automatic pre-start exclusion. Explicit import/game exclusions, corrected scores,
+  intentional removals, source ownership and existing locks/version checks remain.
+- Public-page inspection confirmed two 13-map runs and 104 individual scores in the
+  reported history. A read-only local projection of its legacy score fields found
+  two missing-NoFail performances, rather than missing provider games. Raw evidence
+  remains ignored under `.data/qualifier-mp-diagnostic-20261101/`; it is not shipped
+  as production content or a test fixture. Authenticated live API behavior was not
+  verified.
+
+Verification on Node 22.23.3: all 394 unit tests in 31 files, 20 qualifier workflow/
+capture PostgreSQL tests in two files and eight production Chromium qualifier
+cases passed. The historical import/capture case also passed in development. New
+checks cover both runs, isolated NoFail exclusion, idempotence, recovery of wrongly
+classified receipts, explicit exclusion preservation and the live timestamp guard.
+Format, lint, route generation/TypeScript, production build, `git diff --check` and
+the 432-file source audit passed. Earlier failed attempts are not success evidence.
+Browser/API tests use synthetic provider responses and the isolated test database;
+only the reported public page was retrieved live. No schema or new migration is
+required, and no installation data has been changed. Changes remain local pending
+an authorized commit/push and operator-controlled installation update.
+
 ## Completion Rules
 
 For each change: establish source behavior, implement within existing ownership
