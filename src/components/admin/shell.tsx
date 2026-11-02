@@ -7,7 +7,7 @@ import { DropdownMenu } from 'radix-ui';
 import { ArrowUpRight, ChevronDown } from 'lucide-react';
 import type { Actor } from '@/lib/permissions';
 import { canAccessSection } from '@/lib/workspace';
-import { Notices, useWorkspacePortal } from './shared';
+import { Notices, useWorkspacePortal, EditingWorkspace } from './shared';
 import { LogoutButton } from '../logout-button';
 import { AppearanceControl } from '../appearance';
 import styles from './workspace-pilot.module.css';
@@ -119,7 +119,7 @@ export function AdminShell({
           id="main"
           className={`workspace-main ${styles.main} ${active('website') ? styles.editor : ''}`}
         >
-          {children}
+          <EditingWorkspace>{children}</EditingWorkspace>
         </main>
       </div>
     </Notices>

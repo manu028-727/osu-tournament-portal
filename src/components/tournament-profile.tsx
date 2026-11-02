@@ -49,11 +49,15 @@ export function TournamentProfileHeader({ tournament }: { tournament: Tournament
         </div>
       </div>
       <TournamentTabs
-        links={
-          navigation.some((link) => link.href === '/register')
-            ? navigation
-            : [...navigation, { href: '/register', label: tr('Registration and qualifiers') }]
-        }
+        links={[
+          ...navigation,
+          ...(!navigation.some((link) => link.href === '/register')
+            ? [{ href: '/register', label: tr('Registration') }]
+            : []),
+          ...(!navigation.some((link) => link.href === '/qualifier-booking')
+            ? [{ href: '/qualifier-booking', label: tr('Qualifier booking') }]
+            : []),
+        ]}
       />
     </header>
   );

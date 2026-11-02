@@ -22,6 +22,7 @@ import { X, Check, AlertCircle, Loader2, ArrowUp, ArrowDown, GripVertical } from
 import { Button } from '@/components/ui/button';
 import { startPolling } from '@/lib/polling';
 export { useUnsaved } from '@/components/unsaved-navigation';
+export { EditorPanel, EditingWorkspace } from './editing-workspace';
 export function usePolling(reload: () => Promise<unknown>, delay = 3000, enabled = true) {
   useEffect(() => {
     if (!enabled) return;

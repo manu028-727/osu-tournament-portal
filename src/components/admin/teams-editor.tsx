@@ -3,7 +3,7 @@ import { Feedback, useT } from '@/components/locale';
 import { humanizeCode } from '@/lib/i18n';
 
 import Link, { tournamentApiUrl } from '@/components/tournament-scope';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   Plus,
   Pencil,
@@ -24,6 +24,7 @@ import type { TeamView } from '@/lib/teams-types';
 import type { TeamImportPlan } from '@/lib/teams-service';
 import { TEAM_CSV_COLUMNS } from '@/lib/teams-csv';
 import { slugify } from '@/lib/utils';
+import { TeamInlineIdentity } from './team-inline-identity';
 import { MediaField } from './media';
 import { ListPagination } from '../list-pagination';
 import type { ListPage } from '@/lib/list-pagination';
@@ -32,7 +33,7 @@ import {
   api,
   Field,
   LoadingState,
-  Modal,
+  EditorPanel,
   SectionTitle,
   SaveButton,
   ConfirmButton,
@@ -58,6 +59,7 @@ const empty = (): TeamView => ({
 });
 export function TeamsEditor({ actor }: { actor: Actor }) {
   const tr = useT();
+  const bulkAllowed = can(actor, 'teams.publish') || can(actor, 'teams.delete');
   const { run, busy, notify } = useTask();
   const [draft, setDraft] = useState<TeamView | null>(null),
     [dirty, setDirty] = useState(false),
@@ -65,6 +67,31 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
     [profile, setProfile] = useState<Profile | null>(null),
     [filter, setFilter] = useState('');
   const [page, setPage] = useState(1);
+  const [inlineDirty, setInlineDirty] = useState<Set<string>>(new Set());
+  const [inlineEpoch, setInlineEpoch] = useState(0);
+  const inlineChanged = useCallback(
+    (id: string, dirty: boolean) =>
+      setInlineDirty((current) => {
+        if (current.has(id) === dirty) return current;
+        const next = new Set(current);
+        if (dirty) next.add(id);
+        else next.delete(id);
+        return next;
+      }),
+    [],
+  );
+  const leaveInline = () => {
+    if (!inlineDirty.size) return true;
+    if (!window.confirm(tr('Discard unsaved team changes?'))) return false;
+    setInlineEpoch((n) => n + 1);
+    setInlineDirty(new Set());
+    return true;
+  };
+  const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
+  const [bulkOperation, setBulkOperation] = useState(
+    can(actor, 'teams.publish') ? 'APPROVE' : 'DELETE',
+  );
+  const [bulkReason, setBulkReason] = useState('');
   const {
     data: result,
     error,
@@ -129,6 +156,7 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
             <Button
               size="sm"
               onClick={() => {
+                if (dirty && !window.confirm(tr('Discard unsaved team changes?'))) return;
                 setDraft(empty());
                 setProfile(null);
                 setQuery('');
@@ -146,16 +174,89 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
           value={filter}
           maxLength={100}
           onChange={(e) => {
+            if (!leaveInline()) return;
+            setSelectedTeams([]);
             setFilter(e.target.value);
             setPage(1);
           }}
           type="search"
         />
       </Field>
-      <div className="mt-6 overflow-x-auto">
+      {(can(actor, 'teams.publish') || can(actor, 'teams.delete')) && (
+        <div className="my-3 flex flex-wrap items-end gap-2">
+          <span className="text-sm">{tr('{0} selected', selectedTeams.length)}</span>
+          <Field label={tr('Bulk team action')}>
+            <select value={bulkOperation} onChange={(e) => setBulkOperation(e.target.value)}>
+              {can(actor, 'teams.publish') && (
+                <>
+                  <option value="APPROVE">{tr('Approve and publish')}</option>
+                  <option value="REJECT">{tr('Reject with public reason')}</option>
+                  <option value="PUBLISH">{tr('Publish')}</option>
+                  <option value="HIDE">{tr('Hide')}</option>
+                </>
+              )}
+              {can(actor, 'teams.delete') && (
+                <option value="DELETE">{tr('Delete unused entrants')}</option>
+              )}
+            </select>
+          </Field>
+          {bulkOperation === 'REJECT' && (
+            <Field label={tr('Public rejection reason')}>
+              <input
+                minLength={3}
+                maxLength={2000}
+                value={bulkReason}
+                onChange={(e) => setBulkReason(e.target.value)}
+              />
+            </Field>
+          )}
+          <ConfirmButton
+            title={tr('Apply to {0} entrants?', selectedTeams.length)}
+            description={tr(
+              bulkOperation === 'DELETE'
+                ? 'Only unused entrants can be deleted. If any selected entrant has competition history, nothing is deleted.'
+                : 'The selected registration statuses and public visibility will change together. Tournament reservations remain separate.',
+            )}
+            disabled={
+              busy ||
+              !selectedTeams.length ||
+              (bulkOperation === 'REJECT' && bulkReason.trim().length < 3)
+            }
+            onConfirm={() =>
+              void run(async () => {
+                await action({
+                  type: 'team.bulk',
+                  entries: data
+                    .filter((t) => selectedTeams.includes(t.id))
+                    .map((t) => ({ id: t.id, baseVersion: t.version })),
+                  operation: bulkOperation,
+                  rejectionReason: bulkReason,
+                });
+                setSelectedTeams([]);
+                await reload();
+              }, tr('Entrants updated.'))
+            }
+          >
+            {tr('Apply to selected')}
+          </ConfirmButton>
+        </div>
+      )}
+      <div className="mt-3 overflow-x-auto">
         <table className="admin-table">
           <thead>
             <tr>
+              {bulkAllowed && (
+                <th>
+                  <input
+                    type="checkbox"
+                    aria-label={tr('Select this page of entrants')}
+                    checked={data.length > 0 && data.every((t) => selectedTeams.includes(t.id))}
+                    onChange={(e) =>
+                      setSelectedTeams(e.target.checked ? data.map((t) => t.id) : [])
+                    }
+                  />
+                </th>
+              )}
               <th>{tr('Team')}</th>
               <th>{tr('Roster')}</th>
               <th>{tr('Registration')}</th>
@@ -166,6 +267,22 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
           <tbody>
             {data.map((t) => (
               <tr key={t.id}>
+                {bulkAllowed && (
+                  <td>
+                    <input
+                      type="checkbox"
+                      aria-label={tr('Select {0}', t.name)}
+                      checked={selectedTeams.includes(t.id)}
+                      onChange={(e) =>
+                        setSelectedTeams(
+                          e.target.checked
+                            ? [...selectedTeams, t.id]
+                            : selectedTeams.filter((id) => id !== t.id),
+                        )
+                      }
+                    />
+                  </td>
+                )}
                 <td>
                   <div className="flex min-w-40 items-center gap-3">
                     {t.logoImageId ? (
@@ -178,7 +295,16 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                       <Users size={22} className="shrink-0 text-primary" />
                     )}
                     <div>
-                      <p className="font-semibold">{t.name}</p>
+                      {can(actor, 'teams.edit') ? (
+                        <TeamInlineIdentity
+                          key={`${t.id}:${inlineEpoch}`}
+                          team={t}
+                          onChanged={reload}
+                          onDirty={inlineChanged}
+                        />
+                      ) : (
+                        <p className="font-semibold">{t.name}</p>
+                      )}
                       <p className="text-xs text-muted">
                         {t.format === 'INDIVIDUAL' ? tr('Solo') : tr('Team')}
                         {t.seed ? tr(' · Seed {0}', t.seed) : ''}
@@ -209,6 +335,7 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                         aria-label={tr('Edit {0}', t.name)}
                         title={tr('Edit team')}
                         onClick={() => {
+                          if (dirty && !window.confirm(tr('Discard unsaved team changes?'))) return;
                           setDraft(structuredClone(t));
                           setDirty(false);
                           setProfile(null);
@@ -261,7 +388,11 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
         page={result!.page}
         pageSize={result!.pageSize}
         total={result!.total}
-        onPage={setPage}
+        onPage={(page) => {
+          if (!leaveInline()) return;
+          setSelectedTeams([]);
+          setPage(page);
+        }}
         busy={loading || busy}
       />
       {!data.length && (
@@ -270,7 +401,7 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
           {tr('No registered teams.')}
         </div>
       )}
-      <Modal
+      <EditorPanel
         open={!!draft}
         onOpenChange={(open) => {
           if (!open) close();
@@ -542,8 +673,8 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
             </div>
           </form>
         )}
-      </Modal>
-      <Modal
+      </EditorPanel>
+      <EditorPanel
         open={!!visibility}
         onOpenChange={(open) => {
           if (!open) setVisibility(null);
@@ -618,8 +749,13 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
             <SaveButton busy={busy}>{tr('Save visibility')}</SaveButton>
           </form>
         )}
-      </Modal>
-      <Modal open={importOpen} onOpenChange={setImportOpen} title={tr('Import teams CSV')} wide>
+      </EditorPanel>
+      <EditorPanel
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title={tr('Import teams CSV')}
+        wide
+      >
         <div className="space-y-5">
           <Field label={tr('CSV file')}>
             <input
@@ -696,7 +832,7 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                             )
                             .join(', ')}
                         </td>
-                        <td>{t.id ? tr('Update roster') : tr('Create hidden entry')}</td>
+                        <td>{t.id ? tr('Update roster') : tr('Create approved entry')}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -706,7 +842,7 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                 variant="default"
                 title={tr('Apply this import?')}
                 description={tr(
-                  'Existing approval and publication settings are preserved. New teams remain hidden.',
+                  'Existing approval and publication settings are preserved. New teams are automatically approved and published.',
                 )}
                 disabled={busy || !!preview.errors.length}
                 onConfirm={() =>
@@ -728,7 +864,7 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
             </div>
           )}
         </div>
-      </Modal>
+      </EditorPanel>
     </>
   );
 }

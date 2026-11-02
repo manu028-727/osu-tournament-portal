@@ -19,8 +19,8 @@ export default async function Register() {
     <div className="wrap pb-20">
       <PageHeading
         eyebrow={tr('Players and captains')}
-        title={tr('Registration and qualifiers')}
-        description={tr('Manage your roster and reserve a shared qualifier session.')}
+        title={tr('Tournament registration')}
+        description={tr('Register for the tournament and manage your team roster.')}
       />
       <RegistrationPortal
         initial={JSON.parse(JSON.stringify(data))}

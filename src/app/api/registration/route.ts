@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers';
-import { getActor, requireTournamentActor, actorForTournament } from '@/lib/auth';
+import { getActor, requireTournamentActor, refreshedSessionActor } from '@/lib/auth';
 import { requestScope } from '@/lib/tournament-context';
 import {
   registrationData,
@@ -40,20 +40,8 @@ export async function POST(request: Request) {
     const result = await db.$transaction(
       async (tx) => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(78214321)`;
-        const session = await tx.session.findUnique({
-          where: { id: sessionHash },
-          include: {
-            user: { include: { roles: { include: { role: { include: { permissions: true } } } } } },
-          },
-        });
-        if (!session || session.userId !== actor.id || session.expiresAt <= new Date())
-          throw new AppError('Sign in to continue.', 401);
-        return applyRegistration(
-          tx,
-          actorForTournament(session.user, actor.tournamentId!),
-          input,
-          profiles,
-        );
+        const refreshed = await refreshedSessionActor(tx, actor, sessionHash);
+        return applyRegistration(tx, refreshed, input, profiles);
       },
       { timeout: 30000 },
     );

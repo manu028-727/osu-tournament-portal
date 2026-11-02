@@ -29,6 +29,7 @@ export default defineConfig({
       'tests/competition-engine.test.ts',
       'tests/bracket-presentation.test.ts',
       'tests/qualifier-seeding.test.ts',
+      'tests/qualifier-score.test.ts',
       'tests/qualifier-seeding-service.test.ts',
       'tests/stage-reconciliation.test.ts',
       'tests/qualifier-multiplayer.test.ts',

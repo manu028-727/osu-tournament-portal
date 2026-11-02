@@ -1,4 +1,5 @@
 'use client';
+import { QualifierPolicyFields } from './qualifier-policy-fields';
 import { localDateTimeInput } from '@/lib/utils';
 import { Feedback, useT } from '@/components/locale';
 
@@ -15,16 +16,12 @@ import { MediaField } from './media';
 import { slugify } from '@/lib/utils';
 import { patchStageRules, type StageRulePatch } from '@/lib/stage-workflows-validation';
 import { mixedStageValue, STAGE_TEMPLATES, withStageBestOf } from './stage-editor-model';
-import {
-  qualifierPolicySchema,
-  QUALIFIER_METHOD_LABELS,
-  type QualifierPolicy,
-} from '@/lib/qualifier-policy';
+import { qualifierPolicySchema, type QualifierPolicy } from '@/lib/qualifier-policy';
 import {
   action,
   Field,
   SectionTitle,
-  Modal,
+  EditorPanel,
   useResource,
   useTask,
   LoadingState,
@@ -277,6 +274,7 @@ export function StagesEditor({
         {can(actor, 'mappools.create') && (
           <Button
             onClick={() => {
+              if (dirty && !window.confirm(tr('Discard unsaved stage settings?'))) return;
               setDraft(emptyStage(data.stages.length));
               setDirty(false);
               setDuplicating(false);
@@ -579,6 +577,7 @@ export function StagesEditor({
                     }, tr('Stage changes saved.'))
                   }
                   onAdvanced={() => {
+                    if (dirty && !window.confirm(tr('Discard unsaved stage settings?'))) return;
                     setDraft(stage);
                     setDirty(false);
                     setDuplicating(false);
@@ -612,7 +611,7 @@ export function StagesEditor({
           <p className="py-8 text-center text-sm text-muted">{tr('No matching stages.')}</p>
         )}
       </div>
-      <Modal
+      <EditorPanel
         title={draft?.id ? tr('Stage settings') : tr('New stage')}
         wide
         open={!!draft}
@@ -747,7 +746,27 @@ export function StagesEditor({
                 />
               </Field>
               <Field label={tr('Stage type')}>
-                <select value={draft.kind} onChange={(e) => update({ kind: e.target.value })}>
+                <select
+                  value={draft.kind}
+                  onChange={(e) =>
+                    update({
+                      kind: e.target.value,
+                      ...(!draft.id &&
+                      e.target.value === 'QUALIFIERS' &&
+                      data.defaults.gameMode === 'osu' &&
+                      data.defaults.gameplayScoring !== 'LAZER'
+                        ? {
+                            qualifierPolicy: qualifierPolicySchema.parse({
+                              normalization: 'BUILT_IN',
+                              multiplierPolicy: 'NONE',
+                              rounding: 'FLOOR',
+                              countFailed: true,
+                            }),
+                          }
+                        : {}),
+                    })
+                  }
+                >
                   {['QUALIFIERS', 'ELIMINATION', 'GROUPS', 'CUSTOM'].map((k) => (
                     <option key={k} value={k}>
                       {tr(stageKinds[k] || k)}
@@ -890,122 +909,21 @@ export function StagesEditor({
                     'Gameplay scoring belongs to the tournament. These settings control qualifier aggregation, eligible runs and seedings.',
                   )}
                 </p>
-                <div className="grid-fields">
-                  <Field label={tr('Seeding method')}>
-                    <select
-                      value={draft.qualifierPolicy?.method || 'RAW_SCORE'}
-                      onChange={(e) =>
-                        update({
-                          qualifierPolicy: qualifierPolicySchema.parse({
-                            ...draft.qualifierPolicy,
-                            method: e.target.value,
-                          }),
-                        })
-                      }
-                    >
-                      {Object.entries(QUALIFIER_METHOD_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {tr(label)}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label={tr('Playthroughs')}>
-                    <select
-                      value={draft.qualifierPolicy?.runs || 1}
-                      onChange={(e) =>
-                        update({
-                          qualifierPolicy: qualifierPolicySchema.parse({
-                            ...draft.qualifierPolicy,
-                            runs: Number(e.target.value),
-                            runSelection: 'BEST_PER_MAP',
-                          }),
-                        })
-                      }
-                    >
-                      <option value={1}>{tr('Once')}</option>
-                      <option value={2}>{tr('Twice')}</option>
-                    </select>
-                  </Field>
-                  {draft.qualifierPolicy?.runs === 2 && (
-                    <Field label={tr('Run selection')}>
-                      <select
-                        value={draft.qualifierPolicy.runSelection}
-                        onChange={(e) =>
-                          update({
-                            qualifierPolicy: qualifierPolicySchema.parse({
-                              ...draft.qualifierPolicy,
-                              runSelection: e.target.value,
-                            }),
-                          })
-                        }
-                      >
-                        <option value="BEST_PER_MAP">{tr('Best per map')}</option>
-                        <option value="BEST_COMPLETE_RUN">{tr('Best complete run')}</option>
-                        <option value="FIRST_RUN">{tr('First run only')}</option>
-                        <option value="SECOND_RUN">{tr('Second run only')}</option>
-                      </select>
-                    </Field>
-                  )}
-                  <Field label={tr('Players counted per map')}>
-                    <input
-                      type="number"
-                      min={1}
-                      max={16}
-                      value={draft.qualifierPolicy?.requiredPlayers || 1}
-                      onChange={(e) =>
-                        update({
-                          qualifierPolicy: {
-                            ...qualifierPolicySchema.parse(draft.qualifierPolicy || {}),
-                            requiredPlayers: Number(e.target.value),
-                          },
-                        })
-                      }
-                    />
-                  </Field>
-                  <Field label={tr('Team aggregation')}>
-                    <select
-                      value={draft.qualifierPolicy?.teamAggregation || 'SUM'}
-                      onChange={(e) =>
-                        update({
-                          qualifierPolicy: qualifierPolicySchema.parse({
-                            ...draft.qualifierPolicy,
-                            teamAggregation: e.target.value,
-                          }),
-                        })
-                      }
-                    >
-                      <option value="SUM">{tr('Sum')}</option>
-                      <option value="AVERAGE">{tr('Average')}</option>
-                      <option value="TOP_N">{tr('Top N players')}</option>
-                    </select>
-                  </Field>
-                  {(!draft.qualifierPolicy || draft.qualifierPolicy.method === 'RAW_SCORE') && (
-                    <Field label={tr('Pool aggregation')}>
-                      <select
-                        value={draft.qualifierPolicy?.rawAggregation || 'TOTAL'}
-                        onChange={(e) =>
-                          update({
-                            qualifierPolicy: qualifierPolicySchema.parse({
-                              ...draft.qualifierPolicy,
-                              rawAggregation: e.target.value,
-                            }),
-                          })
-                        }
-                      >
-                        <option value="TOTAL">{tr('Total')}</option>
-                        <option value="AVERAGE">{tr('Average')}</option>
-                      </select>
-                    </Field>
-                  )}
-                </div>
-                <p role="status" className="text-xs text-muted">
-                  {tr(
-                    draft.qualifierPolicy?.runSelection === 'SECOND_RUN'
-                      ? 'Run 2 must be complete. Run 1 never substitutes for missing Run 2 scores.'
-                      : 'One complete eligible run can finish a session. An optional second run remains available until official seedings are finalized.',
-                  )}
-                </p>
+                <QualifierPolicyFields
+                  value={qualifierPolicySchema.parse(draft.qualifierPolicy || {})}
+                  gameMode={data.defaults.gameMode}
+                  gameplayScoring={data.defaults.gameplayScoring}
+                  onChange={(qualifierPolicy) => update({ qualifierPolicy })}
+                />
+                {draft.id && (
+                  <p className="text-sm">
+                    <Link className="text-primary" href="/admin/qualifier-results">
+                      {tr('Qualifier results & seedings')}
+                    </Link>
+                    {' / '}
+                    {tr('Reprocess scoring')}
+                  </p>
+                )}
               </section>
             )}
             <div className="flex justify-end gap-3">
@@ -1025,8 +943,8 @@ export function StagesEditor({
             </div>
           </form>
         )}
-      </Modal>
-      <Modal
+      </EditorPanel>
+      <EditorPanel
         title={tr('Duplicate stage')}
         open={duplicating && !!duplicateSource}
         onOpenChange={(open) => {
@@ -1162,7 +1080,7 @@ export function StagesEditor({
             </div>
           </form>
         )}
-      </Modal>
+      </EditorPanel>
     </>
   );
 }

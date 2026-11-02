@@ -331,10 +331,8 @@ test('lets a captain book and cancel an existing session without workspace permi
   context,
 }) => {
   await login(context, 1);
-  await page.goto(`${root}/register`);
-  await expect(
-    page.getByRole('heading', { name: 'Registration and qualifiers', exact: true }),
-  ).toBeVisible();
+  await page.goto(`${root}/qualifier-booking`);
+  await expect(page.getByRole('heading', { name: 'Qualifier booking', exact: true })).toBeVisible();
   const session = page.locator('article').filter({ hasText: 'Booking session' });
   await session.getByRole('button', { name: 'Reserve session' }).click();
   await expect(session.getByText('Your reservation', { exact: false })).toBeVisible();
@@ -351,9 +349,10 @@ test('lets a captain book and cancel an existing session without workspace permi
     }
   }
   await page.goto(`${root}/teams`);
-  await expect(
-    page.getByRole('link', { name: 'Manage registration and qualifier booking' }),
-  ).toHaveAttribute('href', `${root}/register`);
+  await expect(page.getByRole('link', { name: 'Manage tournament registration' })).toHaveAttribute(
+    'href',
+    `${root}/register`,
+  );
   await expect(page.locator('body')).not.toContainText('Private captain answer');
 });
 test('edits existing sessions inline and deletes single/bulk sessions without erasing history', async ({
@@ -536,7 +535,7 @@ test('reviews individual Freemod exceptions in bulk and automatically completes 
   const applied = await appliedResponse.json();
   const id = applied.sessions[0];
   await page.goto(`${root}/admin/referee/qualifiers/${id}`);
-  const exceptions = page.getByRole('region', { name: 'Qualifier exceptions' });
+  const exceptions = page.getByRole('region', { name: 'Score management' });
   await expect(
     exceptions.getByText('This mod is not allowed in FreeMod.', { exact: true }),
   ).toBeVisible();
@@ -545,18 +544,48 @@ test('reviews individual Freemod exceptions in bulk and automatically completes 
     await expect(page.locator('body')).toHaveJSProperty('scrollWidth', width);
     await page.screenshot({ path: `${evidence}/exceptions-${width}.png`, fullPage: true });
   }
-  await exceptions.getByLabel('Select all excluded scores', { exact: true }).check();
+  await exceptions.getByLabel('Select filtered scores', { exact: true }).check();
   await exceptions
-    .getByLabel('Override reason', { exact: true })
+    .getByLabel('Correction reason', { exact: true })
     .fill('Organizer reviewed and accepted individual exception');
-  await exceptions.getByRole('button', { name: 'Include 1 selected scores', exact: true }).click();
+  await exceptions.getByLabel('Bulk score action').selectOption('INCLUDE');
+  await exceptions.getByRole('button', { name: 'Preview impact', exact: true }).click();
+  await expect(exceptions.getByRole('region', { name: 'Correction impact preview' })).toBeVisible();
+  await exceptions.getByRole('button', { name: 'Apply reviewed corrections', exact: true }).click();
+  await expect(page.getByText('Score corrections saved.', { exact: true })).toBeVisible();
   await expect(
     page.getByText(
-      'Complete eligible run verified. Optional runs can still synchronize. IRC stays open; official seedings are finalized separately.',
+      'Complete played run verified. Scoring exceptions remain reviewable and optional runs can still synchronize. IRC stays open; official seedings are finalized separately.',
       { exact: true },
     ),
   ).toBeVisible();
   expect(await db.qualifierScore.count({ where: { lobbyId: id, eligible: true } })).toBe(2);
+  await exceptions.getByRole('button', { name: 'Reprocess scoring', exact: true }).click();
+  await exceptions.getByLabel('Score normalization', { exact: true }).selectOption('BUILT_IN');
+  await exceptions.getByRole('button', { name: 'Preview stage impact', exact: true }).click();
+  await expect(exceptions.getByRole('region', { name: 'Correction impact preview' })).toBeVisible();
+  await exceptions.getByRole('button', { name: 'Apply reviewed corrections', exact: true }).click();
+  await expect(exceptions.getByLabel('Score normalization', { exact: true })).toHaveCount(0);
+  const normalized = await db.qualifierScore.findMany({
+    where: { lobbyId: id },
+    orderBy: { raw: 'asc' },
+  });
+  expect(normalized.map((s) => [s.raw, s.adjusted])).toEqual([
+    [100, 94],
+    [200, 166],
+  ]);
+  await exceptions.getByLabel('Show scores', { exact: true }).selectOption('all');
+  const performance = exceptions
+    .getByRole('row')
+    .filter({ has: page.getByLabel(`Select score ${accounts[1].osuId}`, { exact: true }) });
+  await performance.getByRole('button', { name: 'Edit', exact: true }).click();
+  await performance.getByLabel('Raw score', { exact: true }).fill('106');
+  await performance.getByRole('button', { name: 'Preview', exact: true }).click();
+  await exceptions.getByRole('button', { name: 'Apply reviewed corrections', exact: true }).click();
+  await expect(performance.getByLabel('Raw score', { exact: true })).toHaveCount(0);
+  expect(
+    await db.qualifierScore.findFirstOrThrow({ where: { lobbyId: id, osuId: accounts[1].osuId } }),
+  ).toMatchObject({ raw: 106, adjusted: 100, source: 'MANUAL' });
   const providerFile = `${process.env.E2E_OSU_FIXTURE_DIR}/match-990002.json`;
   const providerHistory = JSON.parse(await readFile(providerFile, 'utf8'));
   providerHistory.events.push({

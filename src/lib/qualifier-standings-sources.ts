@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db as rootDb } from './db';
 import { historicalScoring, tournamentScoring } from './gameplay-scoring';
 import { convertedScore } from './match-engine';
+import { qualifierEffectiveScore } from './qualifier-score';
 import { matchRulesSchema } from './match-rules';
 import { AppError, can, type Actor } from './permissions';
 import { publicTournamentWhere } from './public-visibility';
@@ -13,6 +14,7 @@ import { scopedDb } from './scoped-db';
 import {
   calculateQualifierStandings,
   QUALIFIER_CALCULATION_VERSION,
+  PREVIOUS_QUALIFIER_CALCULATION_VERSION,
   LEGACY_QUALIFIER_CALCULATION_VERSION,
   canonicalQualifierJson,
   qualifierSourceHash,
@@ -190,9 +192,11 @@ export async function loadQualifierCalculation(
       const saved = qualifierStandingSnapshot(latest.snapshot);
       if (
         saved.state === 'FINALIZED' &&
-        saved.calculation.calculationVersion === LEGACY_QUALIFIER_CALCULATION_VERSION
+        [LEGACY_QUALIFIER_CALCULATION_VERSION, PREVIOUS_QUALIFIER_CALCULATION_VERSION].includes(
+          saved.calculation.calculationVersion,
+        )
       )
-        calculationVersion = LEGACY_QUALIFIER_CALCULATION_VERSION;
+        calculationVersion = saved.calculation.calculationVersion;
     }
   }
   const stage = await tx.tournamentStage.findFirst({
@@ -256,11 +260,16 @@ export async function loadQualifierCalculation(
       maps: lobby.poolRevision.slots
         .map((s) => ({ slotName: s.name, beatmapId: s.beatmapId }))
         .sort((a, b) => (a.slotName < b.slotName ? -1 : a.slotName > b.slotName ? 1 : 0)),
-      originalScores: lobby.scores.map(({ eligible, eligibilityReason, ...s }) => ({
-        ...s,
-        ...(eligible === false || eligibilityReason ? { eligible, eligibilityReason } : {}),
-        updatedAt: s.updatedAt.toISOString(),
-      })),
+      originalScores: lobby.scores.map(
+        ({ eligible, eligibilityReason, passed, eligibilityOverride, ...s }) => ({
+          ...s,
+          ...(calculationVersion === QUALIFIER_CALCULATION_VERSION
+            ? { passed, eligibilityOverride }
+            : {}),
+          ...(eligible === false || eligibilityReason ? { eligible, eligibilityReason } : {}),
+          updatedAt: s.updatedAt.toISOString(),
+        }),
+      ),
       ...(lobby.games.length
         ? {
             games: lobby.games.map((game) => ({
@@ -362,7 +371,16 @@ export async function loadQualifierCalculation(
               teamScores.map((s) => ({ ...s, mods: s.mods as string[] })),
             );
       try {
-        const expected = convertedScore(rules, score.raw, mods, score.slotName).adjusted;
+        const expected =
+          calculationVersion === QUALIFIER_CALCULATION_VERSION
+            ? qualifierEffectiveScore(
+                rules,
+                lobbyPolicy.success ? lobbyPolicy.data : policy,
+                score.raw,
+                mods,
+                score.slotName,
+              )
+            : convertedScore(rules, score.raw, mods, score.slotName).adjusted;
         if (expected !== score.adjusted)
           add(
             'NORMALIZATION_MISMATCH',
@@ -381,6 +399,9 @@ export async function loadQualifierCalculation(
           'WARNING',
         );
       scores.push({
+        ...(calculationVersion === QUALIFIER_CALCULATION_VERSION
+          ? { passed: score.passed, eligibilityOverride: score.eligibilityOverride }
+          : {}),
         id: score.id,
         lobbyId: lobby.id,
         participantId: localOwners.get(score.osuId) || '',

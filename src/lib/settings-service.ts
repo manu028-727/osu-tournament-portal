@@ -136,6 +136,10 @@ export async function applySettingsAction(
       settings: {
         update: {
           ...settings,
+          qualifierBookingPolicy:
+            settings.qualifierBookingPolicy === null
+              ? Prisma.DbNull
+              : settings.qualifierBookingPolicy,
           registrationPolicy:
             settings.registrationPolicy === null ? Prisma.DbNull : settings.registrationPolicy,
         },

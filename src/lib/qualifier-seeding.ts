@@ -6,7 +6,8 @@ import {
   type QualifierPolicy,
 } from './qualifier-policy';
 
-export const QUALIFIER_CALCULATION_VERSION = 'qualifier-seeding/2';
+export const QUALIFIER_CALCULATION_VERSION = 'qualifier-seeding/3';
+export const PREVIOUS_QUALIFIER_CALCULATION_VERSION = 'qualifier-seeding/2';
 export const LEGACY_QUALIFIER_CALCULATION_VERSION = 'qualifier-seeding/1';
 export const MATCH_COST_REFERENCE = {
   variant: 'OSUPLUS_QUALIFIER_COHORT_V1',
@@ -26,6 +27,8 @@ export type QualifierIssue = {
   scoreId?: string;
 };
 export type QualifierSourceScore = {
+  passed?: boolean | null;
+  eligibilityOverride?: string | null;
   eligible?: boolean;
   eligibilityReason?: string;
   id: string;
@@ -83,6 +86,7 @@ export type QualifierStandingRow = {
   runs: {
     run: number;
     complete: boolean;
+    playedComplete?: boolean;
     maps: QualifierMapSelection[];
     comparisonValue: number | null;
   }[];
@@ -189,6 +193,7 @@ export function calculateQualifierStandings(
   calculationVersion = QUALIFIER_CALCULATION_VERSION,
 ): QualifierCalculation {
   const legacy = calculationVersion === LEGACY_QUALIFIER_CALCULATION_VERSION;
+  const playedCompletion = calculationVersion === QUALIFIER_CALCULATION_VERSION;
   const policy = qualifierPolicySchema.parse(input.policy);
   const source: QualifierSeedingInput = {
     ...input,
@@ -350,6 +355,29 @@ export function calculateQualifierStandings(
       return {
         run,
         complete: maps.length === mapNames.length && mapNames.length > 0,
+        ...(playedCompletion
+          ? {
+              playedComplete:
+                mapNames.length > 0 &&
+                mapNames.every(
+                  (slotName) =>
+                    new Set(
+                      source.scores
+                        .filter(
+                          (score) =>
+                            score.participantId === participant.id &&
+                            score.slotName === slotName &&
+                            score.run === run &&
+                            score.verified &&
+                            Number.isSafeInteger(score.raw) &&
+                            score.raw >= 0 &&
+                            participant.roster.includes(score.osuId),
+                        )
+                        .map((score) => score.osuId),
+                    ).size >= policy.requiredPlayers,
+                ),
+            }
+          : {}),
         maps,
         comparisonValue: null as number | null,
       };
@@ -362,10 +390,18 @@ export function calculateQualifierStandings(
             `${participant.name}: Run ${run.run} does not contain a complete eligible mappool.`,
             { participantId: participant.id },
           );
-    if (!legacy && participant.eligible !== false && !runs.some((run) => run.complete))
-      issue('INCOMPLETE_RUN', `${participant.name} does not contain a complete eligible run.`, {
-        participantId: participant.id,
-      });
+    if (
+      !legacy &&
+      participant.eligible !== false &&
+      !runs.some((run) => (playedCompletion ? run.playedComplete : run.complete))
+    )
+      issue(
+        'INCOMPLETE_RUN',
+        `${participant.name} does not contain a complete ${playedCompletion ? 'played' : 'eligible'} run.`,
+        {
+          participantId: participant.id,
+        },
+      );
     return { participant, runs };
   });
   // One equal-weight reference per entrant, averaged over their complete runs, is frozen before choosing runs.
@@ -417,7 +453,7 @@ export function calculateQualifierStandings(
     }
     const eligibleRun = runs.some(
       (run) =>
-        run.complete &&
+        (playedCompletion ? run.playedComplete : run.complete) &&
         (policy.runSelection === 'FIRST_RUN'
           ? run.run === 1
           : policy.runSelection === 'SECOND_RUN' && policy.runs === 2

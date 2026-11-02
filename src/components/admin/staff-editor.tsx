@@ -13,7 +13,7 @@ import {
   ConfirmButton,
   Field,
   LoadingState,
-  Modal,
+  EditorPanel,
   SaveButton,
   SectionTitle,
   useResource,
@@ -121,6 +121,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
           <Button
             size="sm"
             onClick={() => {
+              if (dirty && !window.confirm(tr('Discard unsaved staff changes?'))) return;
               setMember({
                 osuId: 0,
                 bio: '',
@@ -311,6 +312,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                   variant="outline"
                   size="sm"
                   onClick={() => {
+                    if (dirty && !window.confirm(tr('Discard unsaved staff changes?'))) return;
                     setMember({ ...m });
                     setDirty(false);
                   }}
@@ -368,7 +370,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
           }
         />
       )}
-      <Modal
+      <EditorPanel
         open={!!member}
         onOpenChange={closeMember}
         title={member?.id ? tr('Edit staff profile') : tr('Add staff member')}
@@ -499,8 +501,12 @@ export function StaffEditor({ actor }: { actor: Actor }) {
             </div>
           </form>
         )}
-      </Modal>
-      <Modal open={categoryOpen} onOpenChange={setCategoryOpen} title={tr('Staff categories')}>
+      </EditorPanel>
+      <EditorPanel
+        open={categoryOpen}
+        onOpenChange={setCategoryOpen}
+        title={tr('Staff categories')}
+      >
         <div className="mb-6 space-y-2">
           {data.categories.map((c) => (
             <div key={c.id} className="flex items-center gap-3 rounded-lg border p-3">
@@ -580,7 +586,7 @@ export function StaffEditor({ actor }: { actor: Actor }) {
             )}
           </div>
         </form>
-      </Modal>
+      </EditorPanel>
     </>
   );
 }
@@ -623,7 +629,7 @@ function StaffBulkDialog({
     (!needsExisting || !missing) &&
     (operation !== 'REASSIGN' || (!!destinationCategoryId && destinationCategoryId !== categoryId));
   return (
-    <Modal
+    <EditorPanel
       open
       title={tr('Update {0} public staff listings', members.length)}
       onOpenChange={() => {
@@ -801,6 +807,6 @@ function StaffBulkDialog({
           </SaveButton>
         </div>
       </form>
-    </Modal>
+    </EditorPanel>
   );
 }

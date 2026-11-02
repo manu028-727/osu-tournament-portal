@@ -30,10 +30,15 @@ tournaments or fake player accounts.
 Use the EN/IT control beside appearance to choose English or Italian. Tournament
 content stays in the language its authors used.
 
-Players use **Registration and qualifiers** in tournament navigation. Organizers
-configure registration from **Teams & players / Registration settings**. Use
+Players use separate **Registration** and **Qualifier booking** pages. Registration
+manages tournament entry and rosters; booking reserves a session without changing
+registration. Organizers configure their independent deadlines in Tournament Settings.
+Use **Teams & players / Registration settings** for eligibility and roster fields, and
 **Matches / Qualifier sessions** for scheduling and refereeing, and **Qualifier
-results** for stage-selected multiplayer imports, standings and seedings.
+results** for stage-selected multiplayer imports, standings and seedings. Its score
+manager offers inline corrections, bulk eligibility actions and a cohort impact
+preview. **Reprocess scoring** explicitly reviews normalization and saved session
+policies; finalized seedings must be reopened before any correction is applied.
 
 See [deployment and configuration](docs/ARCHITECTURE.md#deployment-and-configuration)
 for proxy configuration and troubleshooting.

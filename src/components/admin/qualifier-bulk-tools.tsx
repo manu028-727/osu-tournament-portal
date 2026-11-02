@@ -12,7 +12,7 @@ import type { QualifierData, QualifierView } from '@/lib/qualifiers-types';
 import type { QualifierAction } from '@/lib/qualifiers-validation';
 import { qualifierSessionPlan, type NewQualifierSession } from '@/lib/qualifier-scheduling';
 import { Button } from '../ui/button';
-import { action, Field, Modal, SaveButton, useTask, useUnsaved } from './shared';
+import { action, Field, EditorPanel, SaveButton, useTask, useUnsaved } from './shared';
 import { DeleteQualifierSessions, QualifierSessionIdentity } from './qualifier-session-tools';
 import { qualifierCompletion } from '@/lib/qualifier-progress';
 
@@ -1131,7 +1131,7 @@ export function QualifierLobbyList({
         </table>
       </div>
       {!visible.length && <p className="py-8 text-muted">{tr('No matching qualifier lobbies.')}</p>}
-      <Modal
+      <EditorPanel
         open={!!dialog}
         onOpenChange={(open) => {
           if (!open && window.confirm(tr('Close this form and discard unsaved changes?')))
@@ -1165,7 +1165,7 @@ export function QualifierLobbyList({
             close={close}
           />
         )}
-      </Modal>
+      </EditorPanel>
     </>
   );
 }

@@ -1,22 +1,20 @@
-import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { Prisma } from '@/generated/prisma/client';
 import { db } from './db';
 import { scopedDb } from './scoped-db';
+import {
+  qualifierNeverStarted,
+  removeQualifierParticipants,
+  applyQualifierParticipantMove,
+} from './qualifiers-bulk';
 import { AppError, type Actor } from './permissions';
-import { publicTournamentWhere } from './public-visibility';
 import { registrationPolicySchema, type RegistrationAction } from './registration-policy';
 import { profileSchema, osuGet } from './osu';
 import { teamFields } from './teams-validation';
 import { writeTeam, teamInclude } from './teams-service';
 import { inheritedRules } from './gameplay-scoring';
-import {
-  applyQualifierParticipantMove,
-  removeQualifierParticipants,
-  qualifierNeverStarted,
-} from './qualifiers-bulk';
-import { qualifierActionSchema } from './qualifiers-validation';
-import { qualifierPolicySchema } from './qualifier-policy';
+import { registrationConfiguration as configuration } from './registration-configuration';
+import { applyQualifierBooking } from './qualifier-booking-service';
 import type { RegistrationData } from './registration-types';
 
 const json = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value));
@@ -29,26 +27,6 @@ const profile = profileSchema.extend({
 type Profile = z.infer<typeof profile>;
 const profileCache = new Map<string, { expires: number; value: Profile }>();
 
-async function configuration(tx: Prisma.TransactionClient, tournamentId: string) {
-  const tournament = await tx.tournament.findFirst({
-    where: { id: tournamentId, ...publicTournamentWhere },
-    include: { settings: true },
-  });
-  if (!tournament?.settings) throw new AppError('Tournament not found.', 404);
-  const policy = registrationPolicySchema.parse(tournament.settings.registrationPolicy || {});
-  const policyToken = createHash('sha256')
-    .update(
-      JSON.stringify({
-        policy,
-        format: tournament.format,
-        status: tournament.status,
-        mode: tournament.gameMode,
-        rules: tournament.settings.matchRules,
-      }),
-    )
-    .digest('hex');
-  return { tournament, policy, policyToken };
-}
 function registrationOpen(
   policy: z.infer<typeof registrationPolicySchema>,
   status: string,
@@ -124,33 +102,15 @@ export async function registrationData(
         },
         select: { id: true },
       })));
-  const sessions = await db.qualifierLobby.findMany({
-    where: {
-      deletedAt: null,
-      tournamentId,
-      status: { not: 'CANCELLED' },
-      stage: { kind: 'QUALIFIERS', archivedAt: null },
-    },
-    select: {
-      id: true,
-      code: true,
-      version: true,
-      stageId: true,
-      status: true,
-      scheduledAt: true,
-      capacity: true,
-      bookingOpen: true,
-      bookingClosesAt: true,
-      policy: true,
-      rules: true,
-      participants: true,
-      stage: { select: { name: true } },
-      entries: { select: { teamId: true } },
-    },
-    orderBy: [{ scheduledAt: 'asc' }, { code: 'asc' }],
-  });
+  const {
+    bookingEnabled: _booking,
+    bookingClosesAt: _bookingDeadline,
+    ...registrationPolicy
+  } = policy;
+  void _booking;
+  void _bookingDeadline;
   return {
-    policy,
+    policy: registrationPolicy,
     policyToken,
     format: tournament.format,
     gameMode: tournament.gameMode,
@@ -184,21 +144,6 @@ export async function registrationData(
             })),
         }
       : null,
-    sessions: sessions.map((session) => {
-      const { policy: snapshot, rules, participants: _participants, entries, ...view } = session;
-      const runPolicy = qualifierPolicySchema.parse(
-        snapshot || {
-          requiredPlayers: inheritedRules(rules, tournament.settings!.gameplayScoring).teamSize,
-        },
-      );
-      return {
-        ...view,
-        requiredPlayers: runPolicy.requiredPlayers,
-        runs: runPolicy.runs,
-        usedPlayers: entries.length * runPolicy.requiredPlayers,
-        booked: !!team && entries.some((entry) => entry.teamId === team.id),
-      };
-    }),
   };
 }
 export async function applyRegistration(
@@ -218,115 +163,7 @@ export async function applyRegistration(
     where: { tournamentId, members: { some: { osuId: actor.osuId, captain: true } } },
     include: teamInclude,
   });
-  if (input.type === 'registration.booking') {
-    if (
-      !owned ||
-      (input.lobbyId && owned.status !== 'APPROVED') ||
-      owned.version !== input.teamVersion
-    )
-      throw new AppError('Only the current captain of an approved registration can book.', 403);
-    if (
-      !policy.bookingEnabled ||
-      (policy.bookingClosesAt && new Date(policy.bookingClosesAt) <= new Date())
-    )
-      throw new AppError('Qualifier booking is closed.', 409);
-    if (input.lobbyId)
-      for (const member of owned.members) {
-        if (
-          (policy.minRank || policy.maxRank) &&
-          (!member.registrationRank ||
-            (policy.minRank && member.registrationRank < policy.minRank) ||
-            (policy.maxRank && member.registrationRank > policy.maxRank))
-        )
-          throw new AppError('A player does not meet the configured rank eligibility.');
-        if (policy.countries.length && !policy.countries.includes(member.participant.country || ''))
-          throw new AppError('A player does not meet the configured country eligibility.');
-      }
-    const source = await tx.qualifierLobby.findFirst({
-      where: {
-        tournamentId,
-        stageId: input.stageId,
-        status: { not: 'CANCELLED' },
-        entries: { some: { teamId: owned.id } },
-      },
-      include: { scores: true, events: true },
-    });
-    if (source && (!qualifierNeverStarted(source) || source.version !== input.sourceVersion))
-      throw new AppError(
-        'The current reservation changed or has started. Contact an organizer.',
-        409,
-      );
-    const scoped = scopedDb(tx, tournamentId);
-    if (!input.lobbyId) {
-      if (!source) return { id: owned.id };
-      await removeQualifierParticipants(
-        scoped,
-        actor,
-        tournamentId,
-        qualifierActionSchema.parse({
-          type: 'qualifier.participants.remove',
-          id: source.id,
-          baseVersion: source.version,
-          teamIds: [owned.id],
-          reason: 'Captain cancelled qualifier reservation',
-        }) as Extract<
-          import('./qualifiers-validation').QualifierAction,
-          { type: 'qualifier.participants.remove' }
-        >,
-        { captainTeamId: owned.id },
-      );
-    } else {
-      const target = await tx.qualifierLobby.findFirst({
-        where: {
-          deletedAt: null,
-          id: input.lobbyId,
-          tournamentId,
-          stageId: input.stageId,
-          stage: { kind: 'QUALIFIERS', archivedAt: null },
-        },
-        include: { scores: true, events: true },
-      });
-      if (!target || target.version !== input.baseVersion || !qualifierNeverStarted(target))
-        throw new AppError(
-          'This session changed or has started. Reload the available sessions.',
-          409,
-        );
-      if (
-        !target.bookingOpen ||
-        !target.scheduledAt ||
-        target.scheduledAt <= new Date() ||
-        (target.bookingClosesAt && target.bookingClosesAt <= new Date())
-      )
-        throw new AppError('This session is closed for booking.', 409);
-      if (source?.id === target.id) return { id: owned.id };
-      await applyQualifierParticipantMove(
-        scoped,
-        actor,
-        tournamentId,
-        {
-          type: 'qualifier.participants.move',
-          fromLobbyId: source?.id || null,
-          sourceVersion: source?.version,
-          toLobbyId: target.id,
-          baseVersion: target.version,
-          teamIds: [owned.id],
-          reason: 'Captain qualifier reservation',
-        },
-        { captainTeamId: owned.id },
-      );
-    }
-    await tx.auditLog.create({
-      data: {
-        tournamentId,
-        actorId: actor.id,
-        action: input.type,
-        entityType: 'Team',
-        entityId: owned.id,
-        details: json(input),
-      },
-    });
-    return { id: owned.id };
-  }
+  if (input.type === 'registration.booking') return applyQualifierBooking(tx, actor, input);
   if (!registrationOpen(policy, tournament.status, !!owned))
     throw new AppError('Registration or roster editing is closed.', 409);
   if (input.baseVersion !== (owned?.version || 0))

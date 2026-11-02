@@ -10,6 +10,10 @@ export const qualifierPolicySchema = z
     requiredPlayers: z.number().int().min(1).max(16).default(1),
     teamAggregation: z.enum(['SUM', 'AVERAGE', 'TOP_N']).default('SUM'),
     rawAggregation: z.enum(['TOTAL', 'AVERAGE']).default('TOTAL'),
+    normalization: z.enum(['REPORTED', 'BUILT_IN']).optional(),
+    multiplierPolicy: z.enum(['RULES', 'NONE']).optional(),
+    rounding: z.enum(['NONE', 'FLOOR', 'ROUND']).optional(),
+    countFailed: z.boolean().optional(),
   })
   .superRefine((policy, ctx) => {
     if (policy.runs === 1 && policy.runSelection === 'SECOND_RUN')

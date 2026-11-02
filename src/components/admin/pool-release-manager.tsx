@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { StateBadge } from '@/components/ui/badge';
-import { action, Field, Modal, SaveButton, useTask } from './shared';
+import { action, Field, EditorPanel, SaveButton, useTask } from './shared';
 
 type ReleaseStage = {
   id: string;
@@ -56,7 +56,7 @@ export function PoolReleaseManager({
         <Send size={14} />
         {tr('Pool releases')}
       </Button>
-      <Modal
+      <EditorPanel
         open={open}
         onOpenChange={(next) => {
           if (!busy) setOpen(next);
@@ -170,7 +170,7 @@ export function PoolReleaseManager({
             </SaveButton>
           </div>
         </form>
-      </Modal>
+      </EditorPanel>
     </>
   );
 }

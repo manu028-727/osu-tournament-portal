@@ -4,13 +4,7 @@ import { assertOwnedMedia } from './media-access';
 import { actorForTournament } from './auth';
 import { PLATFORM_PERMISSIONS } from './permissions';
 import { type AdminAction } from './validation';
-import {
-  type Actor,
-  type PermissionKey,
-  assertPermission,
-  assertRoleGrant,
-  AppError,
-} from './permissions';
+import { type Actor, type PermissionKey, assertPermission, AppError } from './permissions';
 import { cleanHtml } from './rich-text';
 import { beatmaps, osuProfile } from './osu';
 import { Prisma } from '@/generated/prisma/client';
@@ -47,6 +41,8 @@ import {
 import type { PoolingAction } from './pooling-validation';
 import { applyStageWorkflowAction, stageConfigurationToken } from './stage-workflows';
 import { applyStaffBulkAction } from './staff-bulk';
+import { applyUserRoles } from './user-roles-service';
+import { roleConfiguration } from './role-configuration';
 export function actionPermission(a: AdminAction): PermissionKey {
   if (a.type === 'stage.duplicate') return 'mappools.create';
   if (a.type === 'stage.rules.patch' || a.type === 'stage.rules.apply') return 'matches.manage';
@@ -68,7 +64,7 @@ export function actionPermission(a: AdminAction): PermissionKey {
     return `${'slug' in a && a.slug === 'home' ? 'homepage' : 'rules'}.${a.type === 'page.publish' || a.type === 'page.unpublish' ? 'publish' : 'edit'}` as PermissionKey;
   if (a.type.startsWith('staff.')) return 'staff.edit';
   if (a.type.startsWith('role.')) return 'roles.manage';
-  if (a.type === 'user.roles') return 'users.manage';
+  if (a.type === 'user.roles' || a.type === 'user.roles.bulk') return 'users.manage';
   if (a.type === 'settings.save') return 'settings.manage';
   if (a.type === 'stage.delete') return 'mappools.delete';
   if (a.type === 'stage.save') return 'id' in a && a.id ? 'mappools.edit' : 'mappools.create';
@@ -247,6 +243,8 @@ export async function executeAction(
           break;
         }
         case 'team.save':
+        case 'team.patch':
+        case 'team.bulk':
         case 'team.status':
         case 'team.delete':
         case 'team.import.preview':
@@ -375,7 +373,7 @@ export async function executeAction(
           ) {
             if (await tx.qualifierLobby.count({ where: { stageId: id } }))
               throw new AppError(
-                'Qualifier policy is snapshotted by existing sessions. Create a new qualifier stage to use a different policy.',
+                'Qualifier policy is snapshotted by existing sessions. Use Reprocess scoring in Qualifier results to review changes across the stage.',
                 409,
               );
           }
@@ -639,6 +637,8 @@ export async function executeAction(
                 include: { users: true, permissions: true },
               })
             : null;
+          if (role && a.baseRole && a.baseRole !== roleConfiguration(role))
+            throw new AppError('Role configuration changed. Reload before saving.', 409);
           if ((role?.templateKey || role?.systemKey) === 'Owner')
             throw new AppError('The Owner role is protected.', 403);
           if (role?.users.some((u) => u.userId === actor.id))
@@ -671,6 +671,8 @@ export async function executeAction(
             where: { id: a.id },
             include: { users: true, permissions: true },
           });
+          if (a.baseRole && a.baseRole !== roleConfiguration(role))
+            throw new AppError('Role configuration changed. Reload before saving.', 409);
           if (role.systemKey || role.templateKey)
             throw new AppError('Default system roles cannot be deleted.', 403);
           if (role.users.some((u) => u.userId === actor.id))
@@ -686,60 +688,28 @@ export async function executeAction(
           break;
         }
         case 'user.roles': {
-          const target = await tx.user.findUniqueOrThrow({
-            where: { id: a.userId },
-            include: {
-              roles: {
-                where: { tournamentId },
-                include: { role: { include: { permissions: true } } },
-              },
-            },
-          });
-          const roles = await tx.role.findMany({
-            where: { id: { in: [...new Set(a.roleIds)] } },
-            include: { permissions: true },
-          });
-          if (roles.length !== new Set(a.roleIds).size)
-            throw new AppError('One of the selected roles no longer exists.');
-          const owner = roles.find(
-            (r) => (('templateKey' in r && r.templateKey) || r.systemKey) === 'Owner',
-          );
-          assertRoleGrant(
-            actor,
-            target.id,
-            roles.flatMap((r) => r.permissions.map((p) => p.permissionKey as PermissionKey)),
-            !!owner,
-          );
-          if (
-            target.roles.some((r) => (r.role.templateKey || r.role.systemKey) === 'Owner') &&
-            !actor.platformAdmin &&
-            !actor.roles.some((r) => r.systemKey === 'Owner')
-          )
-            throw new AppError('Only an Owner can change another Owner’s roles.', 403);
-          if (
-            target.roles.some((r) => (r.role.templateKey || r.role.systemKey) === 'Owner') &&
-            !owner
-          ) {
-            const ownerRole = target.roles.find(
-              (r) => (r.role.templateKey || r.role.systemKey) === 'Owner',
-            )!;
-            if ((await tx.userRole.count({ where: { roleId: ownerRole.roleId } })) <= 1)
-              throw new AppError('The last Owner cannot be removed.', 409);
+          result = await applyUserRoles(tx, actor, tournamentId, a);
+          entityId = a.userId;
+          break;
+        }
+        case 'user.roles.bulk': {
+          if (new Set(a.users.map((u) => u.userId)).size !== a.users.length)
+            throw new AppError('Select each user once.');
+          const changes = [];
+          for (const user of a.users) {
+            const roleIds =
+              a.operation === 'ADD'
+                ? [...new Set([...user.baseRoleIds, ...a.roleIds])]
+                : user.baseRoleIds.filter((id) => !a.roleIds.includes(id));
+            changes.push(
+              await applyUserRoles(tx, actor, tournamentId, {
+                ...user,
+                roleIds,
+                baseRoles: a.baseRoles,
+              }),
+            );
           }
-          // Also protect removal of privileges the actor does not hold.
-          if (
-            target.roles.some((r) =>
-              r.role.permissions.some(
-                (p) => !actor.permissions.includes(p.permissionKey as PermissionKey),
-              ),
-            )
-          )
-            throw new AppError('This account contains protected permissions.', 403);
-          await tx.userRole.deleteMany({ where: { userId: target.id } });
-          await tx.userRole.createMany({
-            data: roles.map((r) => ({ userId: target.id, roleId: r.id })),
-          });
-          entityId = target.id;
+          result = { changes };
           break;
         }
         case 'settings.save':
@@ -765,13 +735,19 @@ export async function executeAction(
             entityType: a.type.split('.')[0],
             entityId,
             details:
-              a.type === 'match.delete'
-                ? { code: a.confirmCode, reason: a.reason }
-                : a.type.startsWith('pooling.') ||
-                    a.type.startsWith('matches.') ||
-                    a.type === 'staff.bulk'
-                  ? JSON.parse(JSON.stringify(a))
-                  : {},
+              a.type === 'team.patch' ||
+              a.type === 'team.bulk' ||
+              a.type.startsWith('role.') ||
+              a.type === 'user.roles' ||
+              a.type === 'user.roles.bulk'
+                ? JSON.parse(JSON.stringify({ input: a, result }))
+                : a.type === 'match.delete'
+                  ? { code: a.confirmCode, reason: a.reason }
+                  : a.type.startsWith('pooling.') ||
+                      a.type.startsWith('matches.') ||
+                      a.type === 'staff.bulk'
+                    ? JSON.parse(JSON.stringify(a))
+                    : {},
           },
         });
       return result;

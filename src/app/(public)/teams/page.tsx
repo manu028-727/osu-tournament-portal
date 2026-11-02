@@ -31,7 +31,13 @@ export default async function Teams({
         href="/register"
         className="mb-5 inline-flex rounded-full bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground"
       >
-        {tr('Manage registration and qualifier booking')}
+        {tr('Manage tournament registration')}
+      </Link>
+      <Link
+        href="/qualifier-booking"
+        className="mb-5 ml-2 inline-flex rounded-full border px-5 py-2 text-sm font-semibold"
+      >
+        {tr('Qualifier booking')}
       </Link>
       <ListPagination
         page={result.page}

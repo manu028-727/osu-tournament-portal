@@ -245,41 +245,46 @@ async function finalize() {
 }
 
 describe('qualifier standings persistence (transaction delegate integration)', () => {
-  it('keeps finalized version-1 source hashes until an explicit historical reopening', async () => {
-    const { calculation } = await loadQualifierCalculation(
-      data.tx,
-      'stage',
-      'tournament',
-      'qualifier-seeding/1',
-    );
-    data.versions.push({
-      id: 'historical',
-      tournamentId: 'tournament',
-      stageId: 'stage',
-      version: 1,
-      published: true,
-      sourceHash: calculation.sourceHash,
-      createdAt: new Date(),
-      snapshot: {
-        state: 'FINALIZED',
-        calculation,
-        calculatedBy: actor.id,
-        calculatedAt: new Date().toISOString(),
-        finalizedAt: new Date().toISOString(),
-        cutoff: null,
-        tieResolution: null,
-        seeds: [],
-      },
-    });
-    const unchanged = await loadQualifierCalculation(data.tx, 'stage', 'tournament');
-    expect(unchanged.calculation.sourceHash).toBe(calculation.sourceHash);
-    expect(unchanged.calculation.calculationVersion).toBe('qualifier-seeding/1');
-    data.versions[0].snapshot.state = 'REOPENED';
-    expect(
-      (await loadQualifierCalculation(data.tx, 'stage', 'tournament')).calculation
-        .calculationVersion,
-    ).toBe('qualifier-seeding/2');
-  });
+  it.each(['qualifier-seeding/1', 'qualifier-seeding/2'])(
+    'keeps finalized %s source hashes until an explicit historical reopening',
+    async (historicalVersion) => {
+      const { calculation } = await loadQualifierCalculation(
+        data.tx,
+        'stage',
+        'tournament',
+        historicalVersion,
+      );
+      data.versions.push({
+        id: 'historical',
+        tournamentId: 'tournament',
+        stageId: 'stage',
+        version: 1,
+        published: true,
+        sourceHash: calculation.sourceHash,
+        createdAt: new Date(),
+        snapshot: {
+          state: 'FINALIZED',
+          calculation,
+          calculatedBy: actor.id,
+          calculatedAt: new Date().toISOString(),
+          finalizedAt: new Date().toISOString(),
+          cutoff: null,
+          tieResolution: null,
+          seeds: [],
+        },
+      });
+      for (const score of data.lobby.scores)
+        Object.assign(score, { passed: null, eligibilityOverride: null });
+      const unchanged = await loadQualifierCalculation(data.tx, 'stage', 'tournament');
+      expect(unchanged.calculation.sourceHash).toBe(calculation.sourceHash);
+      expect(unchanged.calculation.calculationVersion).toBe(historicalVersion);
+      data.versions[0].snapshot.state = 'REOPENED';
+      expect(
+        (await loadQualifierCalculation(data.tx, 'stage', 'tournament')).calculation
+          .calculationVersion,
+      ).toBe('qualifier-seeding/3');
+    },
+  );
   it('saves a private provisional version, finalizes a new immutable version, and publishes only that snapshot', async () => {
     const provisional = await calculate();
     expect(provisional).toMatchObject({

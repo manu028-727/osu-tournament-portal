@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import type { BeatmapMetadata } from '@/lib/osu';
 import type { PoolingData } from '@/lib/pooling-types';
 import { parseImport } from '@/lib/validation';
-import { api, Field, Modal, SaveButton } from './shared';
+import { api, Field, EditorPanel, SaveButton } from './shared';
 import {
   type Candidate,
   type Skillset,
@@ -167,7 +167,7 @@ export function SuggestDialog({
     onClose,
   );
   return (
-    <Modal open title={tr('Suggest maps')} wide onOpenChange={() => close()}>
+    <EditorPanel open title={tr('Suggest maps')} wide onOpenChange={() => close()}>
       <form
         className="space-y-4"
         onSubmit={(event) => {
@@ -303,7 +303,7 @@ export function SuggestDialog({
           </SaveButton>
         </div>
       </form>
-    </Modal>
+    </EditorPanel>
   );
 }
 
@@ -375,7 +375,7 @@ export function BulkDialog({
     onClose,
   );
   return (
-    <Modal
+    <EditorPanel
       open
       title={tr('Edit {0} suggestions', candidates.length)}
       wide
@@ -570,6 +570,6 @@ export function BulkDialog({
           </SaveButton>
         </div>
       </form>
-    </Modal>
+    </EditorPanel>
   );
 }

@@ -41,7 +41,7 @@ import {
   action,
   Field,
   LoadingState,
-  Modal,
+  EditorPanel,
   SaveButton,
   SectionTitle,
   useResource,
@@ -193,6 +193,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
     setDirty(false);
   };
   const begin = (match?: MatchSummary) => {
+    if (dirty && !window.confirm(tr('Discard unsaved changes?'))) return;
     setPathId('');
     setAllowIneligible(false);
     setOverrideReason('');
@@ -935,7 +936,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
           {tr('No matches found.')}
         </div>
       )}
-      <Modal
+      <EditorPanel
         open={bulkOpen}
         onOpenChange={(open) => {
           if (open || !bulkDirty || window.confirm(tr('Discard unsaved bulk match changes?')))
@@ -1243,8 +1244,8 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
             </Button>
           </div>
         </form>
-      </Modal>
-      <Modal
+      </EditorPanel>
+      <EditorPanel
         open={pasteOpen}
         onOpenChange={(open) => {
           if (open || !pasteText.trim() || window.confirm(tr('Discard the pasted schedule?')))
@@ -1356,9 +1357,9 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
               : tr('Preview schedule')}
           </SaveButton>
         </form>
-      </Modal>
+      </EditorPanel>
       <DeleteMatchDialog match={deleting} onClose={() => setDeleting(null)} onDeleted={reload} />
-      <Modal
+      <EditorPanel
         open={create}
         onOpenChange={(open) => {
           if (!open && (!dirty || window.confirm(tr('Discard unsaved match changes?')))) {
@@ -1638,8 +1639,8 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
             </div>
           </form>
         )}
-      </Modal>
-      <Modal
+      </EditorPanel>
+      <EditorPanel
         title={tr('Multiplayer link · {0}', lobby?.code || '')}
         open={!!lobby}
         onOpenChange={(open) => {
@@ -1686,8 +1687,8 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
             <SaveButton busy={busy}>{tr('Save multiplayer link')}</SaveButton>
           </form>
         )}
-      </Modal>
-      <Modal
+      </EditorPanel>
+      <EditorPanel
         open={ruleEditor}
         onOpenChange={(open) => {
           if (!open && (!dirty || window.confirm(tr('Discard rule changes?')))) {
@@ -1768,7 +1769,7 @@ export function MatchesDashboard({ actor }: { actor: Actor }) {
             </div>
           </form>
         )}
-      </Modal>
+      </EditorPanel>
     </>
   );
 }

@@ -7,7 +7,7 @@ import { ArrowUpRight, Check, FlaskConical, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { can, type Actor } from '@/lib/permissions';
 import type { PoolingData } from '@/lib/pooling-types';
-import { Field, Modal, SaveButton } from './shared';
+import { Field, EditorPanel, SaveButton } from './shared';
 import {
   type Candidate,
   type Warning,
@@ -77,7 +77,7 @@ export function CandidateDialog({
     summary = reviewSummary(candidate, language),
     warning = warningFor(data, candidate);
   return (
-    <Modal open title={tr('Suggestion details')} wide onOpenChange={() => close()}>
+    <EditorPanel open title={tr('Suggestion details')} wide onOpenChange={() => close()}>
       <div className="space-y-4">
         <MapHeading candidate={candidate} />
         <div className="flex flex-wrap gap-3 text-xs">
@@ -180,7 +180,7 @@ export function CandidateDialog({
           )}
         </div>
       </div>
-    </Modal>
+    </EditorPanel>
   );
 }
 
@@ -210,7 +210,7 @@ export function ReviewDialog({
     onClose,
   );
   return (
-    <Modal
+    <EditorPanel
       open
       title={existing?.completed ? tr('Edit your playtest feedback') : tr('Playtest feedback')}
       onOpenChange={() => close()}
@@ -299,7 +299,7 @@ export function ReviewDialog({
           <SaveButton busy={busy}>{tr('Save completed review')}</SaveButton>
         </div>
       </form>
-    </Modal>
+    </EditorPanel>
   );
 }
 
@@ -365,7 +365,7 @@ export function SelectDialog({
     onClose,
   );
   return (
-    <Modal open title={tr('Select into stage draft')} onOpenChange={() => close()}>
+    <EditorPanel open title={tr('Select into stage draft')} onOpenChange={() => close()}>
       <form
         className="space-y-4"
         onSubmit={(event) => {
@@ -478,6 +478,6 @@ export function SelectDialog({
           </SaveButton>
         </div>
       </form>
-    </Modal>
+    </EditorPanel>
   );
 }

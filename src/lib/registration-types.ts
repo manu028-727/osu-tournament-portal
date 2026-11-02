@@ -1,6 +1,6 @@
 import type { RegistrationPolicy } from './registration-policy';
 export type RegistrationData = {
-  policy: RegistrationPolicy;
+  policy: Omit<RegistrationPolicy, 'bookingEnabled' | 'bookingClosesAt'>;
   policyToken: string;
   format: string;
   gameMode: string;
@@ -25,20 +25,4 @@ export type RegistrationData = {
       discordId: string;
     }[];
   } | null;
-  sessions: {
-    id: string;
-    code: string;
-    version: number;
-    stageId: string;
-    stage: { name: string };
-    status: string;
-    scheduledAt: Date | string | null;
-    capacity: number;
-    bookingOpen: boolean;
-    bookingClosesAt: Date | string | null;
-    requiredPlayers: number;
-    runs: number;
-    usedPlayers: number;
-    booked: boolean;
-  }[];
 };

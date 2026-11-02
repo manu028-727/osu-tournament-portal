@@ -5,7 +5,7 @@ import { useDialogClose } from '@/components/unsaved-navigation';
 import { Pencil, ShieldAlert, Tags, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { PoolingData } from '@/lib/pooling-types';
-import { ConfirmButton, Field, Modal, SaveButton } from './shared';
+import { ConfirmButton, Field, EditorPanel, SaveButton } from './shared';
 import { type Mutate } from './pooling-display';
 
 export function ConfigurationDialog({
@@ -53,7 +53,7 @@ export function ConfigurationDialog({
     if (!warningDirty || window.confirm(tr('Discard unsaved changes?'))) setWarning(next);
   };
   return (
-    <Modal open title={tr('Pooling configuration')} wide onOpenChange={() => close()}>
+    <EditorPanel open title={tr('Pooling configuration')} wide onOpenChange={() => close()}>
       <div
         className="flex gap-2 border-b pb-3"
         role="group"
@@ -292,6 +292,6 @@ export function ConfigurationDialog({
           </form>
         </div>
       )}
-    </Modal>
+    </EditorPanel>
   );
 }

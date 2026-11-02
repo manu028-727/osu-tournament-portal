@@ -16,7 +16,7 @@ export function RegistrationSettings({
   const update = (patch: Partial<RegistrationPolicy>) => onChange({ ...value, ...patch });
   return (
     <section id="registration" className="form-section space-y-4">
-      <h2 className="text-lg font-semibold">{tr('Registration and qualifier booking')}</h2>
+      <h2 className="text-lg font-semibold">{tr('Tournament registration')}</h2>
       <p className="text-sm text-muted">
         {tr(
           'Website entries and new organizer imports are automatically approved. Public rejection reasons and private notes remain separate.',
@@ -44,31 +44,28 @@ export function RegistrationSettings({
             <option value="INDIVIDUAL">{tr('Solo')}</option>
           </select>
         </Field>
-        {(['opensAt', 'closesAt', 'rosterClosesAt', 'bookingClosesAt'] as const).map(
-          (key, index) => (
-            <Field
-              key={key}
-              label={tr(
-                [
-                  'Registration opens (your timezone)',
-                  'Registration deadline (your timezone)',
-                  'Roster deadline (your timezone)',
-                  'Booking deadline (your timezone)',
-                ][index],
-              )}
-            >
-              <input
-                type="datetime-local"
-                value={localDateTimeInput(value[key])}
-                onChange={(event) =>
-                  update({
-                    [key]: event.target.value ? new Date(event.target.value).toISOString() : null,
-                  })
-                }
-              />
-            </Field>
-          ),
-        )}
+        {(['opensAt', 'closesAt', 'rosterClosesAt'] as const).map((key, index) => (
+          <Field
+            key={key}
+            label={tr(
+              [
+                'Registration opens (your timezone)',
+                'Registration deadline (your timezone)',
+                'Roster deadline (your timezone)',
+              ][index],
+            )}
+          >
+            <input
+              type="datetime-local"
+              value={localDateTimeInput(value[key])}
+              onChange={(event) =>
+                update({
+                  [key]: event.target.value ? new Date(event.target.value).toISOString() : null,
+                })
+              }
+            />
+          </Field>
+        ))}
         {(['minPlayers', 'maxPlayers', 'maxSubstitutes', 'minRank', 'maxRank'] as const).map(
           (key, index) => (
             <Field
@@ -123,14 +120,6 @@ export function RegistrationSettings({
             onChange={(event) => update({ rosterLocked: event.target.checked })}
           />
           {tr('Lock captain roster edits')}
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={value.bookingEnabled}
-            onChange={(event) => update({ bookingEnabled: event.target.checked })}
-          />
-          {tr('Allow captain qualifier booking')}
         </label>
       </div>
       <h3 className="font-semibold">{tr('Custom registration fields')}</h3>

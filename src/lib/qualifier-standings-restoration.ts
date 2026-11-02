@@ -3,6 +3,7 @@ import { scopedDb } from './scoped-db';
 
 import {
   QUALIFIER_CALCULATION_VERSION,
+  PREVIOUS_QUALIFIER_CALCULATION_VERSION,
   LEGACY_QUALIFIER_CALCULATION_VERSION,
   canonicalQualifierJson,
   resolveQualifierTies,
@@ -80,9 +81,11 @@ export async function rebindImportedQualifierStandings(
     try {
       const stored = qualifierStandingSnapshot(record.snapshot);
       if (
-        ![QUALIFIER_CALCULATION_VERSION, LEGACY_QUALIFIER_CALCULATION_VERSION].includes(
-          stored.calculation.calculationVersion,
-        )
+        ![
+          QUALIFIER_CALCULATION_VERSION,
+          PREVIOUS_QUALIFIER_CALCULATION_VERSION,
+          LEGACY_QUALIFIER_CALCULATION_VERSION,
+        ].includes(stored.calculation.calculationVersion)
       )
         throw new Error('Unknown calculation formula/version.');
       const key = `${record.stageId}:${stored.calculation.calculationVersion}`;

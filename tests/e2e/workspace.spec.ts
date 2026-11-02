@@ -3,7 +3,7 @@ import { PrismaClient } from '../../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 import sharp from 'sharp';
-import { unlink } from 'node:fs/promises';
+import { unlink, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 const db = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.TEST_DATABASE_URL }),
@@ -368,4 +368,204 @@ test('Website subsection links protect unsaved edits and mobile navigation stays
   await expect(page.getByRole('heading', { name: 'Rules editor' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/workspace-mobile.png', fullPage: true });
+});
+
+test('edits identities inline, batches registrations and CMS sections, and keeps contextual editors responsive', async ({
+  page,
+  context,
+}) => {
+  test.setTimeout(180000);
+  page.setDefaultTimeout(15000);
+  const evidence = '.data/zsum-comparison-20261102/browser';
+  await mkdir(evidence, { recursive: true });
+  await context.addCookies([
+    { name: 'tournament_session', value: raw, url: 'http://localhost:3001' },
+    { name: 'portal_language', value: 'en', url: 'http://localhost:3001' },
+  ]);
+  const slug = prefix + '-editing';
+  const created = await context.request.post('/api/tournaments', {
+    headers: { Origin: 'http://localhost:3001' },
+    data: { type: 'create', name: 'Editing workflow QA', slug, acronym: 'EDIT', gameMode: 'osu' },
+  });
+  expect(created.ok(), await created.text()).toBe(true);
+  const { id } = await created.json(),
+    root = `/t/${slug}/admin`;
+  await page.goto(root + '/teams');
+  await expect(page.getByText('No registered teams.', { exact: true })).toBeVisible();
+  for (const [index, name] of ['Alpha', 'Beta'].entries())
+    await db.team.create({
+      data: {
+        tournamentId: id,
+        name,
+        slug: name.toLowerCase(),
+        status: 'APPROVED',
+        published: true,
+        members: { create: { osuId: base + 2 + index, captain: true, position: 0 } },
+      },
+    });
+  await page.reload();
+  const alpha = page
+    .getByRole('row')
+    .filter({ has: page.getByLabel('Select Alpha', { exact: true }) });
+  await alpha.getByRole('button', { name: 'Edit name and seed for Alpha' }).click();
+  await alpha.getByLabel('Team name', { exact: true }).fill('Alpha revised');
+  await alpha.getByLabel('Seed', { exact: true }).fill('7');
+  await alpha.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Edit name and seed for Alpha revised' }),
+  ).toBeVisible();
+  expect(
+    (await db.team.findFirstOrThrow({ where: { tournamentId: id, slug: 'alpha' } })).seed,
+  ).toBe(7);
+  const revised = page
+    .getByRole('row')
+    .filter({ has: page.getByLabel('Select Alpha revised', { exact: true }) });
+  await revised.getByRole('button', { name: 'Edit name and seed for Alpha revised' }).click();
+  await revised.getByLabel('Team name', { exact: true }).fill('Unsaved inline identity');
+  page.once('dialog', (d) => d.dismiss());
+  await page.getByLabel('Search teams or players', { exact: true }).fill('Beta');
+  await expect(page.getByLabel('Search teams or players', { exact: true })).toHaveValue('');
+  await expect(revised.getByLabel('Team name', { exact: true })).toHaveValue(
+    'Unsaved inline identity',
+  );
+  await page.getByLabel('Select this page of entrants').check();
+  await page.getByLabel('Bulk team action').selectOption('HIDE');
+  await page.getByRole('button', { name: 'Apply to selected', exact: true }).click();
+  await confirm(page);
+  await expect(page.getByText('Entrants updated.', { exact: true })).toBeVisible();
+  expect(await db.team.count({ where: { tournamentId: id, published: false } })).toBe(2);
+  await expect(revised.getByLabel('Team name', { exact: true })).toHaveValue(
+    'Unsaved inline identity',
+  );
+  await revised.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(
+    page.getByText('This team changed in another session. Reload before saving.', { exact: true }),
+  ).toBeVisible();
+  await expect(revised.getByLabel('Team name', { exact: true })).toHaveValue(
+    'Unsaved inline identity',
+  );
+  await revised.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('button', { name: 'New team', exact: true }).click();
+  const panel = page.getByRole('dialog', { name: 'New team', exact: true });
+  await panel.getByLabel('Team name', { exact: true }).fill('Unsaved contextual entry');
+  await expect(panel).toHaveAttribute('aria-modal', 'false');
+  for (const theme of ['light', 'dark'] as const)
+    for (const width of [1920, 1366, 768, 390, 320]) {
+      await page.emulateMedia({ colorScheme: theme });
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.locator('body')).toHaveJSProperty('scrollWidth', width);
+      if (width > 1100)
+        expect(
+          await panel.evaluate((el) => el.parentElement!.getBoundingClientRect().bottom),
+        ).toBeLessThanOrEqual(900);
+      await page.screenshot({
+        path: `${evidence}/team-panel-${theme}-${width}.png`,
+        fullPage: true,
+      });
+    }
+  page.once('dialog', (d) => d.dismiss());
+  await panel.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(panel.getByLabel('Team name', { exact: true })).toHaveValue(
+    'Unsaved contextual entry',
+  );
+  page.once('dialog', (d) => d.accept());
+  await panel.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(panel).toHaveCount(0);
+  await page.goto(root + '/website?view=homepage');
+  await page.getByRole('button', { name: 'Add section', exact: true }).click();
+  await page.getByRole('button', { name: 'Add section', exact: true }).click();
+  await page.getByLabel('Select sections', { exact: true }).check();
+  await page.getByRole('button', { name: 'Hide', exact: true }).click();
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(
+    page.getByText('Draft saved. The public version is unchanged.', { exact: true }),
+  ).toBeVisible();
+  const cms = await db.page.findFirstOrThrow({
+    where: { tournamentId: id, slug: 'home' },
+    include: { draftRevision: { include: { blocks: true } } },
+  });
+  expect(cms.draftRevision!.blocks).toHaveLength(2);
+  expect(cms.draftRevision!.blocks.every((b) => !b.visible)).toBe(true);
+  await page.getByLabel('Select sections', { exact: true }).check();
+  await page.getByRole('button', { name: 'Duplicate', exact: true }).click();
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByText('Published', { exact: true })).toHaveCount(0);
+  await expect
+    .poll(async () =>
+      db.contentBlock.count({
+        where: {
+          revision: { pageId: cms.id },
+          revisionId: (await db.page.findUniqueOrThrow({ where: { id: cms.id } })).draftRevisionId!,
+        },
+      }),
+    )
+    .toBe(4);
+  await page.goto(root + '/staff?view=access');
+  await page.getByLabel('Search users', { exact: true }).fill(prefix + '-1');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await page.getByLabel(`Select ${prefix}-1`, { exact: true }).check();
+  const refereeRole = await db.role.findFirstOrThrow({
+    where: { tournamentId: id, templateKey: 'Referee' },
+  });
+  await page.getByLabel('Role', { exact: true }).selectOption(refereeRole.id);
+  await page.getByRole('button', { name: 'Apply to selected', exact: true }).click();
+  await confirm(page);
+  await expect(page.getByText('User roles updated.', { exact: true })).toBeVisible();
+  expect(
+    await db.userRole.count({ where: { tournamentId: id, userId: refId, roleId: refereeRole.id } }),
+  ).toBe(1);
+  await page.goto(root + '/staff?view=roles');
+  await page.getByRole('button', { name: 'Create role', exact: true }).click();
+  const rolePanel = page.getByRole('dialog', { name: 'Create role', exact: true });
+  await rolePanel.getByLabel('Role name', { exact: true }).fill('Copied referee access');
+  await expect(rolePanel.getByRole('checkbox', { name: /^platform\.manage / })).toHaveCount(0);
+  await rolePanel.getByLabel('Copy permissions from', { exact: true }).selectOption(refereeRole.id);
+  await rolePanel.getByRole('button', { name: 'Save role', exact: true }).click();
+  await expect(rolePanel).toHaveCount(0);
+  const roleRow = page.getByRole('row').filter({ hasText: 'Copied referee access' });
+  await roleRow.getByRole('button', { name: 'Edit role', exact: true }).click();
+  const editing = page.getByRole('dialog', { name: 'Edit role', exact: true });
+  await editing.getByLabel('Description', { exact: true }).fill('Stale browser description');
+  await db.role.updateMany({
+    where: { tournamentId: id, name: 'Copied referee access' },
+    data: { description: 'A newer saved description' },
+  });
+  await editing.getByRole('button', { name: 'Save role', exact: true }).click();
+  await expect(
+    page.getByText('Role configuration changed. Reload before saving.', { exact: true }),
+  ).toBeVisible();
+  page.once('dialog', (d) => d.accept());
+  await editing.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(editing).toHaveCount(0);
+  const views = [
+    'website?view=info',
+    'website?view=branding',
+    'website?view=navigation',
+    'website?view=homepage',
+    'website?view=rules',
+    'website?view=media',
+    'staff?view=listing',
+    'staff?view=access',
+    'staff?view=roles',
+    'settings',
+    'mappools?view=stages',
+    'mappools?view=pooling',
+    'matches',
+    'referee/qualifiers',
+    'qualifier-results',
+  ];
+  for (const [index, view] of views.entries()) {
+    await page.goto(root + '/' + view);
+    await expect(page.locator('main')).toBeVisible();
+    for (const theme of ['light', 'dark'] as const)
+      for (const width of [1920, 390]) {
+        await page.emulateMedia({ colorScheme: theme });
+        await page.setViewportSize({ width, height: 900 });
+        await expect(page.locator('body')).toHaveJSProperty('scrollWidth', width);
+        await page.screenshot({
+          path: `${evidence}/workspace-${index}-${theme}-${width}.png`,
+          fullPage: true,
+        });
+      }
+  }
 });

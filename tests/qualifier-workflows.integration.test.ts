@@ -4,6 +4,10 @@ import { db } from '../src/lib/db';
 import { assertTestDatabase } from '../src/lib/instance';
 import { ALL_PERMISSIONS, AppError, type Actor } from '../src/lib/permissions';
 import { registrationData, applyRegistration } from '../src/lib/registration-service';
+import { qualifierBookingData, applyQualifierBooking } from '../src/lib/qualifier-booking-service';
+import { qualifierBookingSchema } from '../src/lib/qualifier-booking-contract';
+import { qualifierCorrectionSchema } from '../src/lib/qualifier-corrections-contract';
+import { reviewQualifierCorrections } from '../src/lib/qualifier-corrections-service';
 import { registrationActionSchema, registrationPolicySchema } from '../src/lib/registration-policy';
 import { inheritedRules } from '../src/lib/gameplay-scoring';
 import { qualifierPolicySchema } from '../src/lib/qualifier-policy';
@@ -280,7 +284,7 @@ describe.sequential('complete native qualifier workflows', () => {
     const bookings = await Promise.allSettled([book(users[0], lobbyId), book(users[1], lobbyId)]);
     expect(bookings.filter((row) => row.status === 'fulfilled')).toHaveLength(1);
     expect(await db.qualifierEntry.count({ where: { lobbyId } })).toBe(1);
-    const owner = (await registrationData(users[0], tournamentId)).sessions.find(
+    const owner = (await qualifierBookingData(users[0], tournamentId)).sessions.find(
       (session) => session.booked,
     )
       ? users[0]
@@ -852,7 +856,8 @@ describe.sequential('complete native qualifier workflows', () => {
     expect(await db.qualifierGame.findUniqueOrThrow({ where: { id: first.id } })).toMatchObject({
       status: 'IGNORED',
     });
-    expect(await db.qualifierScore.count({ where: { lobbyId: id } })).toBe(2);
+    expect(await db.qualifierScore.count({ where: { lobbyId: id } })).toBe(4);
+    expect(await db.qualifierScore.count({ where: { lobbyId: id, eligible: false } })).toBe(2);
     expect(
       await db.qualifierGame.findFirstOrThrow({ where: { lobbyId: id, gameId: '1103' } }),
     ).toMatchObject({ status: 'IGNORED', reason: 'Game before the website qualifier start' });
@@ -895,7 +900,7 @@ describe.sequential('complete native qualifier workflows', () => {
     });
     expect(imported.imported).toBe(2);
     const id = imported.sessions[0];
-    expect(await current(id)).toMatchObject({ status: 'IN_PROGRESS', autoCompleted: false });
+    expect(await current(id)).toMatchObject({ status: 'COMPLETED', autoCompleted: true });
     const scores = await db.qualifierScore.findMany({ where: { lobbyId: id } });
     expect(scores.find((s) => s.osuId === users[0].osuId)).toMatchObject({
       raw: 100,
@@ -1300,7 +1305,232 @@ describe.sequential('complete native qualifier workflows', () => {
       }),
     ).toMatchObject({ raw: 200, eligible: false });
     expect((await syncQualifier(organizer, bulkId, { apply: true })).imported).toBe(0);
-    expect((await current(bulkId)).status).toBe('IN_PROGRESS');
+    expect((await current(bulkId)).status).toBe('COMPLETED');
+  });
+  it('separates booking policy, data and cancellation from tournament registration', async () => {
+    const bookingStage = await stage('Independent booking');
+    const created = await action({
+      type: 'qualifier.create',
+      code: 'Independent reservation',
+      stageId: bookingStage,
+      teamIds: [],
+      refereeIds: [],
+      scheduledAt: new Date(Date.now() + 86400000).toISOString(),
+    });
+    const id = created.id!;
+    const initial = await qualifierBookingData(users[0], tournamentId);
+    const team = await db.team.findUniqueOrThrow({ where: { id: initial.team!.id } });
+    const settings = await db.tournamentSettings.findUniqueOrThrow({ where: { tournamentId } });
+    await db.tournamentSettings.update({
+      where: { tournamentId },
+      data: {
+        registrationPolicy: json({
+          ...registrationPolicySchema.parse(settings.registrationPolicy),
+          closesAt: new Date(Date.now() - 1000).toISOString(),
+          fields: [],
+        }),
+      },
+    });
+    const currentBooking = await qualifierBookingData(users[0], tournamentId);
+    expect(currentBooking.policyToken).toBe(initial.policyToken);
+    expect(await registrationData(users[0], tournamentId)).not.toHaveProperty('sessions');
+    expect(currentBooking.team).not.toHaveProperty('registrationAnswers');
+    const reserve = async (lobbyId: string | null, sourceVersion?: number) =>
+      db.$transaction((tx) =>
+        applyQualifierBooking(
+          tx,
+          users[0],
+          qualifierBookingSchema.parse({
+            type: 'qualifier.booking.reserve',
+            policyToken: currentBooking.policyToken,
+            teamVersion: team.version,
+            stageId: bookingStage,
+            lobbyId,
+            baseVersion: lobbyId ? 1 : undefined,
+            sourceVersion,
+          }),
+        ),
+      );
+    await reserve(id);
+    expect(await db.qualifierEntry.count({ where: { lobbyId: id } })).toBe(1);
+    await reserve(null, (await current(id)).version);
+    expect(await db.qualifierEntry.count({ where: { lobbyId: id } })).toBe(0);
+    expect(await db.team.findUniqueOrThrow({ where: { id: team.id } })).toEqual(team);
+    await db.tournamentSettings.update({
+      where: { tournamentId },
+      data: { registrationPolicy: settings.registrationPolicy! },
+    });
+  });
+  it('previews canonical cohort corrections, rejects stale or unauthorized changes, and reprocesses raw evidence', async () => {
+    const fmRules = inheritedRules(
+      { teamSize: 1, multiplierMode: 'NONE', freeModRequiredHD: 0, freeModRequiredHR: 0 },
+      'SCORE_V2',
+    );
+    const correctionStage = await stage('Correction preview', tournamentId, fmRules);
+    await db.mappoolSlot.updateMany({
+      where: { revision: { mappool: { stageId: correctionStage } } },
+      data: { name: 'FM1', category: 'FM' },
+    });
+    mock.load.mockResolvedValue({
+      match: { id: 99951 },
+      first_event_id: 1,
+      events: [
+        {
+          id: 1,
+          game: {
+            ...game(9951, [106000, 220000]),
+            scores: [
+              { user_id: users[0].osuId, score: 106000, mods: ['HD'], passed: true },
+              { user_id: users[1].osuId, score: 220000, mods: ['HR'], passed: true },
+            ],
+          },
+        },
+      ],
+    });
+    const input = qualifierImportSchema.parse({
+      stageId: correctionStage,
+      links: ['https://osu.ppy.sh/mp/99951'],
+    });
+    const importedPreview = await previewQualifierImport(organizer, input);
+    const imported = await applyQualifierImport(organizer, {
+      ...input,
+      jobId: importedPreview.jobId,
+      fingerprint: importedPreview.fingerprint,
+      apply: true,
+    });
+    const id = imported.sessions[0],
+      score = await db.qualifierScore.findFirstOrThrow({
+        where: { lobbyId: id, osuId: users[0].osuId },
+      });
+    const review = (value: unknown, actor = organizer) =>
+      db.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(78214321)`;
+        return reviewQualifierCorrections(tx, actor, qualifierCorrectionSchema.parse(value));
+      });
+    const edit = {
+      stageId: correctionStage,
+      operation: 'EDIT',
+      lobbies: [{ id, baseVersion: (await current(id)).version, scoreIds: [score.id] }],
+      patch: { raw: 159000 },
+      reason: 'Reviewed score evidence',
+    };
+    await expect(review(edit, users[0])).rejects.toThrow('permission');
+    await expect(review({ ...edit, stageId: stageId })).rejects.toThrow();
+    const preview = await review(edit);
+    expect(preview.changed).toBe(1);
+    expect(await db.qualifierScore.findUniqueOrThrow({ where: { id: score.id } })).toMatchObject({
+      raw: 106000,
+    });
+    await expect(review({ ...edit, apply: true, reviewHash: 'a'.repeat(64) })).rejects.toThrow(
+      'preview',
+    );
+    await review({ ...edit, apply: true, reviewHash: preview.reviewHash });
+    expect(await db.qualifierScore.findUniqueOrThrow({ where: { id: score.id } })).toMatchObject({
+      raw: 159000,
+      source: 'MANUAL',
+    });
+    await expect(review(edit)).rejects.toThrow('changed');
+    const reprocess = {
+      stageId: correctionStage,
+      operation: 'REPROCESS',
+      lobbies: [{ id, baseVersion: (await current(id)).version, scoreIds: [] }],
+      policy: qualifierPolicySchema.parse({
+        ...policy,
+        normalization: 'BUILT_IN',
+        multiplierPolicy: 'NONE',
+        rounding: 'FLOOR',
+      }),
+      reason: 'Apply reviewed normalization',
+    };
+    const impact = await review(reprocess);
+    expect(impact.affected.find((s) => s.id === score.id)?.adjusted).toBe(150000);
+    await review({ ...reprocess, apply: true, reviewHash: impact.reviewHash });
+    const calculation = (await loadQualifierCalculation(db, correctionStage, tournamentId))
+      .calculation;
+    expect(calculation.rows.map((r) => r.value)).toEqual(impact.rows.map((r) => r.after));
+    expect(await db.qualifierScore.findUniqueOrThrow({ where: { id: score.id } })).toMatchObject({
+      raw: 159000,
+      adjusted: 150000,
+    });
+    const receipt = await db.qualifierGame.findFirstOrThrow({ where: { lobbyId: id } });
+    expect(JSON.stringify(receipt.evidence)).toContain('106000');
+    expect(
+      await db.qualifierEvent.count({ where: { lobbyId: id, kind: 'qualifier.scores.correct' } }),
+    ).toBe(2);
+    const decide = async (operation: string, scoreIds = [score.id], extra: object = {}) => {
+      const input = {
+        stageId: correctionStage,
+        operation,
+        lobbies: [{ id, baseVersion: (await current(id)).version, scoreIds }],
+        reason: 'Reviewed eligibility and attribution',
+        ...extra,
+      };
+      const impact = await review(input);
+      await review({ ...input, apply: true, reviewHash: impact.reviewHash });
+      return impact;
+    };
+    await decide('EXCLUDE');
+    expect(await current(id)).toMatchObject({ status: 'COMPLETED', autoCompleted: true });
+    expect(
+      (await loadQualifierCalculation(db, correctionStage, tournamentId)).calculation.rows.find(
+        (r) => r.participantId === teamIds[0],
+      )?.value,
+    ).toBeNull();
+    await decide('REVALIDATE');
+    expect((await db.qualifierScore.findUniqueOrThrow({ where: { id: score.id } })).eligible).toBe(
+      false,
+    );
+    await decide('RESTORE');
+    expect(await db.qualifierScore.findUniqueOrThrow({ where: { id: score.id } })).toMatchObject({
+      eligible: true,
+      eligibilityOverride: null,
+    });
+    const all = await db.qualifierScore.findMany({ where: { lobbyId: id } });
+    await expect(decide('REMAP', [score.id], { destination: { run: 2 } })).rejects.toThrow(
+      'every player',
+    );
+    await decide(
+      'REMAP',
+      all.map((s) => s.id),
+      { destination: { run: 2 } },
+    );
+    expect(await db.qualifierScore.count({ where: { lobbyId: id, run: 2 } })).toBe(2);
+    expect((await syncQualifier(organizer, id, { apply: true })).imported).toBe(0);
+    expect(await db.qualifierScore.findUniqueOrThrow({ where: { id: score.id } })).toMatchObject({
+      raw: 159000,
+      run: 2,
+    });
+    const finalCalculation = (await loadQualifierCalculation(db, correctionStage, tournamentId))
+      .calculation;
+    expect(finalCalculation.canFinalize).toBe(true);
+    await db.$transaction((tx) =>
+      applyQualifierStandingsAction(tx, organizer, {
+        type: 'qualifier.standings.calculate',
+        stageId: correctionStage,
+        baseVersion: 0,
+        sourceHash: finalCalculation.sourceHash,
+      }),
+    );
+    await db.$transaction((tx) =>
+      applyQualifierStandingsAction(tx, organizer, {
+        type: 'qualifier.standings.finalize',
+        stageId: correctionStage,
+        baseVersion: 1,
+        sourceHash: finalCalculation.sourceHash,
+        tieOrder: [],
+        reason: '',
+      }),
+    );
+    const blocked = {
+      stageId: correctionStage,
+      operation: 'EXCLUDE',
+      lobbies: [{ id, baseVersion: (await current(id)).version, scoreIds: [score.id] }],
+    };
+    const lockedPreview = await review(blocked);
+    expect(lockedPreview.locked).toBe(true);
+    await expect(
+      review({ ...blocked, apply: true, reviewHash: lockedPreview.reviewHash }),
+    ).rejects.toThrow('locked');
   });
   it('publishes a rejection reason while keeping private administrative notes separate', async () => {
     const team = await db.team.findUniqueOrThrow({ where: { id: teamIds[2] } });

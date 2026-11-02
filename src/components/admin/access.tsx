@@ -5,14 +5,20 @@ import { useLocale, useT } from '@/components/locale';
 import { useState } from 'react';
 import { Plus, Trash2, Search, LockKeyhole } from 'lucide-react';
 import { Button } from '../ui/button';
+import { roleConfiguration } from '@/lib/role-configuration';
 import { Badge } from '../ui/badge';
-import { PERMISSIONS, type Actor, type PermissionKey } from '@/lib/permissions';
+import {
+  PERMISSIONS,
+  PLATFORM_PERMISSIONS,
+  type Actor,
+  type PermissionKey,
+} from '@/lib/permissions';
 import {
   action,
   ConfirmButton,
   Field,
   LoadingState,
-  Modal,
+  EditorPanel,
   SaveButton,
   SectionTitle,
   useResource,
@@ -46,9 +52,15 @@ export function RolesEditor({ actor }: { actor: Actor }) {
       name: string;
       description: string;
       permissions: PermissionKey[];
+      baseRole?: string;
     } | null>(null),
     [dirty, setDirty] = useState(false);
   useUnsaved(dirty);
+  const closeRole = () => {
+    if (busy || (dirty && !window.confirm(tr('Discard unsaved role changes?')))) return;
+    setRole(null);
+    setDirty(false);
+  };
   if (!data) return <LoadingState error={error} retry={() => void reload().catch(() => {})} />;
   return (
     <>
@@ -56,6 +68,7 @@ export function RolesEditor({ actor }: { actor: Actor }) {
         <Button
           size="sm"
           onClick={() => {
+            if (dirty && !window.confirm(tr('Discard unsaved role changes?'))) return;
             setRole({ name: '', description: '', permissions: [] });
             setDirty(false);
           }}
@@ -64,74 +77,92 @@ export function RolesEditor({ actor }: { actor: Actor }) {
           {tr('Create role')}
         </Button>
       </SectionTitle>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {data.roles.map((r) => {
-          const own = actor.roles.some((a) => a.id === r.id);
-          return (
-            <div className="card flex flex-col p-6" key={r.id}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold">{r.name}</h2>
-                {r.systemKey && (
-                  <Badge>
-                    {r.systemKey === 'Owner' ? (
-                      <>
-                        <LockKeyhole size={10} />
-                        {tr('Protected')}
-                      </>
-                    ) : (
-                      tr('System role')
+      <div className="overflow-auto rounded-2xl border">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>{tr('Role')}</th>
+              <th>{tr('Description')}</th>
+              <th>{tr('Permissions')}</th>
+              <th>{tr('Users')}</th>
+              <th>{tr('Actions')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.roles.map((r) => {
+              const own = actor.roles.some((a) => a.id === r.id);
+              return (
+                <tr key={r.id}>
+                  <td>
+                    <span className="font-semibold">{r.name}</span>
+                    {r.systemKey && (
+                      <span className="ml-2">
+                        <Badge>
+                          {r.systemKey === 'Owner' ? (
+                            <>
+                              <LockKeyhole size={10} />
+                              {tr('Protected')}
+                            </>
+                          ) : (
+                            tr('System role')
+                          )}
+                        </Badge>
+                      </span>
                     )}
-                  </Badge>
-                )}
-              </div>
-              <p className="mt-2 text-xs text-muted">{r.description}</p>
-              <p className="mb-6 mt-4 text-xs text-muted">
-                {r.permissions.length} {tr('permissions ·')} {r._count?.users || 0} {tr('users')}
-              </p>
-              <div className="mt-auto flex justify-between border-t pt-4">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={r.systemKey === 'Owner' || own}
-                  onClick={() => {
-                    setRole({
-                      id: r.id,
-                      name: r.name,
-                      description: r.description,
-                      permissions: r.permissions.map((p) => p.permissionKey),
-                    });
-                    setDirty(false);
-                  }}
-                >
-                  {own ? tr('Assigned to you') : tr('Edit role')}
-                </Button>
-                {!r.systemKey && !own && (
-                  <ConfirmButton
-                    title={tr('Delete {0}?', r.name)}
-                    description={tr('This role will be removed from every user who has it.')}
-                    disabled={busy}
-                    onConfirm={() =>
-                      void run(async () => {
-                        await action({ type: 'role.delete', id: r.id });
-                        await reload();
-                      }, tr('Role deleted.'))
-                    }
-                  >
-                    <Trash2 size={13} />
-                  </ConfirmButton>
-                )}
-              </div>
-            </div>
-          );
-        })}
+                  </td>
+                  <td className="max-w-sm whitespace-normal text-xs text-muted">{r.description}</td>
+                  <td>{r.permissions.length}</td>
+                  <td>{r._count?.users || 0}</td>
+                  <td>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={r.systemKey === 'Owner' || own}
+                        onClick={() => {
+                          if (dirty && !window.confirm(tr('Discard unsaved role changes?'))) return;
+                          setRole({
+                            id: r.id,
+                            name: r.name,
+                            description: r.description,
+                            permissions: r.permissions.map((p) => p.permissionKey),
+                            baseRole: roleConfiguration(r),
+                          });
+                          setDirty(false);
+                        }}
+                      >
+                        {own ? tr('Assigned to you') : tr('Edit role')}
+                      </Button>
+                      {!r.systemKey && !own && (
+                        <ConfirmButton
+                          title={tr('Delete {0}?', r.name)}
+                          description={tr('This role will be removed from every user who has it.')}
+                          disabled={busy}
+                          onConfirm={() =>
+                            void run(async () => {
+                              await action({
+                                type: 'role.delete',
+                                id: r.id,
+                                baseRole: roleConfiguration(r),
+                              });
+                              await reload();
+                            }, tr('Role deleted.'))
+                          }
+                        >
+                          <Trash2 size={13} />
+                        </ConfirmButton>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
-      <Modal
+      <EditorPanel
         open={!!role}
-        onOpenChange={() => {
-          if (dirty && !window.confirm(tr('Discard unsaved role changes?'))) return;
-          setRole(null);
-          setDirty(false);
-        }}
+        onOpenChange={closeRole}
         title={role?.id ? tr('Edit role') : tr('Create role')}
         description={tr(
           'You can grant only permissions you hold. Your own roles and the Owner role are protected.',
@@ -169,6 +200,33 @@ export function RolesEditor({ actor }: { actor: Actor }) {
                 }}
               />
             </Field>
+            <Field label={tr('Copy permissions from')}>
+              <select
+                defaultValue=""
+                onChange={(e) => {
+                  const source = data.roles.find((r) => r.id === e.target.value);
+                  if (source) {
+                    setRole({
+                      ...role,
+                      permissions: source.permissions
+                        .map((p) => p.permissionKey)
+                        .filter(
+                          (p) => actor.permissions.includes(p) && !PLATFORM_PERMISSIONS.includes(p),
+                        ),
+                    });
+                    setDirty(true);
+                  }
+                  e.target.value = '';
+                }}
+              >
+                <option value="">{tr('Choose role')}</option>
+                {data.roles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
             <fieldset className="space-y-2">
               <legend className="mb-3 text-xs font-semibold">{tr('Granular permissions')}</legend>
               {Object.entries(data.permissions).map(([key, description]) => (
@@ -176,7 +234,10 @@ export function RolesEditor({ actor }: { actor: Actor }) {
                   <input
                     className="mt-1 shrink-0"
                     type="checkbox"
-                    disabled={!actor.permissions.includes(key as PermissionKey)}
+                    disabled={
+                      !actor.permissions.includes(key as PermissionKey) ||
+                      PLATFORM_PERMISSIONS.includes(key as PermissionKey)
+                    }
                     checked={role.permissions.includes(key as PermissionKey)}
                     onChange={(e) => {
                       setRole({
@@ -197,10 +258,15 @@ export function RolesEditor({ actor }: { actor: Actor }) {
                 </label>
               ))}
             </fieldset>
-            <SaveButton busy={busy}>{tr('Save role')}</SaveButton>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" disabled={busy} onClick={closeRole}>
+                {tr('Cancel')}
+              </Button>
+              <SaveButton busy={busy}>{tr('Save role')}</SaveButton>
+            </div>
           </form>
         )}
-      </Modal>
+      </EditorPanel>
     </>
   );
 }
@@ -213,6 +279,9 @@ export function UsersEditor({ actor }: { actor: Actor }) {
     `users&q=${encodeURIComponent(search)}`,
   );
   const { busy, run } = useTask();
+  const [bulkUsers, setBulkUsers] = useState<string[]>([]),
+    [bulkRole, setBulkRole] = useState(''),
+    [bulkOperation, setBulkOperation] = useState('ADD');
   const [user, setUser] = useState<User | null>(null),
     [selected, setSelected] = useState<string[]>([]),
     [dirty, setDirty] = useState(false);
@@ -225,6 +294,7 @@ export function UsersEditor({ actor }: { actor: Actor }) {
         className="mb-6 flex min-w-0 max-w-lg gap-3"
         onSubmit={(e) => {
           e.preventDefault();
+          setBulkUsers([]);
           setSearch(query);
         }}
       >
@@ -239,10 +309,75 @@ export function UsersEditor({ actor }: { actor: Actor }) {
           {tr('Search')}
         </Button>
       </form>
+      <div className="my-3 flex flex-wrap items-end gap-2">
+        <span className="text-sm">{tr('{0} selected', bulkUsers.length)}</span>
+        <Field label={tr('Role')}>
+          <select value={bulkRole} onChange={(e) => setBulkRole(e.target.value)}>
+            <option value="">{tr('Choose role')}</option>
+            {data.roles.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label={tr('Bulk role action')}>
+          <select value={bulkOperation} onChange={(e) => setBulkOperation(e.target.value)}>
+            <option value="ADD">{tr('Add role')}</option>
+            <option value="REMOVE">{tr('Remove role')}</option>
+          </select>
+        </Field>
+        <ConfirmButton
+          title={tr('Update selected role assignments?')}
+          description={tr(
+            'Other roles are preserved. Self editing, protected permissions and the last Owner remain protected. The entire selection must pass validation.',
+          )}
+          disabled={busy || !bulkUsers.length || !bulkRole}
+          onConfirm={() =>
+            void run(async () => {
+              await action({
+                type: 'user.roles.bulk',
+                users: data.users
+                  .filter((u) => bulkUsers.includes(u.id))
+                  .map((u) => ({ userId: u.id, baseRoleIds: u.roles.map((r) => r.roleId) })),
+                roleIds: [bulkRole],
+                operation: bulkOperation,
+                baseRoles: data.roles.map((r) => ({
+                  id: r.id,
+                  permissions: r.permissions.map((p) => p.permissionKey),
+                })),
+              });
+              setBulkUsers([]);
+              await reload();
+            }, tr('User roles updated.'))
+          }
+        >
+          {tr('Apply to selected')}
+        </ConfirmButton>
+      </div>
       <div className="card relative overflow-x-auto">
         <table className="admin-table">
           <thead>
             <tr>
+              <th>
+                <input
+                  type="checkbox"
+                  aria-label={tr('Select eligible users')}
+                  checked={
+                    data.users.some((u) => u.id !== actor.id) &&
+                    data.users
+                      .filter((u) => u.id !== actor.id)
+                      .every((u) => bulkUsers.includes(u.id))
+                  }
+                  onChange={(e) =>
+                    setBulkUsers(
+                      e.target.checked
+                        ? data.users.filter((u) => u.id !== actor.id).map((u) => u.id)
+                        : [],
+                    )
+                  }
+                />
+              </th>
               <th>{tr('User')}</th>
               <th>{tr('osu! ID')}</th>
               <th>{tr('Roles')}</th>
@@ -255,6 +390,21 @@ export function UsersEditor({ actor }: { actor: Actor }) {
           <tbody>
             {data.users.map((u) => (
               <tr key={u.id}>
+                <td>
+                  <input
+                    type="checkbox"
+                    aria-label={tr('Select {0}', u.username)}
+                    disabled={u.id === actor.id}
+                    checked={bulkUsers.includes(u.id)}
+                    onChange={(e) =>
+                      setBulkUsers(
+                        e.target.checked
+                          ? [...bulkUsers, u.id]
+                          : bulkUsers.filter((id) => id !== u.id),
+                      )
+                    }
+                  />
+                </td>
                 <td>
                   <div className="flex items-center gap-3">
                     <img src={u.avatarUrl} alt="" className="size-8 rounded-lg" />
@@ -282,6 +432,7 @@ export function UsersEditor({ actor }: { actor: Actor }) {
                     size="sm"
                     variant="outline"
                     onClick={() => {
+                      if (dirty && !window.confirm(tr('Discard unsaved role assignments?'))) return;
                       setUser(u);
                       setSelected(u.roles.map((r) => r.roleId));
                       setDirty(false);
@@ -303,7 +454,7 @@ export function UsersEditor({ actor }: { actor: Actor }) {
       <p className="mt-4 text-xs text-muted">
         {tr('Showing up to 100 matching users. Refine your search to find a specific account.')}
       </p>
-      <Modal
+      <EditorPanel
         open={!!user}
         onOpenChange={() => {
           if (dirty && !window.confirm(tr('Discard unsaved role assignments?'))) return;
@@ -319,7 +470,16 @@ export function UsersEditor({ actor }: { actor: Actor }) {
             onSubmit={(e) => {
               e.preventDefault();
               void run(async () => {
-                await action({ type: 'user.roles', userId: user.id, roleIds: selected });
+                await action({
+                  type: 'user.roles',
+                  userId: user.id,
+                  roleIds: selected,
+                  baseRoleIds: user.roles.map((r) => r.roleId),
+                  baseRoles: data.roles.map((r) => ({
+                    id: r.id,
+                    permissions: r.permissions.map((p) => p.permissionKey),
+                  })),
+                });
                 await reload();
                 setUser(null);
                 setDirty(false);
@@ -385,7 +545,7 @@ export function UsersEditor({ actor }: { actor: Actor }) {
             </SaveButton>
           </form>
         )}
-      </Modal>
+      </EditorPanel>
     </>
   );
 }

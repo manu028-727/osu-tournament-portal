@@ -12,19 +12,23 @@ export function qualifierProgress(
       const teams = lobby.participants.map((team) => {
         const scores = lobby.scores.filter(
           (score) =>
-            score.eligible !== false &&
             score.verified !== false &&
             score.run === run &&
             score.slotName === slot.name &&
             team.members.some((player) => player.osuId === score.osuId),
         );
-        const aggregate = qualifierTeamAggregate(scores, lobby.policy);
+        const eligibleScores = scores.filter((score) => score.eligible !== false);
+        const played =
+          new Set(scores.map((score) => score.osuId)).size >= lobby.policy.requiredPlayers;
+        const aggregate = qualifierTeamAggregate(eligibleScores, lobby.policy);
         const validMods =
-          !lobby.rules || !qualifierTeamModViolation(lobby.rules, slot.category, scores);
+          !lobby.rules || !qualifierTeamModViolation(lobby.rules, slot.category, eligibleScores);
         return {
           team,
           scores,
-          complete: aggregate !== null && validMods,
+          eligibleScores,
+          complete: played,
+          valid: aggregate !== null && validMods,
           value:
             validMods && aggregate && Number.isFinite(aggregate.value) ? aggregate.value : null,
         };

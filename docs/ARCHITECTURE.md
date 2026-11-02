@@ -538,18 +538,50 @@ without copying incompatible code; general methods follow the
 [osu! seeding definitions](https://osu.ppy.sh/wiki/en/Tournaments/Common_seeding_methods).
 
 Incomplete entrants get no seed and do not affect official references. New
-`qualifier-seeding/2` calculations require a complete eligible run per entrant,
-respecting FIRST_RUN/SECOND_RUN; optional incomplete runs do not block an otherwise
-eligible entrant. BEST_PER_MAP still requires a complete run before mixed-map
-selection can qualify. Excluded scores remain in the hashed source but do not become
-zero. Version 1 retains its requirement that every configured run be complete.
-Existing finalized version-1 calculations keep that exact owner/hash until reviewed
-reopening; archive restoration explicitly reproduces either known version. Duplicate
+`qualifier-seeding/3` calculations require a complete played run per entrant,
+respecting FIRST_RUN/SECOND_RUN; observed excluded scores count toward played maps,
+and optional incomplete runs do not block an otherwise eligible entrant. BEST_PER_MAP
+can combine valid maps from played runs containing exclusions; BEST_COMPLETE_RUN
+still needs one wholly eligible run. Excluded scores remain in the hashed source and
+never become zero. Version 2 retains its complete-eligible-run requirement; version 1
+retains its requirement that every configured run be eligible and complete.
+Existing finalized version-1/version-2 calculations keep their exact owner/hash until
+reviewed reopening; archive restoration reproduces all three known versions. Duplicate
 plays/ownership, unverified/inconsistent provenance and unconfirmed sessions block.
 Zero deviation contributes zero/warning; fewer than two complete entrants blocks
 sample Z-Sum; zero Match Cost reference blocks instead of inventing a denominator.
 Provisional partial values are not final seeds. Raw V1 range bias is warned. Full
 precision determines ties; ID order is display-only; ties need explicit order/reason.
+
+`qualifier-score.ts` owns native score interpretation, configured tournament
+multipliers, per-player rounding and individual eligibility. Native osu!standard
+legacy multipliers follow the scoring-mode branch in
+[ppy/osu's legacy score simulator](https://github.com/ppy/osu/blob/master/osu.Game.Rulesets.Osu/Difficulty/OsuLegacyScoreSimulator.cs#L161-L208):
+HR/DT/NF differ between V1 and V2. Explicit normalization is unsupported for lazer
+and other rulesets; reported scores remain available. FLOOR/ROUND use exact rational
+arithmetic before aggregation, avoiding floating-point underflow at integer boundaries.
+Absent optional policy keys preserve the former conversion behavior and hashes.
+Pass status remains nullable provider evidence; eligibilityOverride records an explicit
+INCLUDE/EXCLUDE separately from automatic rule decisions. Older explicit decisions
+are recovered only from matching audited events, never guessed from free-text reasons.
+
+`POST /api/admin/qualifier-score-review` is manager-only, same-origin and rate-limited.
+`qualifier-corrections-service.ts` projects the complete cohort under root/stage locks,
+checks each reviewed lobby version and hashes the source plus correction choices.
+Preview and apply use the same projection; application rechecks the review hash,
+records before/after scores and policies, and reconciles played completion without
+closing IRC or touching finalized seedings/brackets. Map/run/player corrections
+persist as reviewedMapping alongside original game evidence. Reprocess covers every
+non-cancelled stage source, including retained deleted histories; this explicit
+derived-data correction preserves raw receipts and lifecycle. Other deleted-session
+mutations remain forbidden. Revalidation preserves explicit decisions; restore clears
+them and re-runs automatic checks. Remapping rejects destination conflicts.
+
+`20261102010000_qualifier_score_decisions` adds nullable passed/eligibilityOverride
+with a SQL decision allowlist. `20261102020000_qualifier_booking_policy` adds nullable
+booking configuration. Both are additive, are applied by `./portal install`, and
+perform no historical recalculation or data backfill. Archive allowlists include
+these fields with backward-compatible absent/null handling and decision validation.
 
 `qualifier-seeding.ts` is pure and hashes complete canonical source/config/version,
 including unused records. Service requires full-cohort access. Actions carry stageId,
@@ -1072,9 +1104,17 @@ flags and saved revisions are preserved. Public CMS queries select visible block
 media inference uses the same visible blocks, and bracket projections omit private
 entrants. Editing APIs use requireTournamentActor with an explicit proxy-derived
 slug. Public featured-root fallback does not select an editing context. Native
-`/register` pages and qualifier results use scopedHref from tournament-paths.ts.
-`registration-service.ts` owns private registration policy/answers and captain
-reservations. Existing OAuth/session identities are revalidated under the root lock;
+`/register`, `/qualifier-booking` and qualifier results use scopedHref from
+tournament-paths.ts. `registration-service.ts` owns tournament entry, private answers
+and roster editing. `qualifier-booking-service.ts` owns reservations through
+`/api/qualifier-booking`; registration responses contain no session collection and
+booking responses contain no roster-editing or custom-answer payload. The old
+registration.booking action delegates to the booking owner for saved-client
+compatibility. `qualifierBookingPolicy` has independent enable/open/close controls;
+null configuration reads the former registration-policy booking keys without a
+backfill. Booking witnesses include eligibility/gameplay configuration but exclude
+registration deadlines and custom fields. Existing OAuth/session identities are
+revalidated under the root lock;
 policy hashes and team/session versions reject stale forms. Profiles and mode ranks
 are fetched outside transactions through the existing osu! API wrapper, then
 identity/eligibility are checked before the shared team writer. Rank/country evidence
@@ -1095,6 +1135,14 @@ settings-service.ts owns settings patch application within the dispatcher's lock
 authorized transaction. settings.save requires Tournament.version and writes only
 submitted fields, incrementing that same version; lifecycle changes also invalidate
 old settings forms. Scoring impact checks and frozen gameplay snapshots are retained.
+Team identity patches avoid roster/profile fetches. Team batches reuse the same
+status/deletion owner and compare every selected version before writing; a stale or
+history-protected row rolls back the entire batch. `user-roles-service.ts` owns both
+single and selected-user role changes, with current authorization, reviewed role IDs
+and permission lists, self/Owner guards and before/after audit. Browser role editors
+carry `role-configuration.ts` witnesses for name, description and sorted permissions;
+role save/delete compare these under the root lock. Older action payloads remain
+accepted for compatibility; new editing controls always submit the witness.
 StaffMember/StaffCategory/ModCategory version fields are introduced additively with
 default one. Edits/deletes and staff bulk operations validate reviewed witnesses;
 bulk assignment changes advance member versions and stale batches roll back. Stage
@@ -1296,6 +1344,10 @@ do not replace persistence coverage or live-provider checks. Locale tests check
 catalog coverage, duplicate keys, interpolation, request concurrency and unchanged
 authored parameters. Localization E2E exercises real localized failures, dirty
 forms/dialogs/history and both languages/appearances at required viewport sizes.
+With E2E_OSU_FIXTURE_DIR enabled, Playwright pins the same synthetic osu! credential
+in the server and test workers so signed result-review receipts exercise the real
+verification path. This branch requires the isolated test database; it supplies no
+production authentication shortcut or live-provider verification.
 
 Smoke harnesses need explicit isolated environments. workspace.ts requires empty
 migrated/bootstrapped platform_workspace_dev_test or platform_workspace_prod_test,

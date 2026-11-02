@@ -80,6 +80,9 @@ Block type changes and reordering retain authored content and editor identity;
 existing page-level rich text remains editable and visible. Responsive containers
 use desktop and ultrawide space while prose keeps a readable line length and
 public mappools retain their compact card geometry.
+Selected homepage sections support show/hide, duplication and removal within the
+draft. History and unpublish remain directly discoverable; batches do not publish
+or overwrite authored text automatically.
 
 Settings saves apply only reviewed changed fields. An older form, including another
 Website subsection, must fail visibly after a newer settings or lifecycle save.
@@ -151,6 +154,9 @@ approval/rejection/publication, seed/rank/contact data and reviewed CSV import/e
 Use osu! IDs as identity, reuse registered rosters for matches/invites and protect
 private contact data. Qualifier seeds are distinct from registration/rank-sum order.
 Delete only unused registrations without damaging match snapshots/history.
+Names and seeds can be edited directly in the entrant list without fetching or
+rewriting rosters. Selected entrants support atomic approval, rejection, publication,
+hiding and unused-record deletion, with individual permissions and version checks.
 
 Website registration uses osu! OAuth and captain ownership for team or solo entries;
 it never grants website roles. New website entries and new organizer imports are
@@ -160,6 +166,11 @@ Configure native/external registration, eligibility by mode rank/country, requir
 custom fields, deadlines, roster/substitute limits and roster locking. Existing
 rejected or pending entries retain that status when their captain edits them.
 
+Registration and qualifier reservation have distinct public pages, API owners,
+configuration and statuses. Registering never books a session, and canceling a
+reservation never unregisters an entrant. Booking has independent opening/closing
+times; registration deadlines and custom fields do not invalidate a booking form.
+Eligibility changes still require the captain to review booking again.
 Captains reserve, move or cancel their entry in existing qualifier sessions. Show
 times in the chosen display timezone, capacity, deadlines and current reservations.
 Validate ownership, eligibility, stage uniqueness, schedule conflicts, capacity and
@@ -171,6 +182,9 @@ Staff listings use custom ordered categories and multiple positions per member,
 osu! profiles, optional biography/image and visibility. Bulk changes support
 visibility/category/position patches without creating users or privileged roles.
 Website access and role management are explicitly separate workspace subsections.
+Selected users support adding/removing a role while retaining their other roles.
+Batch actions preserve self-editing, protected-permission and last-Owner guards and
+reject changed role assignments atomically.
 
 ## Scheduling And Native Brackets
 
@@ -339,7 +353,10 @@ and bulk deletion remove reservations from operational lists, preserve scores an
 referee histories, and never close an IRC room. Confirm deletion; block active
 sessions, uncertain room creation and finalized sources. Retained completed sessions
 remain standings sources and keep their entrant ownership. Deleted histories are
-read-only and reachable through the session list's Deleted filter.
+read-only and reachable through the session list's Deleted filter. An explicit
+stage-wide calculation reprocess may update derived scores and rule decisions in
+retained sources with a before/after audit; original evidence and lifecycle remain
+unchanged, and finalized standings require controlled reopening first.
 Complete multiplayer history and resolve pending games before deleting a completed
 session, including an automatically completed session with an optional run underway.
 Support one/two runs and BEST_PER_MAP, BEST_COMPLETE_RUN, FIRST_RUN or SECOND_RUN;
@@ -376,7 +393,9 @@ review. A direct import uses an explicit warmup count (initially zero), while
 advanced preview permits different choices per link.
 
 Automatically complete imported/live sessions once each expected entrant has a
-complete eligible run under the configured selection policy. FIRST_RUN requires
+complete played run under the configured selection policy. Played, valid and counted
+are independent: an observed excluded score completes a played map, while it remains
+excluded from calculations. Missing scores never become zero. FIRST_RUN requires
 Run 1, SECOND_RUN requires Run 2; best policies allow an optional second run.
 Partial results stay Playing and resumable. Completion neither closes Bancho nor
 finalizes official seedings. Automatically completed sessions continue accepting
@@ -384,10 +403,28 @@ optional runs and audited corrections until official finalization locks sources;
 removing required evidence resumes Playing. Show missing/excluded/run blockers.
 Manual-only sessions retain explicit referee submission and confirmation.
 
+Qualifier policies explicitly choose reported scores or removal of native legacy
+osu!standard mod bonuses, tournament multipliers, per-player rounding and whether
+failed performances count. Apply normalization before team aggregation. An absent
+pass witness is not a fabricated pass. Preserve existing saved-policy behavior until
+an organizer reviews reprocessing; gameplay systems are never converted into one another.
+
+One canonical score interpretation serves live capture, imports, inline corrections,
+revalidation and standings. Managers can select scores to include/exclude, restore
+automatic eligibility, revalidate or remap map/run/player attribution. Reprocessing
+reviews every stage session and can adopt current stage rules. Preview changes to
+the complete cohort's totals and seeds before applying, compare reviewed versions
+and sources inside the transaction, and retain raw receipts and before/after audits.
+Remapping persists across re-imports; conflicting destinations are rejected.
+
 Calculate Raw Score, sample-deviation Z-Sum, Team Average or the explicitly named
 osu!plus qualifier-cohort Match Cost adaptation. Preserve raw/provenance data,
 missing versus zero, complete cohorts, full precision and explicit tie decisions.
 Provisional, finalized and published standings are separate immutable versions.
+Calculation version 3 separates played-run completion from counted-score selection;
+BEST_PER_MAP can combine valid maps across fully played runs containing exclusions.
+BEST_COMPLETE_RUN still needs one wholly valid run. Published version-1/version-2
+calculations retain their original formulas and hashes until reviewed reopening.
 Finalization requires complete confirmed sources and resolved ties; cutoff seeds
 can generate brackets. Reviewed reopening preserves old witnesses and freezes
 downstream assignments, hides superseded publication and blocks after downstream

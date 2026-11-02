@@ -3,7 +3,7 @@ import { localeTag } from '@/lib/i18n';
 import { useLocale, useT } from '@/components/locale';
 
 import { useEffect, useState } from 'react';
-import { Eye, Plus, Trash2, Save, Send, ArrowUp, ArrowDown, Ellipsis } from 'lucide-react';
+import { Eye, Plus, Trash2, Save, Send, ArrowUp, ArrowDown } from 'lucide-react';
 import { RichEditor } from './rich-editor';
 import { MediaField } from './media';
 import { Button } from '../ui/button';
@@ -58,8 +58,8 @@ export function PageEditor({
     [base, setBase] = useState<string | null>(null),
     [dirty, setDirty] = useState(false),
     [preview, setPreview] = useState(false),
-    [history, setHistory] = useState(false),
-    [tools, setTools] = useState(false);
+    [history, setHistory] = useState(false);
+  const [selectedBlocks, setSelectedBlocks] = useState<string[]>([]);
   const { busy, run } = useTask();
   useEffect(() => {
     if (data) {
@@ -75,6 +75,7 @@ export function PageEditor({
       setHasPageBody(!!revision?.html);
       setBase(data.draftRevisionId);
       setDirty(false);
+      setSelectedBlocks([]);
     }
   }, [data]);
   useUnsaved(dirty);
@@ -127,21 +128,9 @@ export function PageEditor({
             <Eye size={14} />
             {tr('Preview draft')}
           </Button>
-          {kind === 'rules' ? (
-            <Button variant="ghost" size="sm" onClick={() => setHistory(true)}>
-              {tr('Revision history')}
-            </Button>
-          ) : (
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={tr('Page options')}
-              title={tr('Page options')}
-              onClick={() => setTools(true)}
-            >
-              <Ellipsis size={18} />
-            </Button>
-          )}
+          <Button variant="ghost" size="sm" onClick={() => setHistory(true)}>
+            {tr('Revision history')}
+          </Button>
         </div>
         <div className="flex flex-wrap gap-2">
           {edit && (
@@ -176,7 +165,7 @@ export function PageEditor({
               {tr('Publish')}
             </ConfirmButton>
           )}
-          {kind === 'rules' && publish && data.state === 'PUBLISHED' && (
+          {publish && data.state === 'PUBLISHED' && (
             <ConfirmButton
               title={tr('Unpublish this page?')}
               description={tr('The public page will be hidden until a draft is published again.')}
@@ -290,6 +279,62 @@ export function PageEditor({
                 </div>
               </details>
             )}
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border p-3">
+              <label className="flex min-h-11 items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={
+                    blocks.length > 0 && blocks.every((b) => selectedBlocks.includes(b.editorId))
+                  }
+                  onChange={(e) =>
+                    setSelectedBlocks(e.target.checked ? blocks.map((b) => b.editorId) : [])
+                  }
+                />
+                {tr('Select sections')}
+              </label>
+              {(['Show', 'Hide', 'Duplicate'] as const).map((op) => (
+                <Button
+                  key={op}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={!selectedBlocks.length}
+                  onClick={() => {
+                    setBlocks((items) =>
+                      op === 'Duplicate'
+                        ? items.flatMap((b) =>
+                            selectedBlocks.includes(b.editorId)
+                              ? [b, { ...structuredClone(b), editorId: crypto.randomUUID() }]
+                              : [b],
+                          )
+                        : items.map((b) =>
+                            selectedBlocks.includes(b.editorId)
+                              ? { ...b, visible: op === 'Show' }
+                              : b,
+                          ),
+                    );
+                    setDirty(true);
+                    setSelectedBlocks([]);
+                  }}
+                >
+                  {tr(op)}
+                </Button>
+              ))}
+              <ConfirmButton
+                title={tr('Remove selected sections?')}
+                description={tr(
+                  'Save the draft to persist this change. Previous revisions remain available.',
+                )}
+                disabled={!selectedBlocks.length}
+                onConfirm={() => {
+                  setBlocks((items) => items.filter((b) => !selectedBlocks.includes(b.editorId)));
+                  setSelectedBlocks([]);
+                  setDirty(true);
+                }}
+              >
+                {tr('Remove selected')}
+              </ConfirmButton>
+            </div>
             <ReorderList
               items={blocks}
               keyOf={(block) => block.editorId}
@@ -300,6 +345,20 @@ export function PageEditor({
               renderItem={(b, i) => (
                 <details className="cms-block" open={i === 0}>
                   <summary className="cursor-pointer py-2 font-semibold">
+                    <input
+                      className="mr-3"
+                      type="checkbox"
+                      aria-label={tr('Select section {0}', i + 1)}
+                      checked={selectedBlocks.includes(b.editorId)}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) =>
+                        setSelectedBlocks(
+                          e.target.checked
+                            ? [...selectedBlocks, b.editorId]
+                            : selectedBlocks.filter((id) => id !== b.editorId),
+                        )
+                      }
+                    />
                     <span className="mr-3 font-mono text-xs text-muted">
                       {String(i + 1).padStart(2, '0')}
                     </span>
@@ -500,37 +559,6 @@ export function PageEditor({
           </>
         )}
       </fieldset>
-      {kind === 'homepage' && (
-        <Modal open={tools} onOpenChange={setTools} title={tr('Page options')}>
-          <div className="flex flex-wrap items-center gap-4">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setTools(false);
-                setHistory(true);
-              }}
-            >
-              {tr('Revision history')}
-            </Button>
-            {publish && data.state === 'PUBLISHED' && (
-              <ConfirmButton
-                title={tr('Unpublish this page?')}
-                description={tr('The public page will be hidden until a draft is published again.')}
-                disabled={busy}
-                onConfirm={() =>
-                  void run(async () => {
-                    await action({ type: 'page.unpublish', slug: data.slug });
-                    await reload();
-                    setTools(false);
-                  }, tr('Page unpublished.'))
-                }
-              >
-                {tr('Unpublish')}
-              </ConfirmButton>
-            )}
-          </div>
-        </Modal>
-      )}
       <Modal
         open={preview}
         onOpenChange={setPreview}

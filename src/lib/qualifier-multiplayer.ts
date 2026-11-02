@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { MODS } from './match-rules';
 import { historicalScoring } from './gameplay-scoring';
 import type { QualifierView } from './qualifiers-types';
-import { qualifierScoreViolation } from './qualifier-eligibility';
+import { qualifierIndividualViolation } from './qualifier-score';
 const mod = z.union([z.string(), z.object({ acronym: z.string() }).transform((v) => v.acronym)]);
 const gameSchema = z.object({
   id: z.number().int().positive().safe(),
@@ -18,15 +18,19 @@ const playerSchema = z.object({
   user_id: z.number().int().positive(),
   score: z.number().int().nonnegative().safe(),
   mods: z.array(mod),
+  passed: z.boolean().optional(),
+  match: z.object({ pass: z.boolean().optional() }).passthrough().optional(),
 });
 export type QualifierCapture = {
   gameId: string;
   slotName: string;
   beatmapId: number;
   startedAt: string;
+  actualScoring?: string;
   players: {
     osuId: number;
     raw: number;
+    passed?: boolean | null;
     mods: (typeof MODS)[number][];
     originalMods?: string[];
     violation?: string;
@@ -78,10 +82,25 @@ export function qualifierCapturePlan(
   let run = 1;
   const played = new Set<string>();
   const games = rows.map((row) => {
-    const saved = (row.evidence as { proposal?: QualifierCapture }).proposal;
-    const proposal =
+    const evidence = row.evidence as {
+      proposal?: QualifierCapture;
+      reviewedMapping?: { slotName: string; run: number; players?: Record<string, number> };
+    };
+    const saved = evidence.proposal;
+    const original =
       map.get(`${row.multiplayerId}:${row.gameId}`) ||
       (row.status === 'ACCEPTED' ? saved : undefined);
+    const proposal =
+      original && evidence.reviewedMapping
+        ? {
+            ...original,
+            slotName: evidence.reviewedMapping.slotName,
+            players: original.players.map((player) => ({
+              ...player,
+              osuId: evidence.reviewedMapping!.players?.[player.osuId] ?? player.osuId,
+            })),
+          }
+        : original;
     if (row.status === 'IGNORED') return { row, proposal, run: row.run, issue: null };
     if (!proposal)
       return {
@@ -180,12 +199,18 @@ export function qualifierGameProposals(
       const scoring = historicalScoring(lobby.rules);
       if (scoring === 'LAZER')
         throw Error('Legacy matches cannot verify standardized lazer scores.');
-      if (
+      const gameViolation =
         !scoring ||
         g.scoring_type !== (scoring === 'SCORE_V1' ? 'score' : 'scorev2') ||
         g.mode !== lobby.rules.gameMode
-      )
-        throw Error('Gameplay mode or scoring differs from the session snapshot.');
+          ? 'Gameplay mode or scoring differs from the session snapshot.'
+          : null;
+      const actualScoring =
+        g.scoring_type === 'scorev2'
+          ? 'SCORE_V2'
+          : g.scoring_type === 'score'
+            ? 'SCORE_V1'
+            : 'UNKNOWN';
       const slots = lobby.poolRevision.slots.filter((s) => s.beatmapId === g.beatmap_id);
       if (slots.length !== 1) throw Error('Game is not uniquely identified in the qualifier pool.');
       const issues: NonNullable<QualifierCapture['issues']> = [];
@@ -207,6 +232,14 @@ export function qualifierGameProposals(
             ? 'Duplicate player score evidence.'
             : null;
         const mods = [...new Set([...g.mods, ...s.mods])];
+        const passed = s.passed ?? s.match?.pass ?? null;
+        const violation =
+          gameViolation ||
+          qualifierIndividualViolation(lobby.rules, lobby.policy || {}, slots[0].category, {
+            mods,
+            passed,
+            actualScoring,
+          });
         if (reason) {
           issues.push({
             osuId: s.user_id,
@@ -218,11 +251,12 @@ export function qualifierGameProposals(
           {
             osuId: s.user_id,
             raw: s.score,
+            ...(passed !== null ? { passed } : {}),
             mods: mods.filter((m) => MODS.includes(m as never)) as (typeof MODS)[number][],
             ...(mods.some((m) => !MODS.includes(m as never))
               ? { originalMods: mods, violation: 'Unsupported mods require manual review.' }
-              : qualifierScoreViolation(lobby.rules, slots[0].category, mods)
-                ? { violation: qualifierScoreViolation(lobby.rules, slots[0].category, mods)! }
+              : violation
+                ? { violation }
                 : {}),
           },
         ];
@@ -236,6 +270,7 @@ export function qualifierGameProposals(
         slotName: slots[0].name,
         beatmapId: g.beatmap_id,
         startedAt: g.start_time,
+        actualScoring,
         players,
         ...(issues.length ? { issues } : {}),
       });

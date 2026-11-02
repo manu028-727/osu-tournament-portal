@@ -150,6 +150,7 @@ model Tournament {
 
 model TournamentSettings {
   registrationPolicy Json?
+  qualifierBookingPolicy Json?
   gameplayScoring    String?
   tournamentId       String     @id
   tournament         Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
@@ -697,6 +698,8 @@ model QualifierAssignment {
 }
 
 model QualifierScore {
+  passed Boolean?
+  eligibilityOverride String?
   eligible       Boolean        @default(true)
   eligibilityReason String      @default("")
   run            Int            @default(1)

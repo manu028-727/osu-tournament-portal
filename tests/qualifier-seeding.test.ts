@@ -53,7 +53,7 @@ describe('qualifier policy', () => {
     const input = fixture([[[100, 200]], [[50, 75]]], { runs: 2 });
     const current = calculateQualifierStandings(input);
     expect(current.canFinalize).toBe(true);
-    expect(current.calculationVersion).toBe('qualifier-seeding/2');
+    expect(current.calculationVersion).toBe('qualifier-seeding/3');
     const historical = calculateQualifierStandings(input, 'qualifier-seeding/1');
     expect(historical.canFinalize).toBe(false);
     expect(hasIssue(historical, 'INCOMPLETE_RUN')).toBe(true);
@@ -89,8 +89,13 @@ describe('qualifier policy', () => {
     );
     input.scores[3].eligible = false;
     expect(
-      calculateQualifierStandings(input).rows.find((r) => r.participantId === 'team-1')!.complete,
+      calculateQualifierStandings(input, 'qualifier-seeding/2').rows.find(
+        (r) => r.participantId === 'team-1',
+      )!.complete,
     ).toBe(false);
+    expect(
+      calculateQualifierStandings(input).rows.find((r) => r.participantId === 'team-1')!.complete,
+    ).toBe(true);
   });
   it('defaults to raw total once without an editable gameplay scoring field', () => {
     expect(qualifierPolicySchema.parse({})).toEqual({
@@ -371,7 +376,7 @@ describe('team aggregation and source safety', () => {
     const input = teamInput('SUM');
     input.scores.push({ ...input.scores[0], id: 'third-player', osuId: 3 });
     const result = calculateQualifierStandings(input);
-    expect(hasIssue(result, 'INCOMPLETE_RUN')).toBe(true);
+    expect(hasIssue(result, 'INCOMPLETE_POOL')).toBe(true);
     expect(result.canFinalize).toBe(false);
   });
   for (const [code, mutate] of [

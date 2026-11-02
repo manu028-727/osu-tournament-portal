@@ -30,7 +30,15 @@ import type {
   CompetitionOptions,
   CompetitionGenerationPreview,
 } from '@/lib/competition-types';
-import { action, Field, LoadingState, Modal, usePolling, useResource, useTask } from './shared';
+import {
+  action,
+  Field,
+  LoadingState,
+  EditorPanel,
+  usePolling,
+  useResource,
+  useTask,
+} from './shared';
 import { BracketRoundTools } from './bracket-rounds';
 import { OrganizerMatchResult } from './organizer-match-result';
 import { bracketRoundDetails, bracketSlotLabel } from '@/lib/bracket-presentation';
@@ -784,7 +792,7 @@ function CreateCompetition({
     change({ teamIds: ids });
   };
   return (
-    <Modal
+    <EditorPanel
       title={tr(initial ? 'Rebuild bracket' : 'Create bracket')}
       open
       onOpenChange={(open) => {
@@ -1118,7 +1126,7 @@ function CreateCompetition({
           </div>
         </fieldset>
       </form>
-    </Modal>
+    </EditorPanel>
   );
 }
 function ReviewGroupTies({
@@ -1152,7 +1160,7 @@ function ReviewGroupTies({
       return next;
     });
   return (
-    <Modal
+    <EditorPanel
       title={tr('Review group ties')}
       open
       onOpenChange={(open) => {
@@ -1226,7 +1234,7 @@ function ReviewGroupTies({
           <Button disabled={busy || reason.trim().length < 3}>{tr('Approve order')}</Button>
         </div>
       </form>
-    </Modal>
+    </EditorPanel>
   );
 }
 function EditCompetitionNode({

@@ -310,11 +310,13 @@ confirmation explains retained history and independent IRC room closure. Active
 rows cannot be deleted; deleted rows are read-only under an explicit filter.
 Keep compact actions and contained table scrolling on narrow screens.
 
-Registration and qualifiers is reachable from tournament navigation and Teams.
-Captains see their own roster and existing session rows with timezone, deadline,
-capacity and reserve/move/cancel actions. Private answers and administrative notes
+Tournament Registration and Qualifier Booking are distinct navigation destinations
+and Teams links. Registration owns entry status, roster and private answers; Booking
+owns existing session rows with timezone, deadline, capacity and reserve/move/cancel
+actions. Both pages link to each other without mixing forms or statuses. Private answers and administrative notes
 never appear in public Teams; rejected entries show the organizer's public reason.
-Organizer settings expose deadlines, limits, eligibility and custom fields together.
+Organizer settings separate registration deadlines, limits, eligibility and custom
+fields from the qualifier-booking enable/open/close section.
 Qualifier Results opens bulk multiplayer review in place, after selecting the stage.
 Each source shows warmup count, target session, roster ambiguities and expandable
 individual/team scores. Changed decisions require a refreshed preview; exclusions
@@ -337,7 +339,8 @@ progressive source diagnostics, preserving the established finalization review.
 ## Accessibility And States
 
 Use semantic headings/forms, visible labels/focus, aria-current for navigation,
-named dialogs, focus trap/return and keyboard-operable menus/reordering. Pair status
+named modal dialogs with focus trapping/return, nonmodal panes with focus return,
+and keyboard-operable menus/reordering. Pair status
 color with text/symbol, never color alone. Confirm irreversible actions; don't hide
 security warnings in tooltips. Keep buttons/text within parents at 320px and zoom.
 Use compact skeleton/empty rows, real next steps and recoverable visible errors,
@@ -353,8 +356,28 @@ tabs and page frame; homepage.module.css owns CMS block layouts. The obsolete mi
 home-pilot stylesheet has been removed. workspace-pilot.module.css remains the
 active organizer stylesheet despite its historical name.
 
-Current editing uses shared Radix Modal/ConfirmButton alongside native confirm
-prompts. Dirty editors share one navigation confirmation, including cancelable
+Routine collection forms use shared EditorPanel within EditingWorkspace: a visible
+adjacent pane on wide screens, placed above the collection on narrow screens. It
+does not trap focus or obscure the source collection; Escape/close restore focus
+through existing dirty-form guards. Radix Modal remains for private previews and
+operational referee flows, and ConfirmButton for destructive decisions. Teams expose
+direct name/seed editing plus selected-row status/visibility/deletion. CMS exposes
+revision history/unpublish directly and provides selected-section show/hide/duplicate/
+remove actions within the independent draft. Website access supports selected-user
+role addition/removal while preserving other roles and protected accounts. Roles use
+compact rows, permission copying and reviewed configuration witnesses. Existing
+stage, pool, suggestion, staff, match and bracket inline/bulk tools remain available
+beside their contextual configuration forms. Head-to-head Referee Mode is unchanged.
+
+Qualifier score management uses the same compact component in session operations
+and stage results. Show exceptions first with player/team, map/run, raw/effective
+scores and an explanation; all performances remain searchable and paginated. Inline
+edits and selected-score include/exclude/restore/revalidate/remap share one full-cohort
+impact preview. Reprocess exposes normalization/rules only on demand. Source receipts
+and diagnostics stay expandable. Played completion remains distinct from validity
+and counted standings; optional runs and IRC continue after automatic completion.
+
+Dirty editors share one navigation confirmation, including cancelable
 browser history and guarded stage redirects. Pooling dialogs preserve edits when
 discard is canceled, protect transitions into other dialogs, and return focus to
 their connected opener. Unsupported/forced browser exits retain the limitations in

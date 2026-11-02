@@ -18,6 +18,7 @@ import {
   Field,
   LoadingState,
   Modal,
+  EditorPanel,
   SaveButton,
   useResource,
   useTask,
@@ -33,6 +34,7 @@ import { QualifierLobbyList } from './qualifier-bulk-tools';
 import { qualifierProgress, qualifierCompletion } from '@/lib/qualifier-progress';
 import { DeleteQualifierSessions, QualifierSessionIdentity } from './qualifier-session-tools';
 import { QualifierExceptions } from './qualifier-exceptions';
+import { QualifierScoreManager } from './qualifier-score-manager';
 import { QualifierMapBoard } from './qualifier-map-board';
 import { IrcPanel } from './irc-panel';
 import { QualifierSessionAssignments } from './qualifier-session-assignments';
@@ -399,11 +401,11 @@ export function QualifiersWorkspace({
                 ? tr('Deleted session. Scores and referee histories are preserved.')
                 : m.autoCompleted
                   ? tr(
-                      'Complete eligible run verified. Optional runs can still synchronize. IRC stays open; official seedings are finalized separately.',
+                      'Complete played run verified. Scoring exceptions remain reviewable and optional runs can still synchronize. IRC stays open; official seedings are finalized separately.',
                     )
                   : qualifierCompletion(m).complete
                     ? tr(
-                        'Complete eligible run recorded. Review results before finalizing official seedings.',
+                        'Complete played run recorded. Review scoring exceptions before finalizing official seedings.',
                       )
                     : tr(
                         'Results synchronize automatically. Only missing or excluded evidence needs attention.',
@@ -583,11 +585,16 @@ export function QualifiersWorkspace({
               </details>
             </div>
             <div className="min-w-0 space-y-4">
-              <QualifierExceptions
-                lobby={m}
-                manager={manager && m.access.score}
-                onChanged={reload}
-              />
+              {manager ? (
+                <QualifierScoreManager
+                  key={m.id}
+                  stageId={m.stage.id}
+                  lobbies={[m]}
+                  onChanged={reload}
+                />
+              ) : (
+                <QualifierExceptions lobby={m} />
+              )}
               {m.access.operate && (
                 <details open={!m.participants.length} className="border-t pt-3">
                   <summary className="cursor-pointer text-sm font-semibold">
@@ -850,7 +857,14 @@ export function QualifiersWorkspace({
           </form>
         )}
       </Modal>
-      <Modal open={create} onOpenChange={setCreate} title={tr('Create qualifier lobby')} wide>
+      <EditorPanel
+        guardChanges
+        busy={busy}
+        open={create}
+        onOpenChange={setCreate}
+        title={tr('Create qualifier lobby')}
+        wide
+      >
         <form
           className="space-y-5"
           onSubmit={(e) => {
@@ -924,8 +938,10 @@ export function QualifiersWorkspace({
           </Field>
           <SaveButton busy={busy}>{tr('Create qualifier lobby')}</SaveButton>
         </form>
-      </Modal>
-      <Modal
+      </EditorPanel>
+      <EditorPanel
+        guardChanges
+        busy={busy}
         open={!!schedule}
         onOpenChange={(open) => {
           if (!open) setSchedule(null);
@@ -970,8 +986,10 @@ export function QualifiersWorkspace({
             </SaveButton>
           </form>
         )}
-      </Modal>
-      <Modal
+      </EditorPanel>
+      <EditorPanel
+        guardChanges
+        busy={busy}
         open={!!lobby}
         onOpenChange={(open) => {
           if (!open) setLobby(null);
@@ -1007,7 +1025,7 @@ export function QualifiersWorkspace({
             </SaveButton>
           </form>
         )}
-      </Modal>
+      </EditorPanel>
       <Modal
         open={!!decision}
         onOpenChange={(open) => {

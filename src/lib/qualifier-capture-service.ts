@@ -10,6 +10,7 @@ import {
   reconcileQualifierCompletion,
 } from './qualifiers-service';
 import { qualifierActionSchema } from './qualifiers-validation';
+import { MODS } from './match-rules';
 import {
   qualifierCapturePlan,
   qualifierImportedGame,
@@ -204,12 +205,22 @@ export async function captureQualifierGame(
         if (
           previous?.gameId === captureId &&
           previous.raw === player.raw &&
-          canonicalQualifierJson(previous.mods) === canonicalQualifierJson(player.mods)
+          canonicalQualifierJson(previous.mods) === canonicalQualifierJson(player.mods) &&
+          (player.passed === undefined || previous.passed === player.passed)
         ) {
           skipped++;
           continue;
         }
-        if (previous && !options.replace) {
+        if (
+          previous &&
+          !options.replace &&
+          !(
+            previous.gameId === captureId &&
+            previous.source !== 'MANUAL' &&
+            previous.raw === player.raw &&
+            canonicalQualifierJson(previous.mods) === canonicalQualifierJson(player.mods)
+          )
+        ) {
           skipped++;
           continue;
         }
@@ -233,6 +244,8 @@ export async function captureQualifierGame(
             verified: options.verified ?? true,
             eligibilityReason: player.violation,
             mods: player.originalMods,
+            passed: player.passed,
+            actualScoring: proposal.actualScoring,
           },
         );
         version = result.version!;
@@ -656,13 +669,35 @@ export async function ignoreQualifierGame(
         );
       let version = lobby.version;
       for (const score of affected) {
-        const result = await applyQualifierAction(tx, actor, {
-          type: 'qualifier.score.remove',
-          id,
-          baseVersion: version,
-          scoreId: score.id,
-          reason,
-        });
+        const result = await applyQualifierAction(
+          tx,
+          actor,
+          {
+            type: 'qualifier.score',
+            id,
+            baseVersion: version,
+            osuId: score.osuId,
+            slotName: score.slotName,
+            run: score.run,
+            representation: score.representation as 'LEGACY' | 'STANDARDIZED',
+            raw: score.raw,
+            passed: score.passed,
+            mods: (score.mods as string[]).filter((mod) =>
+              MODS.includes(mod as never),
+            ) as (typeof MODS)[number][],
+            reason,
+          },
+          {
+            source: score.source === 'OSU_API' ? 'OSU_API' : 'IMPORT',
+            gameId: score.gameId!,
+            verified: score.verified,
+            passed: score.passed,
+            actualScoring: score.actualScoring || undefined,
+            mods: score.mods as string[],
+            eligibilityReason: reason,
+            eligibilityOverride: 'EXCLUDE',
+          },
+        );
         version = result.version!;
       }
       await tx.qualifierGame.update({
@@ -684,7 +719,8 @@ export async function ignoreQualifierGame(
             gameId: game.gameId,
             multiplayerId: game.multiplayerId,
             before: game,
-            removedScoreIds: affected.map((score) => score.id),
+            excludedScoreIds: affected.map((score) => score.id),
+            beforeScores: affected,
           }),
         },
       });

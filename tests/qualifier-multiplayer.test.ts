@@ -73,8 +73,6 @@ describe('reviewed qualifier multiplayer capture', () => {
     });
   });
   it.each([
-    { scoring_type: 'score' },
-    { mode: 'mania' },
     { beatmap_id: 999 },
     { start_time: '2026-10-21T11:00:00Z' },
     { scores: [{ user_id: 11, score: 50, mods: [] }] },
@@ -84,6 +82,17 @@ describe('reviewed qualifier multiplayer capture', () => {
     expect(output.proposals).toEqual([]);
     expect(output.rejected).toHaveLength(1);
   });
+  it.each([{ scoring_type: 'score' }, { mode: 'mania' }])(
+    'preserves an incompatible observed performance %j with an explicit violation',
+    (changes) => {
+      const result = qualifierGameProposals([{ game: { ...game, ...changes } }], lobby);
+      expect(result.proposals[0].players[0]).toMatchObject({
+        raw: 0,
+        violation: 'Gameplay mode or scoring differs from the session snapshot.',
+      });
+      expect(result.rejected).toEqual([]);
+    },
+  );
   it('does not infer lazer provenance from a legacy scorev2 game', () => {
     const result = qualifierGameProposals([{ game }], {
       ...lobby,

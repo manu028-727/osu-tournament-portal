@@ -6,6 +6,8 @@ import type { Actor } from '@/lib/permissions';
 import { QualifierStandings } from './qualifier-standings';
 import { Field, LoadingState, useResource } from './shared';
 import { QualifierImport } from './qualifier-import';
+import { QualifierScoreManager } from './qualifier-score-manager';
+import type { QualifierData } from '@/lib/qualifiers-types';
 import { can } from '@/lib/permissions';
 import styles from './qualifier-workflow.module.css';
 import Link from '@/components/tournament-scope';
@@ -15,6 +17,7 @@ export function QualifierResults({ actor }: { actor: Actor }) {
   const { data, error, reload } = useResource<{ id: string; name: string }[]>('qualifier-stages');
   const [selected, setSelected] = useState('');
   const [revision, setRevision] = useState(0);
+  const sessions = useResource<QualifierData>('qualifiers&deleted=true');
   if (!data) return <LoadingState error={error} retry={() => void reload()} />;
   const stageId = data.some((s) => s.id === selected) ? selected : data[0]?.id;
   return (
@@ -42,7 +45,22 @@ export function QualifierResults({ actor }: { actor: Actor }) {
         )}
       </div>
       {stageId && (
-        <QualifierStandings key={`${stageId}:${revision}`} stageId={stageId} actor={actor} />
+        <>
+          <QualifierStandings key={`${stageId}:${revision}`} stageId={stageId} actor={actor} />
+          {can(actor, 'matches.manage') && sessions.data && (
+            <QualifierScoreManager
+              key={`${stageId}:${revision}`}
+              stageId={stageId}
+              lobbies={sessions.data.lobbies.filter(
+                (l) => l.stage.id === stageId && l.status !== 'CANCELLED',
+              )}
+              onChanged={async () => {
+                await sessions.reload();
+                setRevision((v) => v + 1);
+              }}
+            />
+          )}
+        </>
       )}
     </div>
   );

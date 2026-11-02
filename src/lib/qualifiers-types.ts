@@ -43,6 +43,8 @@ export type QualifierView = {
   assignments: { userId: string; user: { id: string; username: string; osuId: number } }[];
   entries: { team: { members: { discordId: string }[] } }[];
   scores: {
+    passed?: boolean | null;
+    eligibilityOverride?: string | null;
     eligible?: boolean;
     eligibilityReason?: string;
     id: string;

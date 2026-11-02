@@ -6,7 +6,7 @@ import { SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { CompetitionBracketData, CompetitionOptions } from '@/lib/competition-types';
 import type { CompetitionAction } from '@/lib/competition-validation';
-import { Field, Modal, useTask } from './shared';
+import { Field, EditorPanel, useTask } from './shared';
 import { bracketRoundDetails } from '@/lib/bracket-presentation';
 
 export function BracketRoundTools({
@@ -37,7 +37,7 @@ export function BracketRoundTools({
         <SlidersHorizontal size={16} />
         {tr('Round stages')}
       </Button>
-      <Modal title={tr('Assign round stages')} open={open} onOpenChange={setOpen}>
+      <EditorPanel title={tr('Assign round stages')} open={open} onOpenChange={setOpen}>
         <div className="space-y-4">
           <div className="max-h-72 overflow-auto divide-y">
             {bracket.rounds.map((round) => {
@@ -114,7 +114,7 @@ export function BracketRoundTools({
             </Button>
           </div>
         </div>
-      </Modal>
+      </EditorPanel>
     </>
   );
 }

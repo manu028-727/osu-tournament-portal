@@ -64,6 +64,7 @@ export const qualifierActionOptions = [
         z.object({
           osuId: z.number().int().positive().max(2147483647),
           raw: z.number().min(0).max(1_000_000_000_000),
+          passed: z.boolean().nullable().optional(),
           mods: z.array(z.enum(MODS)).max(10),
         }),
       )
@@ -158,6 +159,7 @@ export const qualifierActionOptions = [
     osuId: z.number().int().positive().max(2147483647),
     slotName: z.string().min(1).max(20),
     raw: z.number().min(0).max(1_000_000_000_000),
+    passed: z.boolean().nullable().optional(),
     mods: z
       .array(z.enum(MODS))
       .max(10)

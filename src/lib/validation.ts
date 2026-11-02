@@ -15,6 +15,7 @@ import { stageWorkflowActionSchemas } from './stage-workflows-validation';
 import { matchesSchedulingActionOptions } from './matches-bulk-validation';
 import { staffBulkActionSchema } from './staff-bulk-validation';
 import { registrationPolicySchema } from './registration-policy';
+import { qualifierBookingPolicySchema } from './qualifier-booking-policy';
 export const id = z.string().min(1).max(100);
 export const label = z.string().trim().min(1).max(120);
 export const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -60,6 +61,7 @@ export const slotSchema = z.object({
 const base = z.object({ type: z.string() });
 export const settingsFieldsSchema = z.object({
   registrationPolicy: registrationPolicySchema.nullable().optional(),
+  qualifierBookingPolicy: qualifierBookingPolicySchema.nullable().optional(),
   gameplayScoring: gameplayScoringSchema.nullable().optional(),
   name: label,
   acronym: z.string().trim().min(1).max(20),
@@ -183,13 +185,40 @@ export const actionSchema = z.discriminatedUnion('type', [
   base.extend({ type: z.literal('staff.delete'), id, baseVersion: z.number().int().positive() }),
   base.extend({
     type: z.literal('role.save'),
+    baseRole: z.string().max(20000).optional(),
     id: id.optional(),
     name: label,
     description: z.string().max(500),
     permissions: z.array(z.enum(ALL_PERMISSIONS)).max(ALL_PERMISSIONS.length),
   }),
-  base.extend({ type: z.literal('role.delete'), id }),
-  base.extend({ type: z.literal('user.roles'), userId: id, roleIds: z.array(id).max(30) }),
+  base.extend({ type: z.literal('role.delete'), id, baseRole: z.string().max(20000).optional() }),
+  base.extend({
+    type: z.literal('user.roles'),
+    userId: id,
+    roleIds: z.array(id).max(30),
+    baseRoleIds: z.array(id).max(30).optional(),
+    baseRoles: z
+      .array(
+        z.object({ id, permissions: z.array(z.enum(ALL_PERMISSIONS)).max(ALL_PERMISSIONS.length) }),
+      )
+      .max(500)
+      .optional(),
+  }),
+  base.extend({
+    type: z.literal('user.roles.bulk'),
+    users: z
+      .array(z.object({ userId: id, baseRoleIds: z.array(id).max(30) }))
+      .min(1)
+      .max(100),
+    roleIds: z.array(id).min(1).max(30),
+    operation: z.enum(['ADD', 'REMOVE']),
+    baseRoles: z
+      .array(
+        z.object({ id, permissions: z.array(z.enum(ALL_PERMISSIONS)).max(ALL_PERMISSIONS.length) }),
+      )
+      .max(500)
+      .optional(),
+  }),
   settingsFieldsSchema.partial().extend({
     type: z.literal('settings.save'),
     baseVersion: z.number().int().positive(),

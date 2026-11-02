@@ -24,6 +24,10 @@ export type TeamImportPlan = {
 };
 export function teamPermission(a: TeamAction): PermissionKey {
   switch (a.type) {
+    case 'team.patch':
+      return 'teams.edit';
+    case 'team.bulk':
+      return a.operation === 'DELETE' ? 'teams.delete' : 'teams.publish';
     case 'team.save':
       return a.id ? 'teams.edit' : 'teams.create';
     case 'team.delete':
@@ -190,6 +194,53 @@ export async function applyTeamAction(
 ) {
   tx = scopedDb(tx, actor.tournamentId || 'main');
   assertPermission(actor, teamPermission(a));
+  if (a.type === 'team.patch') {
+    const before = await currentTeam(tx, a.id, a.baseVersion);
+    await tx.team.update({
+      where: { id: a.id, version: a.baseVersion },
+      data: { name: a.name, seed: a.seed, version: { increment: 1 } },
+    });
+    return { id: a.id, before: { name: before.name, seed: before.seed } };
+  }
+  if (a.type === 'team.bulk') {
+    // Validate the entire reviewed selection before applying the same single-entry policies.
+    const before = await Promise.all(a.entries.map((e) => currentTeam(tx, e.id, e.baseVersion)));
+    for (const team of before)
+      await applyTeamAction(
+        tx,
+        actor,
+        a.operation === 'DELETE'
+          ? { type: 'team.delete', id: team.id, baseVersion: team.version }
+          : {
+              type: 'team.status',
+              id: team.id,
+              baseVersion: team.version,
+              status:
+                a.operation === 'APPROVE'
+                  ? 'APPROVED'
+                  : a.operation === 'REJECT'
+                    ? 'REJECTED'
+                    : team.status,
+              published:
+                a.operation === 'PUBLISH' || a.operation === 'APPROVE' || a.operation === 'REJECT'
+                  ? true
+                  : a.operation === 'HIDE'
+                    ? false
+                    : team.published,
+              rejectionReason: a.operation === 'REJECT' ? a.rejectionReason : team.rejectionReason,
+            },
+        prepared,
+      );
+    return {
+      ids: before.map((t) => t.id),
+      before: before.map((t) => ({
+        id: t.id,
+        status: t.status,
+        published: t.published,
+        rejectionReason: t.rejectionReason,
+      })),
+    };
+  }
   if (a.type === 'team.import.preview') return prepared.plan;
   if (a.type === 'team.import.apply') {
     const plan = prepared.plan!;

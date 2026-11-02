@@ -108,13 +108,15 @@ export function QualifierMapBoard({
         }}
       >
         <fieldset disabled={busy || !writable} className="min-w-0 space-y-3">
-          {current.teams.map(({ team, scores, complete, value }) => (
+          {current.teams.map(({ team, scores, complete, valid, value }) => (
             <section key={team.id} className="space-y-1 border-t pt-2">
               <h3 className="text-sm font-semibold">
                 {team.name}{' '}
                 <span className="ml-2 font-normal text-muted">
-                  {complete ? tr('Complete') : tr('Missing scores')} · {scores.length}/
-                  {lobby.policy.requiredPlayers}
+                  {complete
+                    ? tr(valid ? 'Played and valid' : 'Played with exclusions')
+                    : tr('Missing scores')}{' '}
+                  · {scores.length}/{lobby.policy.requiredPlayers}
                   {value !== null
                     ? ` · ${tr('Team value')}: ${value.toLocaleString(localeTag(language))}`
                     : ''}

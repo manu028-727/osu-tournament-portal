@@ -10,6 +10,7 @@ import {
   PLATFORM_PERMISSIONS,
 } from './permissions';
 import { requestScope } from './tournament-context';
+import type { Prisma } from '@/generated/prisma/client';
 type ScopedUser = {
   id: string;
   osuId: number;
@@ -78,6 +79,23 @@ export async function requireTournamentActor() {
   if (!(await requestScope()).slug || !actor.tournamentId || actor.tournamentId === 'none')
     throw new AppError('Select a tournament in the Organizer Workspace before continuing.', 400);
   return actor;
+}
+// Participant mutations acquire the root lock first, then recheck the exact
+// authenticated session and current tournament roles before writing.
+export async function refreshedSessionActor(
+  tx: Prisma.TransactionClient,
+  actor: Actor,
+  sessionHash: string,
+) {
+  const session = await tx.session.findUnique({
+    where: { id: sessionHash },
+    include: {
+      user: { include: { roles: { include: { role: { include: { permissions: true } } } } } },
+    },
+  });
+  if (!session || session.userId !== actor.id || session.expiresAt <= new Date())
+    throw new AppError('Sign in to continue.', 401);
+  return actorForTournament(session.user, actor.tournamentId!);
 }
 export async function createSession(userId: string) {
   const raw = token();

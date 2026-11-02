@@ -30,6 +30,7 @@ import {
   ConfirmButton,
   Field,
   LoadingState,
+  EditorPanel,
   Modal,
   SaveButton,
   useResource,
@@ -769,7 +770,7 @@ export function PoolEditor({
           description={tr('Create a tournament stage to start preparing its mappool.')}
         />
       )}
-      <Modal
+      <EditorPanel
         open={importing}
         onOpenChange={setImporting}
         title={tr('Bulk-import beatmaps')}
@@ -836,8 +837,8 @@ export function PoolEditor({
           </Field>
           <SaveButton busy={busy}>{tr('Import & fetch metadata')}</SaveButton>
         </form>
-      </Modal>
-      <Modal
+      </EditorPanel>
+      <EditorPanel
         open={copyOpen}
         onOpenChange={setCopyOpen}
         title={tr('Copy mappool from another stage')}
@@ -900,8 +901,8 @@ export function PoolEditor({
             </Button>
           </div>
         </div>
-      </Modal>
-      <Modal
+      </EditorPanel>
+      <EditorPanel
         open={!!transferSlots}
         onOpenChange={(open) => {
           if (!open) setTransferSlots(null);
@@ -978,8 +979,8 @@ export function PoolEditor({
             </SaveButton>
           </div>
         </form>
-      </Modal>
-      <Modal
+      </EditorPanel>
+      <EditorPanel
         open={distributionOpen}
         onOpenChange={setDistributionOpen}
         title={tr('Build mappool slot plan')}
@@ -1020,8 +1021,8 @@ export function PoolEditor({
             </Button>
           </div>
         </div>
-      </Modal>
-      <Modal
+      </EditorPanel>
+      <EditorPanel
         open={categoriesOpen}
         onOpenChange={setCategoriesOpen}
         title={tr('Mod categories')}
@@ -1122,7 +1123,7 @@ export function PoolEditor({
             )}
           </div>
         </form>
-      </Modal>
+      </EditorPanel>
       <Modal
         open={preview}
         onOpenChange={setPreview}

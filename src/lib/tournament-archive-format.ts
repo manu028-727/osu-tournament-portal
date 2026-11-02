@@ -6,6 +6,7 @@ import type { Readable } from 'node:stream';
 import { AppError } from './permissions';
 import { poolPlanSchema } from './pooling-validation';
 import { registrationPolicySchema } from './registration-policy';
+import { qualifierBookingPolicySchema } from './qualifier-booking-policy';
 
 export const ARCHIVE_FORMAT = 'osu-tournament-portal';
 export const ARCHIVE_VERSION = 1;
@@ -35,7 +36,7 @@ export const ARCHIVE_TABLES = {
   ),
   settings: def(
     'tournamentSettings',
-    'tournamentId:s gameplayScoring:s? registrationPolicy:j? logo:s favicon:s banner:s primaryColor:s accentColor:s registrationUrl:s socialLinks:j importantDates:j navigation:j footer:s copy:j matchRules:j updatedAt:d',
+    'tournamentId:s gameplayScoring:s? registrationPolicy:j? qualifierBookingPolicy:j? logo:s favicon:s banner:s primaryColor:s accentColor:s registrationUrl:s socialLinks:j importantDates:j navigation:j footer:s copy:j matchRules:j updatedAt:d',
     { tournamentId: 'tournament' },
   ),
   media: def(
@@ -209,7 +210,7 @@ export const ARCHIVE_TABLES = {
   }),
   qualifierScores: def(
     'qualifierScore',
-    'id:s lobbyId:s osuId:i slotName:s run:i actualScoring:s? representation:s source:s gameId:s? verified:b eligible:b eligibilityReason:s raw:n mods:j adjusted:n updatedAt:d',
+    'id:s lobbyId:s osuId:i slotName:s run:i actualScoring:s? representation:s source:s gameId:s? verified:b eligible:b eligibilityReason:s passed:b? eligibilityOverride:s? raw:n mods:j adjusted:n updatedAt:d',
     { lobbyId: 'qualifierLobbies', osuId: 'participants' },
     ['lobby'],
   ),
@@ -390,6 +391,7 @@ const enumFields: Record<string, readonly [string, ...string[]]> = {
   'settings.gameplayScoring': ['SCORE_V1', 'SCORE_V2', 'LAZER'],
   'qualifierLobbies.gameplayScoring': ['SCORE_V1', 'SCORE_V2', 'LAZER'],
   'qualifierScores.actualScoring': ['SCORE_V1', 'SCORE_V2', 'LAZER'],
+  'qualifierScores.eligibilityOverride': ['INCLUDE', 'EXCLUDE'],
   'qualifierScores.representation': ['LEGACY', 'STANDARDIZED'],
   'qualifierScores.source': ['MANUAL', 'OSU_API', 'IMPORT'],
   'brackets.format': ['SINGLE_ELIMINATION', 'DOUBLE_ELIMINATION', 'GROUPS'],
@@ -579,6 +581,8 @@ export function validateArchiveData(input: unknown): ArchiveData {
     throw new AppError('Archive contains too many records.');
   if (data.tournament.length !== 1 || data.settings.length !== 1)
     throw new AppError('Archive must contain one tournament and its settings.');
+  if (data.settings[0].qualifierBookingPolicy)
+    qualifierBookingPolicySchema.parse(data.settings[0].qualifierBookingPolicy);
   if (data.settings[0].registrationPolicy)
     registrationPolicySchema.parse(data.settings[0].registrationPolicy);
   for (const plan of data.poolPlans)

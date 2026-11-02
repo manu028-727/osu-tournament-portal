@@ -20,6 +20,8 @@ import { settingsFieldsSchema } from '@/lib/validation';
 import { SCORING_LABELS, SCORING_DESCRIPTIONS, type GameplayScoring } from '@/lib/gameplay-scoring';
 import { registrationPolicySchema } from '@/lib/registration-policy';
 import { RegistrationSettings } from './registration-settings';
+import { QualifierBookingSettings } from './qualifier-booking-settings';
+import { qualifierBookingPolicy } from '@/lib/qualifier-booking-policy';
 import {
   action,
   Field,
@@ -72,6 +74,7 @@ export function SettingsEditor({
         ...t,
         ...settings,
         copy: siteCopy(settings.copy),
+        qualifierBookingPolicy: qualifierBookingPolicy(settings),
         registrationPolicy: registrationPolicySchema.parse(settings.registrationPolicy || {}),
       });
       setDirty(false);
@@ -116,6 +119,7 @@ export function SettingsEditor({
               ...data,
               ...data.settings,
               copy: siteCopy(data.settings.copy),
+              qualifierBookingPolicy: qualifierBookingPolicy(data.settings),
               registrationPolicy: registrationPolicySchema.parse(
                 data.settings.registrationPolicy || {},
               ),
@@ -454,6 +458,10 @@ export function SettingsEditor({
               <RegistrationSettings
                 value={form.registrationPolicy || registrationPolicySchema.parse({})}
                 onChange={(value) => update('registrationPolicy', value)}
+              />
+              <QualifierBookingSettings
+                value={form.qualifierBookingPolicy || qualifierBookingPolicy(data.settings)}
+                onChange={(value) => update('qualifierBookingPolicy', value)}
               />
               <div className="grid-fields">
                 <Field

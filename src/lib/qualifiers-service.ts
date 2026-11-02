@@ -9,11 +9,11 @@ import { matchOptions } from './match-queries';
 import { type MatchParticipants } from './matches-types';
 import { teamInclude } from './teams-service';
 import { matchRulesSchema } from './match-rules';
-import { convertedScore } from './match-engine';
+import { qualifierEffectiveScore, qualifierIndividualViolation } from './qualifier-score';
+import { qualifierScoreDecision } from './qualifier-score-decisions';
 import type { QualifierAction } from './qualifiers-validation';
 import { inheritedRules, historicalScoring, assertScoreRepresentation } from './gameplay-scoring';
 import { qualifierPolicySchema } from './qualifier-policy';
-import { qualifierScoreViolation } from './qualifier-eligibility';
 import { qualifierCompletion } from './qualifier-progress';
 import type { QualifierView } from './qualifiers-types';
 import { qualifierStandingSnapshot } from './qualifier-standings-contract';
@@ -197,6 +197,9 @@ export async function applyQualifierAction(
     verified: boolean;
     eligibilityReason?: string;
     mods?: string[];
+    passed?: boolean | null;
+    actualScoring?: string;
+    eligibilityOverride?: 'INCLUDE' | 'EXCLUDE';
   },
   external?: { multiplayerId: number },
 ): Promise<{
@@ -443,6 +446,7 @@ export async function applyQualifierAction(
       data: {
         eligible: a.eligible,
         eligibilityReason: a.reason,
+        eligibilityOverride: a.eligible ? 'INCLUDE' : 'EXCLUDE',
       },
     });
     eventData = {
@@ -451,6 +455,7 @@ export async function applyQualifierAction(
         ...score,
         eligible: a.eligible,
         eligibilityReason: a.reason,
+        eligibilityOverride: a.eligible ? 'INCLUDE' : 'EXCLUDE',
       })),
       reason: a.reason,
     };
@@ -527,8 +532,12 @@ export async function applyQualifierAction(
     if (rules.scoreMode === 'ACCURACY' ? a.raw > 100 : !Number.isSafeInteger(a.raw))
       throw new AppError('Use a valid raw score for the configured scoring mode.');
     const violation =
-      provenance?.eligibilityReason || qualifierScoreViolation(rules, slot.category, a.mods);
-    if (violation && !provenance) throw new AppError(violation);
+      provenance?.eligibilityReason ||
+      qualifierIndividualViolation(rules, policy, slot.category, {
+        mods: provenance?.mods || a.mods,
+        passed: provenance?.passed ?? a.passed,
+        actualScoring: provenance?.actualScoring || scoring,
+      });
     const where = {
       lobbyId_osuId_slotName_run: {
         lobbyId: lobby.id,
@@ -538,13 +547,32 @@ export async function applyQualifierAction(
       },
     };
     const before = await tx.qualifierScore.findUnique({ where });
+    const override =
+      provenance?.eligibilityOverride ||
+      (before && (!provenance || before.gameId === provenance.gameId)
+        ? qualifierScoreDecision(before, lobby.events)
+        : null);
     const data = {
-      eligible: !violation,
-      eligibilityReason: violation || '',
+      eligible: override === 'INCLUDE' || (override !== 'EXCLUDE' && !violation),
+      eligibilityReason: override
+        ? provenance?.eligibilityReason || before?.eligibilityReason || a.reason
+        : violation || '',
+      eligibilityOverride: override,
+      passed: provenance?.passed ?? a.passed ?? null,
       raw: a.raw,
       mods: json(provenance?.mods || a.mods),
-      adjusted: convertedScore(rules, a.raw, provenance?.mods || a.mods, slot.name).adjusted,
-      actualScoring: historicalScoring(rules),
+      adjusted: qualifierEffectiveScore(
+        rules,
+        policy,
+        a.raw,
+        provenance?.mods || a.mods,
+        slot.name,
+      ),
+      actualScoring: provenance?.actualScoring
+        ? ['SCORE_V1', 'SCORE_V2', 'LAZER'].includes(provenance.actualScoring)
+          ? provenance.actualScoring
+          : null
+        : historicalScoring(rules),
       representation: a.representation,
       source: provenance?.source || 'MANUAL',
       gameId: provenance?.gameId || null,
@@ -696,8 +724,8 @@ export async function reconcileQualifierCompletion(
       actorId: actor.id,
       kind: complete ? 'qualifier.auto.complete' : 'qualifier.auto.resume',
       reason: complete
-        ? 'Complete eligible multiplayer run verified'
-        : 'Eligible run is no longer complete',
+        ? 'Complete played multiplayer run verified'
+        : 'Played run is no longer complete',
       data: json(completion),
     },
   });

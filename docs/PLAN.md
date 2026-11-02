@@ -1367,6 +1367,111 @@ only the reported public page was retrieved live. No schema or new migration is
 required, and no installation data has been changed. Changes remain local pending
 an authorized commit/push and operator-controlled installation update.
 
+## Scoring Accuracy And Platform Editing Overhaul - 2 November 2026
+
+Verified working tree based on `276f142` (source fingerprint
+`e19b5b3540acffa4779fb7245f24da6493437f5b215036d28996252e669dcb70`). The maintainer explicitly changed the
+completion contract: played, valid and counted are independent; excluded observed
+scores do not erase a played map. Historical finalized witnesses remain immutable.
+
+Completed implementation and verification:
+
+| Area                            | Required delivery                                                                                                                                                            | State    |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| Scoring                         | Canonical configurable normalization/rounding, failed-score and Freemod validation, played-run completion, versioned historical compatibility                                | Verified |
+| Reference reconciliation        | Read-only comparison of all 22 teams, both Freemod maps and explicit ignored performances; private evidence only in ignored `.data`                                          | Verified |
+| Corrections                     | Inline/bulk include, exclude, restore, revalidate, remap and reprocess with cohort impact preview and audited versions                                                       | Verified |
+| Registration / booking          | Independent public pages, API/service ownership, statuses and deadlines; shared transactional capacity/identity safeguards                                                   | Verified |
+| Tournament / settings / access  | Creation, branding, roles and configuration with contextual editing and useful batches                                                                                       | Verified |
+| CMS / navigation / media        | Direct editing, discoverable save/publication, block batches and retained drafts                                                                                             | Verified |
+| Teams / rosters / staff         | Inline management, selected-row batches and protected historical rosters                                                                                                     | Verified |
+| Stages / pools / suggestions    | Compact contextual rules, maps, playtesting and mod configuration; preserve public pool geometry                                                                             | Verified |
+| Matches / brackets / scheduling | Preserve gameplay and existing inline tools; consolidate organizer actions and validate bulk/version behavior                                                                | Verified |
+| Verification / cleanup          | Full affected unit, isolated DB and development/production browser gates, inspected responsive/theme screenshots, build/static checks, obsolete-code removal and owning docs | Verified |
+
+The evidence below covers the current source snapshot. No deployment, installation
+data mutation, source publication or new Markdown document was performed.
+
+Implementation evidence:
+
+- One qualifier score owner handles mode-specific native normalization, tournament
+  multipliers, exact per-player rounding, failed/unverified performances and rule
+  decisions. V3 separates played runs from counted maps; finalized V1/V2 witnesses
+  keep their original owner/hash, including after nullable schema additions.
+- All 22 reference teams and seeds reconcile across 13 maps. The private harness
+  projects 960 sheet-filtered rows plus two excluded Tornado performances through
+  the canonical score/standings pipeline. Maximum Z-Sum difference is
+  `7.105427357601002e-15`. This verifies mathematics against the sheet's eligibility
+  selection; the sheet strips NF and cannot independently verify that provider fact.
+  FM1 is 502,812 raw / 467,954 normalized. Ignored game `641899348` contributes no
+  counted FM2 score; the valid replay is 182,411 raw / 159,264 normalized. Raw
+  excluded observations remain evidence and complete played maps.
+- Score management is shared by session and stage pages, with direct raw/mod/pass
+  editing, useful selection batches, whole-cohort previews and durable remapping.
+  Revalidation retains explicit and matching historical audited decisions; restore
+  deliberately clears them. Stage reprocessing includes retained historical sources
+  without modifying raw receipts or lifecycle. Finalized stages remain locked.
+- Registration and Booking have separate pages, API/service owners, DTOs, settings
+  and witnesses. Legacy booking actions delegate for compatibility. Registration
+  deadlines/custom fields do not invalidate booking; reservation cancellation leaves
+  the registration/roster/version unchanged.
+- Collection editing uses contextual panes across tournament creation, access,
+  teams/staff, stages, pool maps/configuration/releases/reviews, suggestions,
+  scheduling, bracket rounds and qualifier session forms. Existing inline/bulk
+  workflows remain. New team identity/status batches, user-role batches and CMS
+  section batches remove repetitive work. Roles use compact rows and permission
+  copying with stale configuration checks. CMS history/unpublish are direct actions.
+  Team identity drafts survive background collection refreshes; filtering/paging
+  requires explicit discard, and saves retain the original version witness so a
+  concurrent batch update rejects stale edits without erasing the draft.
+  Tournament settings/branding/navigation/media retain their existing direct forms,
+  protected assets, private previews and independent publication behavior.
+- Cleanup removes obsolete CMS Page options and the superseded organizer exception
+  editor. Assigned referees retain compact read-only diagnostics; historical wire
+  actions and immutable calculation versions remain deliberate compatibility paths.
+- Two additive migrations add score decision/pass evidence and independent booking
+  configuration. Both were applied only to the isolated test database. Normal
+  `./portal install` applies them; neither backfills/recalculates official results.
+
+Verification completed on the isolated test database, sequentially for database and
+browser suites:
+
+| Check                        | Evidence and scope                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Locked dependencies / schema | Node 22.23.3, `npm ci`, Prisma generate; both additive migrations applied to `tournament_platform_test`, 20-migration ledger current                                                                                                                                                                                                                                               |
+| Static / production          | Format check, ESLint, route type generation / TypeScript, `git diff --check` and the default Turbopack production build passed                                                                                                                                                                                                                                                     |
+| Unit                         | 407 tests in 32 files; all four scoring methods, run policies, exact normalization, played versus valid/countable runs, V1/V2 hash compatibility and locale catalogs                                                                                                                                                                                                               |
+| PostgreSQL                   | 247 tests in 28 files; tenant and permission boundaries, stale/atomic corrections, remap plus re-import, restoration/revalidation, finalization locks, captain races, registration independence, archive round trips and existing bracket/referee histories                                                                                                                        |
+| Production Chromium          | All 71 unique scenarios covered: the complete run passed 70; the remaining editor test had an obsolete assertion expecting platform permissions in a tournament-role form. The corrected test verifies their omission and passed its targeted rerun                                                                                                                                |
+| Development Chromium         | All 18 qualifier/referee/workspace scenarios covered: 17 passed the suite run, and the same corrected editor case passed its targeted rerun                                                                                                                                                                                                                                        |
+| Reference sheet              | All 22 teams / 13 maps / seed order match; maximum Z-Sum discrepancy `7.105427357601002e-15`, with excluded raw Tornado observations retained                                                                                                                                                                                                                                      |
+| Visual / interaction         | New editor screenshots at 1920/1366/768/390/320 in both appearances; 15 workspace views, empty/populated records, dirty cancel, team/CMS/user batches, role copying and stale-save rejection. Existing public-pool gates also cover 2560/3440. Inspected panes, compact roles, qualifier exceptions, mobile and theme outputs; desktop pane bounds now have a regression assertion |
+
+Final logs and source manifest are in ignored `.data/zsum-comparison-20261102`:
+`unit-complete.log`, `integration-complete.log`, `build-handoff.log`,
+`browser-production-final.log`, `browser-production-workspace-final.log`,
+`browser-development-final.log`, `browser-development-workspace-final.log`,
+`browser-inline-handoff-1.log`, `browser-inline-handoff-0.log` and
+`source-witness.json`. Real sheet/MP data, comparison scripts and rendered screenshots
+remain private QA artifacts. No live installation or tournament data was modified.
+The final inline-editor regression passed in both production and development,
+including canceled filter discard, background refresh and stale-save draft retention.
+
+Provider limits: browser sessions use explicit synthetic database fixtures, osu!
+fetches use the guarded fixture boundary and IRC uses mock Bancho TCP. These verify
+real application routes, persistence and protocol integration, not live OAuth, osu!
+API availability or live Bancho behavior. The sheet comparison proves the canonical
+mathematics against its recorded eligibility; it cannot reconstruct stripped NF
+provenance. Native lazer Rooms capture remains the previously documented limitation.
+
+Operator handoff: normal `./portal install` applies the two migrations. Existing
+saved normalization/rule decisions are preserved until reviewed reprocessing.
+For the reference sheet, choose native bonus removal, no additional tournament
+multiplier and per-player floor rounding; review excluded FM2 and other exceptions
+against the configured rules. Finalized seedings require controlled reopening before
+source corrections. Head-to-head Referee Mode, public pool geometry, historical
+snapshots, permissions and bracket numbering/progression remain covered by the gates.
+
 ## Completion Rules
 
 For each change: establish source behavior, implement within existing ownership

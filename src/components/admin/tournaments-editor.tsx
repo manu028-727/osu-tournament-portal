@@ -7,7 +7,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { Plus, ArrowUpRight, Archive, Eye, EyeOff, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { Actor } from '@/lib/permissions';
-import { api, Field, Modal, SectionTitle, useTask, LoadingState, ConfirmButton } from './shared';
+import {
+  api,
+  Field,
+  EditorPanel,
+  SectionTitle,
+  useTask,
+  LoadingState,
+  ConfirmButton,
+} from './shared';
 import { PlatformSettingsEditor, type PlatformConfig } from './platform-settings';
 import { TournamentImporter } from './tournament-transfer';
 import { SCORING_LABELS } from '@/lib/gameplay-scoring';
@@ -214,7 +222,13 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
           <Button disabled={busy}>{tr('Apply platform access')}</Button>
         </form>
       )}
-      <Modal title={tr('Create tournament')} open={open} onOpenChange={setOpen}>
+      <EditorPanel
+        guardChanges
+        busy={busy}
+        title={tr('Create tournament')}
+        open={open}
+        onOpenChange={setOpen}
+      >
         <form
           className="space-y-5"
           onSubmit={(e) => {
@@ -266,7 +280,7 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
           </Field>
           <Button disabled={busy}>{tr('Create tournament')}</Button>
         </form>
-      </Modal>
+      </EditorPanel>
     </>
   );
 }

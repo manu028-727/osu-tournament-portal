@@ -21,9 +21,9 @@ import {
   completeImportedQualifier,
 } from './qualifier-capture-service';
 import { qualifierCapturePlan, type QualifierCapture } from './qualifier-multiplayer';
-import { convertedScore } from './match-engine';
+import { qualifierEffectiveScore, qualifierIndividualViolation } from './qualifier-score';
 import { matchRulesSchema } from './match-rules';
-import { qualifierScoreViolation, qualifierTeamModViolation } from './qualifier-eligibility';
+import { qualifierTeamModViolation } from './qualifier-eligibility';
 import { z } from 'zod';
 import type { QualifierView } from './qualifiers-types';
 import type { QualifierImportInput, QualifierImportPreview } from './qualifier-import-contract';
@@ -378,7 +378,11 @@ async function buildPreview(
                 ...corrected,
                 violation:
                   corrected.violation ||
-                  qualifierScoreViolation(lobby.rules, category, corrected.mods) ||
+                  qualifierIndividualViolation(lobby.rules, lobby.policy, category, {
+                    mods: corrected.mods,
+                    passed: corrected.passed,
+                    actualScoring: proposal!.actualScoring,
+                  }) ||
                   undefined,
               };
             }),
@@ -415,12 +419,13 @@ async function buildPreview(
                     : (qualifierTeamAggregate(
                         players.map((player) => ({
                           ...player,
-                          adjusted: convertedScore(
+                          adjusted: qualifierEffectiveScore(
                             lobby.rules,
+                            lobby.policy,
                             player.raw,
                             player.mods,
                             proposal!.slotName,
-                          ).adjusted,
+                          ),
                         })),
                         lobby.policy,
                       )?.value ?? null);

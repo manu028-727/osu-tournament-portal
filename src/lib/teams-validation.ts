@@ -50,6 +50,31 @@ export const teamSaveSchema = teamFields
   });
 export const teamActionOptions = [
   teamSaveSchema,
+  z.object({
+    type: z.literal('team.patch'),
+    id: z.string().min(1).max(100),
+    baseVersion: z.number().int().positive(),
+    name: z.string().trim().min(1).max(120),
+    seed: z.number().int().min(1).max(100000).nullable(),
+  }),
+  z
+    .object({
+      type: z.literal('team.bulk'),
+      entries: z
+        .array(
+          z.object({ id: z.string().min(1).max(100), baseVersion: z.number().int().positive() }),
+        )
+        .min(1)
+        .max(100),
+      operation: z.enum(['APPROVE', 'REJECT', 'PUBLISH', 'HIDE', 'DELETE']),
+      rejectionReason: z.string().trim().max(2000).default(''),
+    })
+    .superRefine((value, ctx) => {
+      if (new Set(value.entries.map((e) => e.id)).size !== value.entries.length)
+        ctx.addIssue({ code: 'custom', message: 'Select each entrant once.' });
+      if (value.operation === 'REJECT' && value.rejectionReason.length < 3)
+        ctx.addIssue({ code: 'custom', message: 'Provide a public rejection reason.' });
+    }),
   z
     .object({
       type: z.literal('team.status'),

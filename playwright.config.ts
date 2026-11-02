@@ -6,6 +6,12 @@ if (!process.env.TEST_DATABASE_URL)
   throw new Error('Set TEST_DATABASE_URL to an isolated, migrated, seeded PostgreSQL database.');
 process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 assertTestDatabase(process.env.TEST_DATABASE_URL);
+if (process.env.E2E_OSU_FIXTURE_DIR) {
+  // Signed browser-test receipts and the mock provider server need the same
+  // explicit synthetic credential; this branch requires the isolated database.
+  process.env.OSU_CLIENT_ID = 'synthetic-e2e-client';
+  process.env.OSU_CLIENT_SECRET = 'synthetic-e2e-provider-secret';
+}
 if (process.env.E2E_PRODUCTION === '1') {
   cpSync('.next/static', '.next/standalone/.next/static', { recursive: true });
   cpSync('public', '.next/standalone/public', { recursive: true });

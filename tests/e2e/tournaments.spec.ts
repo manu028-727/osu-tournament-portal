@@ -270,10 +270,24 @@ test('creates private tournaments, switches scoped CMS contexts and publishes in
     const registration = await visitor.request.get(`/t/${active.slug}/register`, {
       maxRedirects: 0,
     });
-    expect(registration.status()).toBe(307);
-    expect(new URL(registration.headers().location).pathname).toBe(`/t/${active.slug}/rules`);
+    expect(registration.status()).toBe(200);
+    await publicPage.goto(`/t/${active.slug}/register`);
+    await expect(
+      publicPage.getByRole('heading', { name: 'Tournament registration', exact: true }),
+    ).toBeVisible();
+    await db.tournamentSettings.update({
+      where: { tournamentId: active.id },
+      data: {
+        registrationPolicy: { mode: 'EXTERNAL' },
+        registrationUrl: 'https://example.test/entry',
+      },
+    });
+    await publicPage.reload();
+    await expect(
+      publicPage.getByRole('link', { name: 'Open external registration', exact: true }),
+    ).toHaveAttribute('href', 'https://example.test/entry');
     await db.tournament.update({ where: { id: active.id }, data: { archivedAt: new Date() } });
-    for (const path of ['', '/rules', '/register'])
+    for (const path of ['', '/rules', '/register', '/qualifier-booking'])
       expect((await visitor.request.get(`/t/${active.slug}${path}`)).status()).toBe(404);
     expect((await visitor.request.get(`/api/public/home?tournament=${active.slug}`)).status()).toBe(
       404,
