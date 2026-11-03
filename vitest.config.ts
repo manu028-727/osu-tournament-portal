@@ -34,6 +34,8 @@ export default defineConfig({
       'tests/stage-reconciliation.test.ts',
       'tests/qualifier-multiplayer.test.ts',
       'tests/stage-editor-model.test.ts',
+      'tests/format-witnesses.test.ts',
+      'tests/format-plan.test.ts',
       'tests/container-proxy.test.ts',
       'tests/theme.test.ts',
     ],

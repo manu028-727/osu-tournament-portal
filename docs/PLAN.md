@@ -1472,6 +1472,98 @@ against the configured rules. Finalized seedings require controlled reopening be
 source corrections. Head-to-head Referee Mode, public pool geometry, historical
 snapshots, permissions and bracket numbering/progression remain covered by the gates.
 
+## Universal Format Engine And Setup Workspace
+
+Branch `refactor/tournament-format-engine` from `b974d8c`. Goal: run simple or highly
+unconventional tournaments from one guided screen, with no event-specific source.
+The five formats below are compatibility tests, never product presets. Nothing here
+authorizes a deployment, push or live data change.
+
+### Resume Point
+
+Keep this current so an interrupted session can continue from it.
+
+| Milestone | Delivers                                                                         | State    |
+| --------- | -------------------------------------------------------------------------------- | -------- |
+| M0        | Audit, rule contradictions, witness tests, `FormatPlan` contract                 | Verified |
+| M1        | Win condition, one score pipeline, RX, FM quotas, accuracy, %MAX, placements     | Planned  |
+| M2        | Pure graph, advancement, draw, rematch and tiebreak engine                       | Planned  |
+| M3        | Setup workspace replacing Overview, `setup.apply`, templates, readiness          | Planned  |
+| M4        | Lock format, placeholders, advancement persistence, guards, archive, projections | Planned  |
+| M5        | Referee rule enforcement: lineups, timers, attempts, forfeits, sanctions         | Planned  |
+| M6        | Eligibility, team formation, auction board, derived resources                    | Planned  |
+| M7        | Every-page editing sweep and obsolete-setting cleanup                            | Planned  |
+| M8        | All formats simulated through the normal UI, full gates, final report            | Planned  |
+
+Maintainer decisions: auctions use an operator-run board with read-only captains, and
+pasted bot results are supported; captain self-bidding is out of scope. The workspace
+replaces Overview as the tournament admin home.
+
+### Audit Findings
+
+| Core cause                                                                                                                                    | Effect                                                                                                                                                     |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scoreMode` is the `!mp set` argument, API gate and value selector at once; `inheritedRules` forces it to SCORE/SCORE_V2 on every inheritance | Accuracy cannot be selected, and a ScoreV2 lobby is rejected if it is. Its branches are dead; if reached, accuracy would be multiplied, summed and rounded |
+| Live, manual, organizer import, workbook and qualifier scoring share only `convertedScore`                                                    | Rules diverge; organizer import skips team size, NoFail and FreeMod checks                                                                                 |
+| A bracket slot's source can only be a match outcome, and phases do not exist                                                                  | No direct entry, placement routing, Losers-only entrants, tiers, reseeding or rematch limits                                                               |
+| Every player is a Team entrant, with one roster per player                                                                                    | Individual qualifiers cannot be followed by team formation                                                                                                 |
+| Configuration spans single-action transactions returning no new witnesses, with no format concept                                             | 16 destinations; a format cannot be declared early; registration silently 404s on a new tournament; team size lives in three unlinked places               |
+| Referee rules are mostly free text                                                                                                            | No replay counts, sanctions or draw records; timers only change colour                                                                                     |
+| Event-specific defaults sit in `matchRulesSchema`                                                                                             | New tournaments inherit one event's multipliers and Italian policy text                                                                                    |
+
+Other verified defects: RX is absent from `MODS`, so Relax games are rejected or excluded.
+Twelve entrants give byes to seeds 1, 3, 5 and 7. A Losers-only entrant survives one
+loss. Any group tie blocks progression, even below the cut. FreeMod cannot pass at team
+size one with default quotas. Team qualifier stages save `requiredPlayers: 1`. Building
+single elimination for two entrants with a third-place match crashes inside the library.
+
+**Witness trap.** `loadQualifierCalculation` spreads `...s` and `...game`, and
+canonicalization keeps nulls, so an additive `QualifierScore` or `QualifierGame` column
+changes every saved source hash whatever the calculation version. A qualifier policy field
+with a default does the same through the parsed policy. The result would hide public
+standings and block bracket starts on deploy with no gameplay code touched.
+[format-witnesses](../tests/format-witnesses.test.ts) and its integration counterpart pin
+these values from `b974d8c`; never update one to make a test pass.
+
+### Rule Contradictions And Gaps
+
+Recorded for human ruling. Simulations use the stated assumption and report it.
+
+| Source              | Finding                                                                                                                                                                                                                                                  | Handling                                                  |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| MIR Cup             | The brief says 4 groups of 4; the attached rules say RO16 double elimination with no group stage or group pool                                                                                                                                           | Simulate both; brief variant assumes top two per group    |
+| MIR Cup             | Ban text says RO16 1 and QF-GF 2; the table says RO16/QF/SF 2 and F/GF 3                                                                                                                                                                                 | Configurable per stage; simulation uses the table         |
+| MIR Cup             | No FreeMod quota despite FM pools, no tiebreaker mods, reset unstated, NoFail unmentioned                                                                                                                                                                | Explicit settings; RX with NF unverified on Bancho        |
+| Italian Cup 9       | "24 giorni" for extra lobbies is probably 24 hours. Exact 2nd-vs-3rd pairing and "closest allowed seed" need interpretation. Reset and withdrawals unstated                                                                                              | Solver previews and is editable; organizer reviews        |
+| OIDC2026            | Forum and rules document differ: EZ/EZHD/FL-count-as-HD appears only in the document; forum says best per map, document 3.7 says "run migliore"                                                                                                          | Quotas configurable; run policy reported from sheet       |
+| OIDC2026            | The reference sheet reconciles with native bonus removal and no tournament multiplier, not the written 2x/1.2x, across 17 EZ/FL rows                                                                                                                     | **Needs a host ruling**; both remain expressible          |
+| Italian Draft Cup 3 | Perk effects are unpublished; the sheet lists only prices (QF 4x500, SF 800, F 1000, GF 1500). Post uses $, sheet uses EUR. Team count (sheet shows 8), Losers structure and bid idle window unstated. "Random order from the seeding list" is ambiguous | Perks stay human-judged; lot order is an explicit setting |
+| OWC 2025            | One wiki line on Contender seeds appears to conflict with the bracket table                                                                                                                                                                              | Re-read at M2; the table is authoritative                 |
+
+### Page Sweep List (M7)
+
+Organizer pages to audit for inline and bulk edits, fewer clicks and truthful settings:
+Tournament chooser and creation; Website (homepage, rules, info, branding, navigation,
+media); Stages; Mappools; Pooling; Teams; Registration and booking settings; Matches and
+Bracket; Qualifier sessions and results; Referee; Staff listing, access and roles;
+Settings, audit and sheet tools.
+
+Candidates to remove or wire up, each to be verified before removal: `Tournament.endsAt`
+and copy fields `artworkCaption`, `announcementLabel`, `announcementAside` and
+`artworkTagline` (no reader); stage `startsAt` (selected, never rendered); `Team.rankSum`
+(no writer outside archive restore); `Tournament.format` changes that leave `teamSize`
+behind; `thirdPlace`, `grandFinalReset` and `groupCount` saved where the format ignores them.
+
+### M0 Checks
+
+Run against unchanged application code. `format-witnesses` covers calculation versions 1-3
+for all four methods and run selections, score conversion, FreeMod aggregation, lobby
+commands, generated SE/DE/group plans and group source hashes. Its integration counterpart
+reads a fixed tournament from the isolated test database. `FormatPlan` expresses both MIR
+variants, Italian Cup 9, OIDC2026, Italian Draft Cup 3, OWC 2025 and one novel format;
+negative cases reject malformed plans, and a test keeps application source from importing
+the compatibility fixtures. Results are in the checkpoint commit message.
+
 ## Completion Rules
 
 For each change: establish source behavior, implement within existing ownership

@@ -36,6 +36,7 @@ export default defineConfig({
       'tests/qualifier-standings-archive.integration.test.ts',
       'tests/stage-reconciliation.integration.test.ts',
       'tests/setup.integration.test.ts',
+      'tests/format-witnesses.integration.test.ts',
     ],
     env: { DATABASE_URL: process.env.TEST_DATABASE_URL },
     fileParallelism: false,
