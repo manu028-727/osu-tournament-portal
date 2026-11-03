@@ -491,6 +491,25 @@ paste uses match numbers; blanks preserve and `-` clears. Use ISO offsets for
 portable timestamps; naive values use browser timezone. Conflicts currently compare
 identical starts, not estimated-duration overlap.
 
+### Formats And Setup Workspace
+
+`format-plan.ts` is the client-safe contract for who plays where; rules stay on stages and
+entrants on teams. `TournamentPhase` rows persist it with a token witness, through
+`format-plan-service.ts` under `matches.manage`. `format-graph.ts` builds a phase's bracket
+before entrants exist, using `entryRef` placeholders with `resolved:false` so nothing reads
+as a bye. A Losers lane fed from outside is the library's standard graph of twice the size
+with Winners round 1 removed. `format-advancement.ts` owns draws, group labels, tiebreak
+chains, placement routing and the rematch solver. These are pure, and persistence of locked
+plans arrives with its milestone in [PLAN.md](PLAN.md).
+
+`setup.apply` runs several pure configuration operations in one transaction, resolving
+`ref:<name>` so later operations can read a stage created earlier. It has no authority of
+its own: `applyAdminOperation` re-checks each operation's permission and media ownership
+and writes its audit, exactly as a single action does. `SETUP_OPERATIONS` lists what may
+join, excluding pools, staff and pages because they need network calls before their
+transaction opens. `setup-queries.ts` is the read model; its stage token hashes only a
+stage's own columns, matching the save path. `setupState` holds dismissed checklist items.
+
 ## Qualifiers, Scoring And Standings
 
 `gameplay-scoring.ts` defines SCORE_V1, SCORE_V2, LAZER. Canonical selection is

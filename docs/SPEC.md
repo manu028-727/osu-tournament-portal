@@ -22,6 +22,14 @@ matches or CMS revisions. Editors provide safe empty defaults until actual saves
 Tournament publication is independent from page, pool, roster, bracket and
 standings publication. Archived/private tournaments must not become guest-visible.
 
+**Current.** One guided workspace at the tournament admin home configures identity,
+registration and eligibility, rosters, scoring and mods, stages and mappool plans, phases
+and progression, key dates, staff, pages and publication without visiting separate
+editors. Generic templates create real stages and a phase plan to edit further, none
+naming any event. Unpublished records are the resumable draft. Readiness is derived from
+real records, and required items never block publication. Applying a template or a stage
+grid saves atomically with each operation's usual permission.
+
 `/admin/tournaments` selects a tournament. Editing uses `/t/<slug>/admin/...` and
 works while unpublished. Unscoped editors lead to the chooser, not an arbitrary
 tournament. Missing context, authentication, permission, resource and stale-write
@@ -271,6 +279,13 @@ brackets keep their reviewed source selection and validation.
 Creation makes a fresh unpublished graph with fresh database identities. If
 generation is canceled or fails after deletion, the deleted history stays erased;
 the generation form remains available for retry.
+
+**Partial.** A tournament's format is a reviewed plan of composable phases: qualifiers,
+team formation, tiered groups and single or double elimination, reading registered
+entrants, qualifier ranks, group placements or organizer choices, with Losers-only entry,
+explicit opening pairs, tiebreak chains and rematch limits. Plans validate, preview their
+matches and save today; running them is delivered in a later milestone (see
+[PLAN.md](PLAN.md#universal-format-engine-and-setup-workspace)).
 
 Native single elimination, double elimination/reset and groups support deterministic
 seeding, byes, previews, configurable round/stage assignments, manual/locked slots,

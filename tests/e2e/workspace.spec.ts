@@ -125,7 +125,7 @@ test('a fresh organizer configures, publishes and operates one tournament throug
   const root = `/t/${prefix}`,
     admin = root + '/admin';
   await page.goto(admin);
-  await expect(page.getByText('Getting started', { exact: true })).toBeVisible();
+  await expect(page.getByRole('radiogroup', { name: 'Tournament format' })).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Administration' });
   await expect(nav.getByRole('link', { name: 'Referee', exact: true })).toHaveCount(0);
   await nav.getByRole('link', { name: 'Website', exact: true }).click();
@@ -298,11 +298,12 @@ test('a fresh organizer configures, publishes and operates one tournament throug
   expect(bulkMatches.every((item) => item.version > 1)).toBe(true);
   await page
     .getByRole('navigation', { name: 'Administration' })
-    .getByRole('link', { name: 'Overview', exact: true })
+    .getByRole('link', { name: 'Tournament', exact: true })
     .click();
-  await page.getByRole('button', { name: 'Publish', exact: true }).click();
+  await page.getByRole('heading', { name: 'Publication', level: 2 }).click();
+  await page.getByRole('button', { name: 'Publish tournament', exact: true }).click();
   await confirm(page);
-  await expect(page.getByText('Published', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Published. Everything here stays editable.')).toBeVisible();
   const guest = await browser.newContext();
   const publicPage = await guest.newPage();
   await publicPage.goto(root);

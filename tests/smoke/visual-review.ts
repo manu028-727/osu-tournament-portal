@@ -326,7 +326,7 @@ try {
         'roles',
         'audit',
         'sheet-data',
-      ].map((s) => [`admin-${s || 'overview'}`, admin + (s ? '/' + s : '')]),
+      ].map((s) => [`admin-${s || 'tournament'}`, admin + (s ? '/' + s : '')]),
       ['referee', `${admin}/referee/${match.id}`],
       ['qualifiers', `${admin}/referee/qualifiers`],
     ];

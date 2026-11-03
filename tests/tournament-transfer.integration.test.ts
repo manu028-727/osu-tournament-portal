@@ -340,6 +340,24 @@ beforeAll(async () => {
       completed: true,
     },
   });
+  await db.tournamentPhase.create({
+    data: {
+      tournamentId: sourceId,
+      key: 'main',
+      position: 0,
+      kind: 'DOUBLE_ELIMINATION',
+      name: 'Main bracket',
+      stageId: stage.id,
+      config: {
+        entries: [{ source: { kind: 'REGISTRATION', count: 8 }, lane: 'WINNERS', seedFrom: 1 }],
+        winners: { size: 8, pairing: 'STANDARD' },
+        losers: null,
+        grandFinalReset: true,
+        rematch: 'ALLOW',
+        roundStages: { 'g1-r1': stage.id },
+      },
+    },
+  });
   await db.tournament.update({ where: { id: sourceId }, data: { published: true } });
   originalFingerprint = archiveHash(
     Buffer.from(JSON.stringify((await collectTournament(db, sourceId)).data)),
@@ -360,6 +378,7 @@ afterAll(async () => {
       where: { tournamentId: id },
       data: { draftRevisionId: null, publishedRevisionId: null },
     });
+    await db.tournamentPhase.deleteMany({ where: { tournamentId: id } });
     await db.tournamentStage.deleteMany({ where: { tournamentId: id } });
     await db.staffMember.deleteMany({ where: { tournamentId: id } });
     await db.page.updateMany({
@@ -471,6 +490,25 @@ describe('portable tournament archives', () => {
     current.audits = current.audits.filter((row) => row.action !== 'tournament.export');
     expect(archiveHash(Buffer.from(JSON.stringify(current)))).toBe(originalFingerprint);
   });
+  it('carries the format plan with its stages remapped', async () => {
+    const report = await importTournament(owner, await readArchive(bytes), `${prefix}-format`);
+    ids.push(report.tournamentId);
+    const phase = await db.tournamentPhase.findFirstOrThrow({
+      where: { tournamentId: report.tournamentId },
+    });
+    const stage = await db.tournamentStage.findFirstOrThrow({
+      where: { tournamentId: report.tournamentId, slug: 'finals' },
+    });
+    expect(phase).toMatchObject({ key: 'main', stageId: stage.id, state: 'PLANNED' });
+    expect((phase.config as { roundStages: Record<string, string> }).roundStages).toEqual({
+      'g1-r1': stage.id,
+    });
+    const source = await db.tournamentStage.findFirstOrThrow({
+      where: { tournamentId: sourceId, slug: 'finals' },
+    });
+    expect(stage.id).not.toBe(source.id);
+  });
+
   it('never overwrites existing slugs and repeat imports are separate private tournaments', async () => {
     const archive = await readArchive(bytes);
     await expect(importTournament(owner, archive, prefix)).rejects.toMatchObject({ status: 409 });

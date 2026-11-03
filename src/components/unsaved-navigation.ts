@@ -111,6 +111,11 @@ export function useUnsaved(dirty: boolean) {
     guard.current.dirty = false;
   }, []);
 }
+// For switching views on one page, which no link or navigation event would catch.
+export function confirmDiscardUnsaved() {
+  const guard = activeGuard();
+  return !guard || window.confirm(guard.message);
+}
 export function useGuardedRouter() {
   const router = useRouter();
   return {

@@ -1,3 +1,4 @@
+import { formatPlanSchema } from './format-plan';
 import { z } from 'zod';
 import { ALL_PERMISSIONS } from './permissions';
 import { DEFAULT_COPY } from './copy';
@@ -88,7 +89,42 @@ export const settingsFieldsSchema = z.object({
   ),
   footer: z.string().max(1000),
 });
+// Only pure configuration can join a composite save. Pools, staff and pages need network
+// calls before their transaction opens, so they keep their own actions.
+export const SETUP_OPERATIONS = [
+  'settings.save',
+  'match.rules.save',
+  'stage.save',
+  'pooling.plan.save',
+  'format.plan.save',
+] as const;
 export const actionSchema = z.discriminatedUnion('type', [
+  base.extend({
+    type: z.literal('format.plan.save'),
+    baseToken: z.string().regex(/^[a-f0-9]{64}$/),
+    plan: z.unknown(),
+  }),
+  base.extend({ type: z.literal('format.plan.preview'), plan: formatPlanSchema }),
+  base.extend({
+    type: z.literal('setup.apply'),
+    operations: z
+      .array(
+        z.looseObject({
+          type: z.enum(SETUP_OPERATIONS),
+          // Later operations can read a stage created earlier as `ref:<name>`.
+          ref: z
+            .string()
+            .regex(/^[a-z0-9-]{1,60}$/)
+            .optional(),
+        }),
+      )
+      .min(1)
+      .max(80),
+  }),
+  base.extend({
+    type: z.literal('setup.state'),
+    dismissed: z.array(z.string().regex(/^[a-z-]{1,40}$/)).max(40),
+  }),
   ...poolingActionOptions,
   ...stageWorkflowActionSchemas,
   ...competitionActionSchema.options,

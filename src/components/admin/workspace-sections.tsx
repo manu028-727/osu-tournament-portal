@@ -12,7 +12,7 @@ import { RolesEditor, UsersEditor } from './access';
 import { PoolEditor } from './pool-editor';
 import { PoolingWorkspace } from './pooling-workspace';
 import { StagesEditor } from './stages-editor';
-import { AuditLogs, SheetData } from './overview';
+import { AuditLogs, SheetData } from './settings-tools';
 
 export function WebsiteWorkspace({
   actor,

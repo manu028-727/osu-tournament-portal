@@ -24,6 +24,7 @@ const name = z.string().trim().min(1).max(100);
 const seed = z.number().int().min(1).max(256);
 
 const source = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('REGISTRATION'), count: z.number().int().min(1).max(256) }),
   z.strictObject({ kind: z.literal('ALL'), phase: key }),
   z.strictObject({ kind: z.literal('RANK_RANGE'), phase: key, from: seed, to: seed }),
   z.strictObject({
@@ -143,8 +144,8 @@ export const tierEntrants = (tier: GroupsPhase['tiers'][number]) => tier.seedTo 
 
 // A source's size, or null when it depends on how many entrants actually register.
 export function formatSourceCount(phases: readonly FormatPhase[], from: FormatSource) {
+  if (from.kind === 'REGISTRATION' || from.kind === 'EXPLICIT') return from.count;
   if (from.kind === 'RANK_RANGE') return from.to - from.from + 1;
-  if (from.kind === 'EXPLICIT') return from.count;
   const origin = phases.find((phase) => phase.key === from.phase);
   if (from.kind === 'ALL') {
     if (origin?.kind === 'QUALIFIER') return origin.advance;
@@ -183,9 +184,14 @@ export const formatPlanSchema = z
       for (const [entryIndex, item] of (phase as EntryPhase).entries.entries()) {
         const at = [...path, 'entries', entryIndex, 'source'];
         const from = item.source;
+        if (from.kind === 'REGISTRATION') {
+          if (earlier.some((other) => other.kind !== 'QUALIFIER'))
+            fail(at, 'Only the first competitive phase can read registered entrants.');
+          continue;
+        }
         const origin = earlier.find((other) => other.key === from.phase);
         if (!origin) {
-          fail(at, `Entrants must come from an earlier phase, not "${from.phase}".`);
+          fail(at, 'Entrants must come from an earlier phase.');
           continue;
         }
         if (
@@ -199,14 +205,16 @@ export const formatPlanSchema = z
         if (from.kind === 'RANK_RANGE') {
           if (from.from > from.to) fail(at, 'A rank range must run from best to worst.');
           if (origin.kind === 'QUALIFIER' && origin.advance && from.to > origin.advance)
-            fail(at, `Only ${origin.advance} entrants advance from "${origin.name}".`);
+            fail(at, 'This rank range goes beyond the entrants who advance.');
           if (origin.kind !== 'QUALIFIER')
             fail(at, 'Rank ranges read final qualifier standings; use a placement for this phase.');
           const taken = consumed.get(origin.key) ?? new Set<number>();
+          let overlaps = false;
           for (let rank = from.from; rank <= from.to; rank++) {
-            if (taken.has(rank)) fail(at, `Rank ${rank} already enters another phase.`);
+            overlaps ||= taken.has(rank);
             taken.add(rank);
           }
+          if (overlaps) fail(at, 'A rank in this range already enters another phase.');
           consumed.set(origin.key, taken);
         }
         if (from.kind === 'PLACEMENT') {
@@ -217,13 +225,12 @@ export const formatPlanSchema = z
           if (origin.tiers.length > 1 && !from.tier)
             fail(at, 'Choose which tier this placement comes from.');
           const tiers = origin.tiers.filter((tier) => !from.tier || tier.key === from.tier);
-          if (!tiers.length) fail(at, `Unknown tier "${from.tier}".`);
+          if (!tiers.length) fail(at, 'Choose which tier this placement comes from.');
           if (tiers.some((tier) => from.placement > tier.groupSize))
-            fail(at, `Placement ${from.placement} does not exist in a group this size.`);
+            fail(at, 'This placement does not exist in a group this size.');
           for (const tier of tiers) {
             const marker = `${origin.key}:${tier.key}:${from.placement}`;
-            if (placements.has(marker))
-              fail(at, `Placement ${from.placement} already advances elsewhere.`);
+            if (placements.has(marker)) fail(at, 'This placement already advances elsewhere.');
             placements.add(marker);
           }
         }
@@ -243,12 +250,14 @@ export const formatPlanSchema = z
           open = true;
           continue;
         }
+        let repeated = false;
         for (let offset = 0; offset < count; offset++) {
           const value = item.seedFrom + offset;
-          if (seats.has(value))
-            fail([...path, 'entries', entryIndex, 'seedFrom'], `Seed ${value} is assigned twice.`);
+          repeated ||= seats.has(value);
           seats.set(value, 'lane' in item ? String(item.lane) : '');
         }
+        if (repeated)
+          fail([...path, 'entries', entryIndex, 'seedFrom'], 'A seed is assigned twice.');
       }
       if (phase.kind === 'GROUPS') {
         const covered = new Set<number>();
@@ -258,18 +267,21 @@ export const formatPlanSchema = z
           if (tier.seedFrom > tier.seedTo) fail(at, 'A tier must run from best to worst seed.');
           if (tier.groupCount * tier.groupSize !== tierEntrants(tier))
             fail(at, 'Groups in a tier must exactly seat its seed range.');
+          let shared = false;
+          let unseated = false;
           for (let value = tier.seedFrom; value <= tier.seedTo; value++) {
-            if (covered.has(value)) fail(at, `Seed ${value} is in more than one tier.`);
+            shared ||= covered.has(value);
             covered.add(value);
-            if (!open && !seats.has(value)) fail(at, `No entrant is assigned to seed ${value}.`);
+            unseated ||= !open && !seats.has(value);
           }
+          if (shared) fail(at, 'A seed is in more than one tier.');
+          if (unseated) fail(at, 'A seed in this tier has no entrant assigned.');
           labelled += tier.groupCount;
         });
         if (new Set(phase.tiers.map((tier) => tier.key)).size !== phase.tiers.length)
           fail([...path, 'tiers'], 'Tier keys must be unique.');
-        for (const value of seats.keys())
-          if (!covered.has(value))
-            fail([...path, 'entries'], `Seed ${value} is outside every tier.`);
+        if ([...seats.keys()].some((value) => !covered.has(value)))
+          fail([...path, 'entries'], 'A seed is outside every tier.');
         if (phase.labels === 'LETTERS' && labelled > 26)
           fail([...path, 'labels'], 'Letter labels support up to 26 groups.');
         if (new Set(phase.tiebreakers).size !== phase.tiebreakers.length)
@@ -288,12 +300,10 @@ export const formatPlanSchema = z
         if (layout === 'STANDARD') return;
         const used = layout.flat();
         if (layout.length !== size / 2)
-          fail(at, `A bracket of ${size} needs exactly ${size / 2} opening matches.`);
+          fail(at, 'The opening matches must seat the whole bracket.');
         if (new Set(used).size !== used.length) fail(at, 'A seed appears in two opening matches.');
-        if (!open)
-          for (const value of used)
-            if (!laneSeats.includes(value))
-              fail(at, `Opening match seed ${value} has no assigned entrant.`);
+        if (!open && used.some((value) => !laneSeats.includes(value)))
+          fail(at, 'An opening match uses a seed with no assigned entrant.');
       };
       if (
         phase.rematch === 'AVOID_SAME_GROUP' &&

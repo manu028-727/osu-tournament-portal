@@ -83,7 +83,7 @@ try {
     ['staff', root + '/staff'],
     ['rules', root + '/rules'],
     ['chooser', '/admin/tournaments'],
-    ['overview', admin],
+    ['tournament', admin],
     ['homepage-editor', admin + '/homepage'],
     ['website-info', admin + '/website?view=info'],
     ['website-appearance', admin + '/website?view=branding'],

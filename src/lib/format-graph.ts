@@ -107,7 +107,7 @@ export function plannedSeats(
     const from = item.source;
     let count = 0;
     if (from.kind === 'RANK_RANGE') count = from.to - from.from + 1;
-    else if (from.kind === 'EXPLICIT') count = from.count;
+    else if (from.kind === 'EXPLICIT' || from.kind === 'REGISTRATION') count = from.count;
     else if (from.kind === 'PLACEMENT') {
       const origin = phases.find((other) => other.key === from.phase);
       if (origin?.kind === 'GROUPS')

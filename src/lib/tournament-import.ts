@@ -1,3 +1,4 @@
+import { FORMAT_PLAN_VERSION, formatPlanSchema } from './format-plan';
 import { randomUUID } from 'node:crypto';
 import { remapArchiveValue } from './archive-identities';
 import sharp from 'sharp';
@@ -96,6 +97,19 @@ export async function inspectArchive(bytes: Buffer) {
     if (stage.qualifierPolicy) qualifierPolicySchema.parse(stage.qualifierPolicy);
   for (const lobby of archive.data.qualifierLobbies)
     if (lobby.policy) qualifierPolicySchema.parse(lobby.policy);
+  if (archive.data.tournamentPhases?.length)
+    formatPlanSchema.parse({
+      version: FORMAT_PLAN_VERSION,
+      phases: [...archive.data.tournamentPhases]
+        .sort((a, b) => Number(a.position) - Number(b.position))
+        .map((phase) => ({
+          ...(phase.config as Record<string, unknown>),
+          key: phase.key,
+          kind: phase.kind,
+          name: phase.name,
+          ...(phase.stageId ? { stageId: phase.stageId } : {}),
+        })),
+    });
   for (const bracket of archive.data.brackets) {
     const config = competitionActionSchema.options[0].parse(bracket.config);
     if (config.teamIds.some((id) => !archive.data.teams.some((team) => team.id === id)))

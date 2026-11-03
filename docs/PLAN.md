@@ -1488,7 +1488,7 @@ Keep this current so an interrupted session can continue from it.
 | M0        | Audit, rule contradictions, witness tests, `FormatPlan` contract                 | Verified |
 | M1        | Win condition, one score pipeline, RX, FM quotas, accuracy, %MAX, placements     | Verified |
 | M2        | Pure graph, advancement, draw, rematch and tiebreak engine                       | Verified |
-| M3        | Setup workspace replacing Overview, `setup.apply`, templates, readiness          | Planned  |
+| M3        | Setup workspace replacing Overview, `setup.apply`, templates, readiness          | Verified |
 | M4        | Lock format, placeholders, advancement persistence, guards, archive, projections | Planned  |
 | M5        | Referee rule enforcement: lineups, timers, attempts, forfeits, sanctions         | Planned  |
 | M6        | Eligibility, team formation, auction board, derived resources                    | Planned  |
@@ -1598,6 +1598,31 @@ Losers final stage, cross-group tiebreak) were each caught by the suite, then re
 New brackets give byes to the best seeds while brackets without the new setting keep their
 saved placement. Nothing here is reachable from the interface or database yet; persistence
 is M4. Per-round reseeding has its graph and pairing logic but no apply path until M4.
+
+### M3 Checks
+
+The tournament admin home is now the workspace and Overview's code is removed; its audit and
+sheet tools moved unchanged to `settings-tools.tsx`. Applied
+`20261103030000_tournament_phases` to the isolated test database only.
+
+Real browser flow: an empty tournament opens on the format choice; a template creates
+stages and a plan; a stage grid edit, one team-size change reaching rules, roster limits and
+qualifiers, and an accuracy win condition reaching every stage while each keeps its Best of;
+an impossible plan explaining itself and refusing to save; a 47-match preview; one-click
+registration opening; readiness links; publication. Also: unsaved-edit guards, stale plan
+rejection keeping the draft, and a limited role seeing only its section and receiving 403 on
+a direct composite save. Screenshots at 1920/1366/768/390/320 in both appearances, empty
+and populated, and Italian, were inspected. This found clipped values in the stage grid and
+a cramped rail, both fixed, and caught that the first dark screenshots were really light
+because a hash-only navigation does not reload; the spec now asserts the theme.
+
+Integration tests caught a stale-token bug where the stage witness included joined
+relations. Composite saves are covered for atomic rollback, stale plans, wrong-kind and
+foreign stages, per-operation permissions and protection of stages in a format.
+
+Not yet possible: locking a plan or running its phases (M4), and rank-sum eligibility and
+team formation execution (M6). Qualifier sessions and matches are linked rather than embedded
+in the schedule section; reassess at M7.
 
 ## Completion Rules
 

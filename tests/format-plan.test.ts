@@ -41,13 +41,13 @@ describe('format plan contract', () => {
   it('rejects ranks promised to two phases', () => {
     const plan = clone(COMPATIBILITY_PLANS.italianCup);
     (plan.phases[1] as { entries: { source: { from: number } }[] }).entries[0].source.from = 4;
-    expect(issues(plan).join()).toContain('Rank 4 already enters another phase.');
+    expect(issues(plan).join()).toContain('already enters another phase');
   });
 
   it('rejects ranks beyond the qualifier cutoff', () => {
     const plan = clone(COMPATIBILITY_PLANS.oidc);
     (plan.phases[0] as { advance: number }).advance = 12;
-    expect(issues(plan).join()).toContain('Only 12 entrants advance');
+    expect(issues(plan).join()).toContain('goes beyond the entrants who advance');
   });
 
   it('rejects a tier that cannot be seated', () => {
@@ -61,7 +61,7 @@ describe('format plan contract', () => {
     (
       plan.phases[2] as { entries: { source: { placement?: number } }[] }
     ).entries[3].source.placement = 5;
-    expect(issues(plan).join()).toContain('Placement 5 does not exist');
+    expect(issues(plan).join()).toContain('does not exist in a group this size');
   });
 
   it('rejects one placement advancing to two destinations', () => {
@@ -90,7 +90,7 @@ describe('format plan contract', () => {
     pairs[0] = [22, 19];
     expect(issues(plan).join()).toContain('A seed appears in two opening matches.');
     pairs.pop();
-    expect(issues(plan).join()).toContain('exactly 8 opening matches');
+    expect(issues(plan).join()).toContain('must seat the whole bracket');
   });
 
   it('rejects non-power-of-two brackets', () => {

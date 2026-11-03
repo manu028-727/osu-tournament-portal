@@ -329,6 +329,7 @@ function crossGroupOrder(
 }
 
 export type AdvancementSources = {
+  registered?: readonly SourceEntrant[];
   qualifiers?: Record<string, readonly SourceEntrant[]>;
   groups?: Record<
     string,
@@ -359,14 +360,26 @@ export function resolveEntries(
       seed: item.seedFrom + offset,
       lane: 'lane' in item ? item.lane : 'WINNERS',
       teamId,
-      sourcePhase: item.source.phase,
+      sourcePhase: 'phase' in item.source ? item.source.phase : 'registration',
       sourceRule: item.source.kind,
       detail,
     });
   };
   for (const item of phase.entries) {
     const from = item.source;
-    if (from.kind === 'RANK_RANGE' || from.kind === 'ALL') {
+    if (from.kind === 'REGISTRATION') {
+      const entrants = [...(sources.registered || [])].sort((a, b) => a.seed - b.seed);
+      for (let offset = 0; offset < from.count; offset++) {
+        if (!entrants[offset])
+          issues.push({
+            code: 'NOT_ENOUGH_ENTRANTS',
+            severity: 'WARNING',
+            message: 'Rank {0} has no entrant, so its opponent receives a bye.',
+            values: [offset + 1],
+          });
+        seat(item, offset, entrants[offset]?.teamId ?? null, `Seed ${offset + 1}`);
+      }
+    } else if (from.kind === 'RANK_RANGE' || from.kind === 'ALL') {
       const entrants = sources.qualifiers?.[from.phase];
       if (!entrants) {
         issues.push({

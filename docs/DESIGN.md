@@ -156,7 +156,7 @@ outside/Close dismissal and ordinary page scrolling.
 
 ## Organizer And Referee Workspaces
 
-Primary organizer navigation: Overview, Website, Stages & mappools, Teams & players,
+Primary organizer navigation: Tournament, Website, Stages & mappools, Teams & players,
 Matches, Staff, Settings. Each opens actual work, not a link-directory dashboard.
 Subsections are scoped normal links and permission-aware. The chooser remains
 platform-level and hides tournament editing menus until selection.
@@ -164,9 +164,22 @@ platform-level and hides tournament editing menus until selection.
 Website groups Homepage, Rules, Tournament info, Appearance, Navigation & text,
 Media library. Appearance/tab previews use actual public components, not a fake
 illustration. Staff separates Public listing from Website access and Roles &
-permissions. Settings holds technical/export/audit/sheet tools. Overview uses real
-setup tasks/draft reminders; optional tasks cannot block publication, and checklist
-collapses for published tournaments. No invented metrics or activity widgets.
+permissions. Settings holds technical/export/audit/sheet tools. No invented metrics or
+activity widgets.
+
+The Tournament home is one guided workspace, before and after publication. A sticky rail
+(a scrolling stepper under 1100px) shows required-step progress, sections with their
+status, the phases and a readiness list. One section opens at a time, so each editor
+mounts with fresh data; leaving unsaved edits asks first, and the open section lives in the
+URL hash. An empty tournament opens on the format choice, then on the next unfinished
+section. Readiness separates required from optional, optional items can be dismissed, and
+neither ever blocks publication. Sections show only what the viewer may act on.
+
+Stages use one grid mirroring a rules document (Best of, bans, map counts, star targets),
+scrolling inside its own container on narrow screens, with a stage's qualifier scoring and
+mappool editor opening below it. Team size has one control. The phase flow is a row of
+cards, stacking on phones, each listing who enters from where. An invalid plan explains
+itself per phase and cannot be saved, and the preview shows the matches it would create.
 
 Keep Save/Preview/Publish visible, destructive/history/advanced controls secondary,
 and publication a restrained explicit state. Show backend-confirmed success/error,

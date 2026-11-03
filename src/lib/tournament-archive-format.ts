@@ -36,7 +36,7 @@ export const ARCHIVE_TABLES = {
   ),
   settings: def(
     'tournamentSettings',
-    'tournamentId:s gameplayScoring:s? registrationPolicy:j? qualifierBookingPolicy:j? logo:s favicon:s banner:s primaryColor:s accentColor:s registrationUrl:s socialLinks:j importantDates:j navigation:j footer:s copy:j matchRules:j updatedAt:d',
+    'tournamentId:s gameplayScoring:s? setupState:j? registrationPolicy:j? qualifierBookingPolicy:j? logo:s favicon:s banner:s primaryColor:s accentColor:s registrationUrl:s socialLinks:j importantDates:j navigation:j footer:s copy:j matchRules:j updatedAt:d',
     { tournamentId: 'tournament' },
   ),
   media: def(
@@ -278,6 +278,11 @@ export const ARCHIVE_TABLES = {
     undefined,
     true,
   ),
+  tournamentPhases: def(
+    'tournamentPhase',
+    'id:s tournamentId:s key:s position:i kind:s name:s stageId:s? config:j state:s version:i createdAt:d updatedAt:d',
+    { tournamentId: 'tournament', stageId: 'stages' },
+  ),
   roles: def(
     'role',
     'id:s tournamentId:s name:s description:s systemKey:s? templateKey:s? createdAt:d',
@@ -318,6 +323,7 @@ export type ArchiveTable = keyof typeof ARCHIVE_TABLES;
 export const archiveInsertionOrder: ArchiveTable[] = [
   'media',
   'stages',
+  'tournamentPhases',
   'categories',
   'poolPlans',
   'poolSkillsets',
@@ -679,6 +685,7 @@ export function validateArchiveData(input: unknown): ArchiveData {
     identities: [['osuId']],
     pages: [['slug']],
     stages: [['slug']],
+    tournamentPhases: [['key']],
     categories: [['acronym']],
     pools: [['stageId']],
     slots: [

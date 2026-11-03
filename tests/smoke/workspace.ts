@@ -125,7 +125,7 @@ try {
     'sheet-data',
   ];
   for (const path of sections) {
-    const section = path || 'overview';
+    const section = path || 'setup';
     await visit(first.slug, path, section);
     await get(context.request, first.slug, section);
   }
@@ -152,7 +152,7 @@ try {
     published: true,
     archived: false,
   });
-  for (const path of sections) await visit(first.slug, path, path || 'overview');
+  for (const path of sections) await visit(first.slug, path, path || 'setup');
   await post(context.request, `/api/admin/action?tournament=${first.slug}`, {
     type: 'page.publish',
     slug: 'home',

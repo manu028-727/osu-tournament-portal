@@ -138,6 +138,7 @@ model Tournament {
   gameMode            String              @default("osu")
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
+  phases TournamentPhase[]
   settings            TournamentSettings?
   pages               Page[]
   stages              TournamentStage[]
@@ -148,7 +149,29 @@ model Tournament {
   brackets            Bracket[]
 }
 
+model TournamentPhase {
+  id           String           @id @default(cuid())
+  tournamentId String
+  tournament   Tournament       @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  key          String
+  position     Int
+  kind         String
+  name         String
+  stageId      String?
+  stage        TournamentStage? @relation(fields: [stageId, tournamentId], references: [id, tournamentId], onDelete: Restrict, map: "TournamentPhase_stage_fkey")
+  config       Json
+  state        String           @default("PLANNED")
+  version      Int              @default(1)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([id, tournamentId])
+  @@unique([tournamentId, key])
+  @@index([stageId, tournamentId])
+}
+
 model TournamentSettings {
+  setupState         Json?
   registrationPolicy Json?
   qualifierBookingPolicy Json?
   gameplayScoring    String?
@@ -245,6 +268,7 @@ model TournamentStage {
   qualifierStandings QualifierStanding[]
   bracketRounds      BracketRound[]
   createdAt          DateTime            @default(now())
+  phases TournamentPhase[]
 
   @@unique([tournamentId, slug])
   @@unique([id, tournamentId])

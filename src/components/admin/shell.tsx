@@ -13,7 +13,7 @@ import { AppearanceControl } from '../appearance';
 import styles from './workspace-pilot.module.css';
 
 const primary = [
-  ['', 'Overview'],
+  ['', 'Tournament'],
   ['website', 'Website'],
   ['mappools', 'Stages & mappools'],
   ['teams', 'Teams & players'],

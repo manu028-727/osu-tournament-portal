@@ -1,6 +1,8 @@
 import { getServerT } from '@/lib/server-locale';
 import { getWorkspaceActor } from '@/lib/workspace-server';
-import { Overview } from '@/components/admin/overview';
+import { SetupWorkspace } from '@/components/admin/setup/setup-workspace';
+import { getTournament } from '@/lib/queries';
+import type { TournamentView } from '@/lib/types';
 import { canAccessSection, WORKSPACE_SECTIONS } from '@/lib/workspace';
 import { redirect } from 'next/navigation';
 import { requestScope } from '@/lib/tournament-context';
@@ -34,5 +36,10 @@ export default async function Admin() {
         </a>
       </div>
     );
-  return <Overview actor={actor} />;
+  return (
+    <SetupWorkspace
+      actor={actor}
+      tournament={(await getTournament()) as unknown as TournamentView}
+    />
+  );
 }

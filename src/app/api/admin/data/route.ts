@@ -1,3 +1,4 @@
+import { setupWorkspaceData } from '@/lib/setup-queries';
 import { requireTournamentActor } from '@/lib/auth';
 import { competitionData } from '@/lib/competition-queries';
 import { previewCompetitionCorrection } from '@/lib/competition-service';
@@ -284,54 +285,9 @@ export async function GET(request: Request) {
           select: auditSummary,
         });
         break;
-      case 'overview': {
-        if (!actor.permissions.length)
-          throw new AppError('No administration permissions assigned.', 403);
-        const pages = await db.page.findMany({
-          where: { slug: { in: ['home', 'rules'] } },
-          select: { slug: true, draftRevisionId: true, publishedRevisionId: true },
-        });
-        data = {
-          setup: {
-            homeSaved: pages.some(
-              (p) => p.slug === 'home' && !!(p.draftRevisionId || p.publishedRevisionId),
-            ),
-            rulesSaved: pages.some(
-              (p) => p.slug === 'rules' && !!(p.draftRevisionId || p.publishedRevisionId),
-            ),
-            homePublished: pages.some((p) => p.slug === 'home' && !!p.publishedRevisionId),
-            pendingPages: pages.filter(
-              (p) => p.draftRevisionId && p.draftRevisionId !== p.publishedRevisionId,
-            ).length,
-            teams: await db.team.count(),
-            matches: (await db.match.count()) + (await db.qualifierLobby.count()),
-          },
-          tournament: await getTournament(),
-          users: can(actor, 'users.manage')
-            ? await db.user.count({ where: { roles: { some: { tournamentId } } } })
-            : null,
-          staff: await db.staffMember.count(),
-          published: await db.mappool.count({ where: { state: 'PUBLISHED' } }),
-          drafts: actor.permissions.some((p) => p.startsWith('mappools.'))
-            ? await db.mappool.count({ where: { draftRevisionId: { not: null } } })
-            : null,
-          recent: can(actor, 'audit.view')
-            ? await db.auditLog.findMany({
-                take: 8,
-                orderBy: { createdAt: 'desc' },
-                select: auditSummary,
-              })
-            : [],
-          stages: await db.tournamentStage.findMany({
-            where: actor.permissions.some((p) => p.startsWith('mappools.'))
-              ? {}
-              : { mappool: { state: 'PUBLISHED' } },
-            orderBy: { position: 'asc' },
-            include: { mappool: { select: { state: true, updatedAt: true } } },
-          }),
-        };
+      case 'setup':
+        data = await setupWorkspaceData(actor);
         break;
-      }
       case 'sheet-data':
         assertPermission(actor, 'tournament.data.read');
         data = {
