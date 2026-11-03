@@ -77,6 +77,19 @@ export function CompetitionBracket({
     [roundIndex, setRoundIndex] = useState(0);
   const viewport = useRef<HTMLDivElement>(null),
     drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  // The same name the bracket shows above, and in that order, even when letters follow strength.
+  const standingRows = (bracket.standings ?? [])
+    .map((row) => ({
+      row,
+      heading: groupHeading(
+        bracket.rounds.find((round) => round.lane === row.group) ?? { lane: row.group },
+        tr,
+      ),
+    }))
+    .sort(
+      (a, b) =>
+        a.heading.localeCompare(b.heading, 'en', { numeric: true }) || a.row.rank - b.row.rank,
+    );
   const layout = useMemo(() => bracketPresentation(bracket), [bracket]);
   const currentRound = layout.rounds[Math.min(roundIndex, Math.max(0, layout.rounds.length - 1))];
   const currentDetails = currentRound ? bracketRoundDetails(bracket, currentRound, tr) : null;
@@ -510,9 +523,9 @@ export function CompetitionBracket({
               </tr>
             </thead>
             <tbody>
-              {bracket.standings.map((row) => (
+              {standingRows.map(({ row, heading }) => (
                 <tr key={`${row.group}-${row.teamId}`} className="border-b border-border">
-                  <td className="p-2">{row.group.replace('_', ' ')}</td>
+                  <td className="p-2">{heading}</td>
                   <td className="p-2 tabular-nums">{row.rank}</td>
                   <td className="p-2">
                     {bracket.entries.find((e) => e.teamId === row.teamId)?.team.name}

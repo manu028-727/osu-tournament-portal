@@ -207,3 +207,39 @@ describe('bracket presentation without progression changes', () => {
     expect(bracketPresentation(bracket).sections).toHaveLength(2);
   });
 });
+
+describe('named groups', () => {
+  const groupRound = (group: number, letter: string, position: number) => ({
+    id: `round-${group}`,
+    key: `g${group}-r1`,
+    name: `Group ${letter} 1`,
+    lane: `GROUP_${group}`,
+    stageId: 'stage',
+    position,
+  });
+  const bracket = (rounds: ReturnType<typeof groupRound>[]) =>
+    ({
+      id: 'groups',
+      name: 'Groups',
+      format: 'GROUPS',
+      rounds,
+      nodes: [],
+      entries: [],
+    }) as unknown as CompetitionBracketData;
+
+  it('reads in letter order even when letters follow strength rather than the draw', () => {
+    const { rounds } = bracketPresentation(
+      bracket([groupRound(1, 'C', 0), groupRound(2, 'A', 1), groupRound(3, 'B', 2)]),
+    );
+    expect(rounds.map((round) => round.name)).toEqual(['Group A 1', 'Group B 1', 'Group C 1']);
+  });
+
+  it('leaves older groups, whose rounds have no group name, in their stored order', () => {
+    const older = [groupRound(1, 'C', 0), groupRound(2, 'A', 1)].map((round, index) => ({
+      ...round,
+      name: `Round ${index + 1}`,
+    }));
+    const { rounds } = bracketPresentation(bracket(older));
+    expect(rounds.map((round) => round.lane)).toEqual(['GROUP_1', 'GROUP_2']);
+  });
+});

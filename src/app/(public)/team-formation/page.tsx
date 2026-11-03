@@ -60,7 +60,10 @@ export default async function TeamFormation() {
                 <h3 className="font-semibold">{team.name}</h3>
                 {team.moneyLeft !== null && (
                   <p className="text-sm text-muted">
-                    {tr('{0} left', `${currency} ${team.moneyLeft}`)}
+                    {tr(
+                      session.state === 'CONFIRMED' ? '{0} left after the auction' : '{0} left',
+                      `${currency} ${team.moneyLeft}`,
+                    )}
                   </p>
                 )}
                 <ol className={styles.roster}>

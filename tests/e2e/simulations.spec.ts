@@ -6,6 +6,7 @@ import {
   advancePhase,
   bracketOf,
   cleanupSimulation,
+  createMultiplayerFixture,
   createPlayers,
   createTournament,
   db,
@@ -177,6 +178,91 @@ test('MIR Cup as its rules document reads: top 16 into double elimination, accur
   await page.screenshot({ path: `${evidence}/mir-document-accuracy-1366.png`, fullPage: true });
   const stored = await db.match.findUniqueOrThrow({ where: { id: match.id } });
   expect(stored.winnerSide).toBe('A');
+
+  // The next match takes its result from a ScoreV2 lobby. Accuracy decides it, read from the
+  // game itself, even though the other team outscored them and only two of three played.
+  const next = await db.bracketNode.findFirstOrThrow({
+    where: { tournamentId: t.id, bracketId: bracket, state: 'READY' },
+    orderBy: { matchNumber: 'asc' },
+    include: { match: true },
+  });
+  const atPick = await playMatch(page, t, next.match!.id, { winner: 'A', stopBefore: 'PICK' });
+  const slotName = atPick.workflow.eligibleSlots[0];
+  await action(page, t, {
+    id: atPick.id,
+    baseVersion: atPick.version,
+    type: 'match.draft',
+    kind: 'PICK',
+    side: atPick.workflow.side,
+    slotName,
+  });
+  const picked = await db.match.findUniqueOrThrow({ where: { id: atPick.id } });
+  const slot = await db.mappoolSlot.findFirstOrThrow({
+    where: { revisionId: picked.poolRevisionId!, name: slotName },
+  });
+  const multiplayerId = 770_000_000 + Math.floor(Math.random() * 1_000_000);
+  const [lobbyA, lobbyB] = [picked.teamAId, picked.teamBId].map((id) =>
+    teams.find((team) => team.id === id)!,
+  );
+  const player = (osuId: number, team: string, score: number, accuracy: number) => ({
+    user_id: osuId,
+    score,
+    max_combo: 500,
+    accuracy,
+    mods: ['RX'],
+    statistics: { count_miss: 1 },
+    match: { team },
+  });
+  await createMultiplayerFixture(multiplayerId, [
+    {
+      id: multiplayerId + 1,
+      beatmap_id: slot.beatmapId,
+      start_time: new Date(Date.now() + 1000).toISOString(),
+      end_time: new Date(Date.now() + 120_000).toISOString(),
+      mode: 'osu',
+      scoring_type: 'scorev2',
+      team_type: 'team-vs',
+      mods: ['RX'],
+      scores: [
+        player(lobbyA.members[0].osuId, 'red', 600_000, 0.9712),
+        player(lobbyA.members[2].osuId, 'red', 610_000, 0.955),
+        player(lobbyB.members[0].osuId, 'blue', 900_000, 0.94),
+        player(lobbyB.members[1].osuId, 'blue', 910_000, 0.96),
+      ],
+    },
+  ]);
+  await action(page, t, {
+    id: picked.id,
+    baseVersion: picked.version,
+    type: 'match.lobby',
+    lobbyUrl: `https://osu.ppy.sh/community/matches/${multiplayerId}`,
+    multiplayerId,
+  });
+  page.on('dialog', (dialog) => void dialog.accept());
+  await page.goto(`/t/${t.slug}/admin/referee/${picked.id}`);
+  await page.getByRole('tab', { name: 'multiplayer', exact: true }).click();
+  const lobbyGames = page.getByRole('region', { name: 'Multiplayer game history' });
+  await lobbyGames.getByRole('button', { name: 'Sync games' }).click();
+  await expect(page.getByText('Multiplayer games synchronized for review.')).toBeVisible();
+  await expect(lobbyGames.getByText(/96\.31\s*:\s*95/).first()).toBeVisible();
+  await page.screenshot({ path: `${evidence}/mir-document-lobby-1366.png`, fullPage: true });
+  await lobbyGames.getByRole('button', { name: 'Confirm result' }).click();
+  await expect(page.getByText('Imported result confirmed.')).toBeVisible();
+  const imported = await db.matchMapResult.findFirstOrThrow({
+    where: { matchId: picked.id, voided: false },
+    include: { playerScores: true },
+  });
+  expect(imported.winnerSide).toBe('A');
+  expect(imported.scoreA).toBeCloseTo(96.31, 5);
+  expect(imported.scoreB).toBeCloseTo(95, 5);
+  expect(imported.playerScores.map((row) => row.osuId).sort()).toEqual(
+    [
+      lobbyA.members[0].osuId,
+      lobbyA.members[2].osuId,
+      lobbyB.members[0].osuId,
+      lobbyB.members[1].osuId,
+    ].sort(),
+  );
 });
 
 // Waits for the real bracket, because the page first shows a loading placeholder.

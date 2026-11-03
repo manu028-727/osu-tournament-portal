@@ -1471,6 +1471,12 @@ do not replace persistence coverage or live-provider checks. Locale tests check
 catalog coverage, duplicate keys, interpolation, request concurrency and unchanged
 authored parameters. Localization E2E exercises real localized failures, dirty
 forms/dialogs/history and both languages/appearances at required viewport sizes.
+`tests/e2e/simulations.spec.ts` runs each compatibility format from an empty tournament to played
+brackets, and needs E2E_OSU_FIXTURE_DIR for player ranks and lobby games. Its helpers send the same
+requests the screens send for volume work, and clear only the request limit's counters on the test
+database, because a simulation does hours of organizer work in seconds. `tests/e2e/page-sweep.spec.ts`
+visits every organizer and public page at seven sizes. Both take several minutes.
+
 With E2E_OSU_FIXTURE_DIR enabled, Playwright pins the same synthetic osu! credential
 in the server and test workers so signed result-review receipts exercise the real
 verification path. This branch requires the isolated test database; it supplies no

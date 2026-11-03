@@ -1493,7 +1493,7 @@ Keep this current so an interrupted session can continue from it.
 | M5        | Referee rule enforcement: lineups, timers, attempts, forfeits, sanctions         | Verified |
 | M6        | Eligibility, team formation, auction board, derived resources                    | Verified |
 | M7        | Every-page editing sweep and obsolete-setting cleanup                            | Verified |
-| M8        | All formats simulated through the normal UI, full gates, final report            | Planned  |
+| M8        | All formats simulated through the normal UI, full gates, final report            | Verified |
 
 Maintainer decisions: auctions use an operator-run board with read-only captains, and
 pasted bot results are supported; captain self-bidding is out of scope. The workspace
@@ -1706,6 +1706,56 @@ rather than rebuilt. What changed is where the sweep and audit found real fricti
 No column was dropped: those removals would be destructive migrations, and the copy fields and
 `rankSum` must still read from old archives. `Team.qualifierPlayed` and `Team.sourceKey` are written
 only by archive restore and stay for compatibility; public team pages still read the former.
+
+### M8 Checks
+
+`tests/e2e/simulations.spec.ts` runs each format from an empty tournament to played brackets, on
+synthetic players with mock osu! and mock lobby data. Created through the chooser and template,
+then:
+
+| Format              | What ran and was asserted                                                                                                                                                                                                                                                                                                           |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MIR Cup, document   | 2v2 roster 3, Relax on every map, Z-Sum cut to 16, double elimination. Accuracy decides: 96.31 beats 95 despite lower raw score, with a 2-of-3 lineup, entered by hand and imported from a ScoreV2 lobby on the referee screen                                                                                                      |
+| MIR Cup, brief      | Same entry, into 4 groups of 4 with one entrant per pot, 24 group matches, top two per group into an 8-team double elimination of 14 matches                                                                                                                                                                                        |
+| Italian Cup 9       | 1v1, seeds 1-4 direct, 16 in groups, placements split Winners and Losers. A draw chosen to force a same-group opener, which the solver moved and recorded. A forfeit counts the win with no map difference. Losers entrants have one life                                                                                           |
+| OIDC 2026           | Real registration screens against written limits: sum exactly 150,000 passes, 4,000 and rank 100,000 wait for a decision, a French player enters after a recorded interview, approval refused until decided, ranks locked and read once. Two runs of Z-Sum match a value recomputed independently in the test to six places         |
+| Italian Draft Cup 3 | 40 solo players on average placement, 8 hand-picked captains, random lots, a sale and a no-bid on screen, 30 pasted bot lines, 4 reserves filled at 400, teams seeded by average. Budgets at 200 a map and 100 past Losers round 2, unlock and stage limits, referee sees items before the start, a correction takes the money back |
+| OWC 2025            | 40 national teams of 8 with 4 starters, %MAX recomputed independently, two tiers, pots, letters by source strength, first-overrun warning then a named consequence on a real match, the published 32-seat pairing exactly, a played reset                                                                                           |
+| Novel               | Solo qualifiers seeded on accuracy with raw score running the other way, a 24-pick snake draft in exact order, an 8-team round robin where head-to-head breaks a tie, playoffs reseeded so 2 meets 8 instead of the fixed 8 v 4, and a third-place match                                                                            |
+
+Made on screen: creating tournaments, choosing templates, scoring rules, registration limits,
+captains registering, eligibility decisions, locking, reviewing and applying phases, every board
+decision, budgets, purchases, publishing, reseeding, the timer flow and lobby import. Sent as the
+same requests those screens send, for volume: filling pools, CSV import, qualifier lobbies and
+scores, finalizing standings, most match play, and saving the OWC and novel plans, whose editor
+`setup-workspace.spec.ts` covers separately. No simulation writes gameplay records directly.
+
+These runs found and fixed: items hidden from referees until a match started, earnings counted from
+map rows so a summary correction left money wrong, retired entrants left in the Teams editor and
+some pickers, duplicate roster inputs, an audit entry for merely checking pasted lines, and group
+standings saying GROUP 1 under a bracket calling it Group C.
+
+Comparison: `reconcile-reference.mjs` against the private OIDC reference sheet gives 22 teams over
+13 maps, largest difference 7.1e-15, identical seeds, under best per map with native bonus removal
+and no tournament multiplier. The written 2x and 1.2x still need a host ruling.
+
+Upgrade: `tests/migrations.integration.test.ts` applies the eight migrations of this branch to a
+populated disposable schema. Saved rows read back unchanged, new columns are empty, and new tables
+refuse cross-tournament references and invalid kinds in the database itself.
+
+Not verified on real providers: `!mp mods` with RX and RX with NF, `!roll` with the suggested count,
+live `users/:id/:mode` ranks, the lobby response shape beyond the existing fixtures, and
+`statistics.count_miss`. Mock Bancho, mock osu! and synthetic sessions are not live verification.
+
+Remaining, by decision or for organizers: captains cannot bid through the platform and bid history
+is not stored; native lazer Rooms capture and an arbitrary graph editor stay out of scope; reading
+locked ranks is a button rather than a scheduled job; unsold players stay as solo entries, and formed
+rosters start with no substitute flags, both editable under Teams. Human judgment remains for perk
+effects, interview outcomes, disconnect proof, screening, territory players, sanctions and staff
+discretion. Rulings needed from hosts are in Rule Contradictions And Gaps above.
+
+Next: maintainer review of `refactor/tournament-format-engine`. Nothing has been pushed, merged or
+deployed. Deployment needs the eight `20261103*` migrations, all additive, with no backfill.
 
 ## Completion Rules
 

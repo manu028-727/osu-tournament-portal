@@ -180,6 +180,9 @@ players per side, Best of, bans and the common switches. Turn order and timers, 
 multipliers, referee procedures, lobby commands and written policies each fold under their own
 heading, on every screen using that form.
 
+Named groups read in letter order in the bracket and its standings, which use one name, even when
+letters follow strength rather than the draw.
+
 Team formation is a board inside its phase: team cards with names editable in place, one
 compact form for the next decision, and every other action folded away. Refused sales keep what
 the operator typed. Decisions that discard work ask for a reason beside the button. The public

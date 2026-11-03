@@ -9,6 +9,16 @@ type Round = Pick<CompetitionRound, 'key' | 'lane' | 'position'> & { stageName?:
 type RoundContext = { format: string; rounds: readonly Round[] };
 const ordered = <T extends Round>(rounds: readonly T[]) =>
   [...rounds].sort((a, b) => a.position - b.position || a.key.localeCompare(b.key));
+const groupName = (round: { name?: string }) => round.name?.match(/^(Group \S+) \d+$/)?.[1];
+// Named groups read A, B, C down the page, even when letters follow strength, not the draw.
+const inGroupOrder = <T extends Round & { name?: string }>(rounds: T[]) =>
+  rounds.every((round) => groupName(round))
+    ? [...rounds].sort(
+        (a, b) =>
+          groupName(a)!.localeCompare(groupName(b)!, 'en', { numeric: true }) ||
+          a.position - b.position,
+      )
+    : rounds;
 
 // Display metadata only. Stored lanes, routes, seed placement and match numbers are never rewritten.
 export function bracketRoundDetails(bracket: RoundContext, round: Round, tr: Translate) {
@@ -43,8 +53,7 @@ export function bracketRoundDetails(bracket: RoundContext, round: Round, tr: Tra
 
 // A format can name its groups, such as Group D; older brackets number them.
 export function groupHeading(round: { lane: string; name?: string }, tr: Translate) {
-  const named = round.name?.match(/^(Group \S+) \d+$/);
-  return named ? named[1] : tr('Group {0}', round.lane.slice(6));
+  return groupName(round) ?? tr('Group {0}', round.lane.slice(6));
 }
 
 export function bracketSlotLabel(
@@ -79,7 +88,7 @@ const COLUMN = 320,
   CARD_HEIGHT = 140,
   INSET = 20;
 export function bracketPresentation(bracket: CompetitionBracketData) {
-  const rounds = ordered(bracket.rounds);
+  const rounds = inGroupOrder(ordered(bracket.rounds));
   const positions = new Map<string, { x: number; y: number }>();
   const headers: { round: CompetitionRound; x: number; y: number }[] = [];
   const sections: { lane: string; x: number; y: number; width: number }[] = [];

@@ -366,12 +366,16 @@ export async function cleanupSimulation() {
   await db.$disconnect();
 }
 
-// A Bancho match the mock provider will serve, built the way the real API shapes one.
+// A Bancho match the mock provider will serve, in the shape the real API returns.
 export async function createMultiplayerFixture(id: number, games: unknown[]) {
   created.matches.push(id);
   await writeFile(
     `${fixtures}/match-${id}.json`,
-    JSON.stringify({ match: { id, name: `sim ${id}` }, events: [], games }),
+    JSON.stringify({
+      match: { id, name: `sim ${id}` },
+      first_event_id: 1,
+      events: games.map((game, index) => ({ id: index + 1, game })),
+    }),
   );
 }
 

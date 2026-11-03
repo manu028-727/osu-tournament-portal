@@ -394,7 +394,6 @@ test('guided BO9 completes protects, Blue-first ABBA, corrections, refresh and a
   await stageDialog.getByText('Action sequence and team order', { exact: true }).click();
   await stageDialog.getByText('Effective team order', { exact: true }).click();
   for (const order of ['AB', 'ABAB', 'ABBA']) {
-    await stageDialog.getByText('Turn order and timers').click();
     await stageDialog.getByRole('combobox', { name: 'Ban order', exact: true }).selectOption(order);
     await expect(
       stageDialog.getByRole('listitem').filter({ hasText: /^\d+\. (Red|Blue) ban$/ }),
