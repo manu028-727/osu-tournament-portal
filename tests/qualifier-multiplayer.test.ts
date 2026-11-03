@@ -34,12 +34,12 @@ describe('reviewed qualifier multiplayer capture', () => {
   });
   it('retains raw scores and original unsupported mods for individual exclusion', () => {
     const result = qualifierGameProposals(
-      [{ game: { ...game, scores: [{ user_id: 10, score: 42, mods: ['RX'] }] } }],
+      [{ game: { ...game, scores: [{ user_id: 10, score: 42, mods: ['AP'] }] } }],
       lobby,
     );
     expect(result.proposals[0].players[0]).toMatchObject({
       raw: 42,
-      originalMods: ['NF', 'RX'],
+      originalMods: ['NF', 'AP'],
       violation: 'Unsupported mods require manual review.',
     });
   });

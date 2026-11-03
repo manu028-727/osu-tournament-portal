@@ -13,12 +13,12 @@ import {
   tournamentScoring,
 } from './gameplay-scoring';
 import {
-  aggregateScores,
   nextDraftStep,
   replayDraft,
   startingSide,
   validateDraftAction,
 } from './match-engine';
+import { aggregateScores, effectiveWinCondition } from './score-pipeline';
 import { allocateMatchNumber, numericMatchIdentifier } from './match-numbering';
 import {
   draftState,
@@ -813,10 +813,13 @@ export async function applyMatchAction(
       active(match);
       if (a.type === 'match.score') {
         const scoring = historicalScoring(rules);
+        // Team totals are only a raw score when the map is decided on score.
         if (scoring)
           for (const value of a.players.length
             ? a.players.map((p) => p.score)
-            : [a.scoreA, a.scoreB])
+            : effectiveWinCondition(rules).metric === 'SCORE'
+              ? [a.scoreA, a.scoreB]
+              : [])
             assertScoreRepresentation(scoring, scoring, a.representation, value);
       }
       const picked = match.actions.find(

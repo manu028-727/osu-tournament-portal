@@ -1,5 +1,6 @@
 'use client';
 import { humanizeCode, localeTag } from '@/lib/i18n';
+import { formatMapValue } from '@/lib/score-pipeline';
 import { MATCH_ACTION_MESSAGES } from '@/lib/match-display';
 import { useLocale, useT } from '@/components/locale';
 
@@ -434,8 +435,8 @@ export function GuidedMatch({
                         {tr('Detected game')} {g.gameId}
                       </p>
                       <p>
-                        {tr('Red')} {g.proposal!.scoreA.toLocaleString(localeTag(language))} :{' '}
-                        {g.proposal!.scoreB.toLocaleString(localeTag(language))} {tr('Blue')}
+                        {tr('Red')} {formatMapValue(g.proposal!.scoreA, localeTag(language))} :{' '}
+                        {formatMapValue(g.proposal!.scoreB, localeTag(language))} {tr('Blue')}
                       </p>
                       {canScore && (
                         <Button

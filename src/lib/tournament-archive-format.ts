@@ -176,7 +176,7 @@ export const ARCHIVE_TABLES = {
   ),
   playerScores: def(
     'matchPlayerScore',
-    'id:s resultId:s osuId:i side:s score:n accuracy:n? mods:j',
+    'id:s resultId:s osuId:i side:s score:n accuracy:n? maxCombo:i? misses:i? mods:j',
     { resultId: 'mapResults', osuId: 'participants' },
     ['result', 'match'],
   ),

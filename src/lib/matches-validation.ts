@@ -20,6 +20,8 @@ export const playerScoreSchema = z.object({
   side,
   score,
   accuracy: z.number().min(0).max(100).nullable().optional(),
+  maxCombo: z.number().int().min(0).max(2147483647).nullable().optional(),
+  misses: z.number().int().min(0).max(2147483647).nullable().optional(),
   mods: z
     .array(z.enum(MODS))
     .max(10)

@@ -1,6 +1,6 @@
 import { MODS, type MatchRules } from './match-rules';
 import type { QualifierPolicy } from './qualifier-policy';
-import { convertedScore } from './match-engine';
+import { convertedScore } from './score-pipeline';
 import { qualifierScoreViolation } from './qualifier-eligibility';
 import { AppError } from './permissions';
 

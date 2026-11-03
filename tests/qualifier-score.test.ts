@@ -119,7 +119,7 @@ describe('canonical qualifier score interpretation', () => {
     );
   });
   it('does not invent a pass status or a compatible scoring system', () => {
-    expect(qualifierIndividualViolation(rules, {}, 'NM', { mods: ['NF', 'RX'] })).toContain(
+    expect(qualifierIndividualViolation(rules, {}, 'NM', { mods: ['NF', 'AP'] })).toContain(
       'Unsupported mods',
     );
     expect(

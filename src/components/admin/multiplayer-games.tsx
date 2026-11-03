@@ -1,5 +1,6 @@
 'use client';
 import { localeTag } from '@/lib/i18n';
+import { formatMapValue } from '@/lib/score-pipeline';
 import { useLocale, useT } from '@/components/locale';
 
 import { useState, useEffect, useRef } from 'react';
@@ -145,8 +146,8 @@ export function MultiplayerGames({
               </p>
               {proposal && (
                 <p>
-                  {tr('Red')} {proposal.scoreA.toLocaleString(localeTag(language))} :{' '}
-                  {proposal.scoreB.toLocaleString(localeTag(language))} {tr('Blue · Suggested')}{' '}
+                  {tr('Red')} {formatMapValue(proposal.scoreA, localeTag(language))} :{' '}
+                  {formatMapValue(proposal.scoreB, localeTag(language))} {tr('Blue · Suggested')}{' '}
                   {proposal.winnerSide === 'A' ? tr('Red') : tr('Blue')} {tr('win')}
                 </p>
               )}

@@ -2,7 +2,7 @@ import { Prisma } from '@/generated/prisma/client';
 import { z } from 'zod';
 import { db as rootDb } from './db';
 import { historicalScoring, tournamentScoring } from './gameplay-scoring';
-import { convertedScore } from './match-engine';
+import { convertedScore } from './score-pipeline';
 import { qualifierEffectiveScore } from './qualifier-score';
 import { matchRulesSchema } from './match-rules';
 import { AppError, can, type Actor } from './permissions';

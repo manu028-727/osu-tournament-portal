@@ -1,5 +1,6 @@
 'use client';
 import { humanizeCode, localeTag } from '@/lib/i18n';
+import { formatMapValue } from '@/lib/score-pipeline';
 import { Feedback, useLocale, useT } from '@/components/locale';
 
 import Link from '@/components/tournament-scope';
@@ -583,12 +584,14 @@ export function RefereePanel({
                               {tr('Team')} {a.side}
                             </td>
                             <td>
-                              {r?.scoreA?.toLocaleString(localeTag(language)) ??
-                                (r ? tr('Winner only') : tr('Pending'))}
+                              {(r?.scoreA != null
+                                ? formatMapValue(r.scoreA, localeTag(language))
+                                : null) ?? (r ? tr('Winner only') : tr('Pending'))}
                             </td>
                             <td>
-                              {r?.scoreB?.toLocaleString(localeTag(language)) ??
-                                (r ? tr('Winner only') : tr('Pending'))}
+                              {(r?.scoreB != null
+                                ? formatMapValue(r.scoreB, localeTag(language))
+                                : null) ?? (r ? tr('Winner only') : tr('Pending'))}
                             </td>
                             <td>{r ? m.participants[r.winnerSide].name : tr('Pending')}</td>
                             <td className="min-w-32 whitespace-pre-wrap">{r?.notes}</td>
@@ -1335,7 +1338,9 @@ export function RefereePanel({
                 return (
                   <li key={a.id}>
                     {a.slotName} · {tr(humanizeCode(a.kind))} {tr('· Team')} {a.side}
-                    {r ? ` · ${r.scoreA} : ${r.scoreB}` : ''}
+                    {r && r.scoreA !== null && r.scoreB !== null
+                      ? ` · ${formatMapValue(r.scoreA, localeTag(language))} : ${formatMapValue(r.scoreB, localeTag(language))}`
+                      : ''}
                   </li>
                 );
               })}

@@ -1,5 +1,5 @@
-import { convertedScore } from './match-engine';
 import { MODS } from './match-rules';
+import { mapWinner, reportedPlayerScore, teamMapValue } from './score-pipeline';
 import type { MatchView } from './matches-types';
 import type { MultiplayerImportGame } from './match-results-contract';
 import { z } from 'zod';
@@ -10,6 +10,7 @@ const scoreSchema = z.object({
   accuracy: z.number().min(0).max(1),
   max_combo: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   mods: z.array(z.string()),
+  statistics: z.object({ count_miss: z.number().int().nonnegative() }).partial().optional(),
 });
 /** Tournament identities define sides; lobby colours are metadata, never roster ownership. */
 export function organizerMultiplayerGames(
@@ -69,13 +70,14 @@ export function organizerMultiplayerGames(
           osuId: p.user_id,
           side: p.side!,
           mods: mods as (typeof MODS)[number][],
-          score:
-            match.rules.scoreMode === 'COMBO'
-              ? p.max_combo
-              : match.rules.scoreMode === 'ACCURACY'
-                ? p.accuracy * 100
-                : p.score,
+          score: reportedPlayerScore(match.rules, {
+            score: p.score,
+            accuracy: p.accuracy,
+            maxCombo: p.max_combo,
+          }),
           accuracy: p.accuracy * 100,
+          maxCombo: p.max_combo,
+          misses: p.statistics?.count_miss ?? null,
         };
       });
       if (new Set(mapped.map((player) => player.osuId)).size !== mapped.length)
@@ -85,15 +87,14 @@ export function organizerMultiplayerGames(
         !mapped.some((player) => player.side === 'B')
       )
         throw Error('Both tournament teams need score evidence.');
+      // A reviewed import keeps usable evidence, so unlike live capture it does not reject
+      // short lineups or rule violations. Team values still come from the shared pipeline.
       const total = (side: 'A' | 'B') =>
-        mapped
-          .filter((player) => player.side === side)
-          .reduce(
-            (sum, player) =>
-              sum +
-              convertedScore(match.rules, player.score, player.mods, slots[0]?.name || '').adjusted,
-            0,
-          );
+        teamMapValue(
+          match.rules,
+          mapped.filter((player) => player.side === side),
+          slots[0]?.name || '',
+        );
       const scoreA = total('A'),
         scoreB = total('B');
       if (
@@ -102,13 +103,10 @@ export function organizerMultiplayerGames(
         Math.max(scoreA, scoreB) > Number.MAX_SAFE_INTEGER
       )
         throw Error('The imported team score exceeds the supported range.');
-      if (scoreA === scoreB)
+      const winnerSide = mapWinner(match.rules, scoreA, scoreB);
+      if (!winnerSide)
         throw Error('Tied maps must be excluded or reviewed before awarding a point.');
-      const totals = {
-        scoreA,
-        scoreB,
-        winnerSide: scoreA > scoreB ? ('A' as const) : ('B' as const),
-      };
+      const totals = { scoreA, scoreB, winnerSide };
       return {
         evidence: { ...evidence, issue: null },
         proposal: {

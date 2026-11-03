@@ -6,7 +6,12 @@ import { useEffect, useState } from 'react';
 import { DropdownMenu, ToggleGroup } from 'radix-ui';
 import { Check, ChevronDown, Save } from 'lucide-react';
 import { MODS, type Side } from '@/lib/match-rules';
-import { aggregateScores, type PlayerScore } from '@/lib/match-engine';
+import {
+  aggregateScores,
+  effectiveWinCondition,
+  formatMapValue,
+  type PlayerScore,
+} from '@/lib/score-pipeline';
 import type { MatchView } from '@/lib/matches-types';
 import { Button } from '../ui/button';
 import { action, Field, Modal, SaveButton, useTask, useUnsaved } from './shared';
@@ -123,6 +128,15 @@ export function MatchScoreDialog({
     // A selection captures its version. Polling must never replace an open score form.
   }, [selection?.actionId, selection?.baseVersion]);
   useUnsaved(dirty);
+  const { metric, legacy: legacyMetric } = effectiveWinCondition(match.rules);
+  const teamLabel =
+    metric === 'ACCURACY'
+      ? '{0} accuracy (%)'
+      : metric === 'COMBO'
+        ? '{0} combo'
+        : metric === 'MISSES'
+          ? '{0} misses'
+          : '{0} score';
   let totals: { scoreA: number; scoreB: number; winnerSide: Side } | null = null,
     issue = '';
   if (selection && mode !== 'winner')
@@ -263,25 +277,25 @@ export function MatchScoreDialog({
             </Field>
           ) : mode === 'aggregate' ? (
             <div className="grid-fields">
-              <Field label={tr('{0} score', match.participants.A.name)}>
+              <Field label={tr(teamLabel, match.participants.A.name)}>
                 <input
                   type="number"
                   min={0}
-                  max={1e12}
+                  max={metric === 'ACCURACY' ? 100 : 1e12}
                   required
                   value={scoreA}
-                  step={match.rules.scoreMode === 'ACCURACY' ? 'any' : 1}
+                  step={metric === 'ACCURACY' ? 'any' : 1}
                   onChange={(e) => setScoreA(Number(e.target.value))}
                 />
               </Field>
-              <Field label={tr('{0} score', match.participants.B.name)}>
+              <Field label={tr(teamLabel, match.participants.B.name)}>
                 <input
                   type="number"
                   min={0}
-                  max={1e12}
+                  max={metric === 'ACCURACY' ? 100 : 1e12}
                   required
                   value={scoreB}
-                  step={match.rules.scoreMode === 'ACCURACY' ? 'any' : 1}
+                  step={metric === 'ACCURACY' ? 'any' : 1}
                   onChange={(e) => setScoreB(Number(e.target.value))}
                 />
               </Field>
@@ -318,7 +332,7 @@ export function MatchScoreDialog({
                           <Field label={tr('Raw score {0}', index + 1)}>
                             <input
                               type="number"
-                              step={match.rules.scoreMode === 'ACCURACY' ? 'any' : 1}
+                              step={legacyMetric ? 'any' : 1}
                               min={0}
                               max={1e12}
                               required
@@ -331,7 +345,8 @@ export function MatchScoreDialog({
                               type="number"
                               min={0}
                               max={100}
-                              step="0.01"
+                              step="any"
+                              required={metric === 'ACCURACY'}
                               value={p.accuracy ?? ''}
                               onChange={(e) =>
                                 player(index, {
@@ -340,6 +355,38 @@ export function MatchScoreDialog({
                               }
                             />
                           </Field>
+                          {metric === 'COMBO' && !legacyMetric && (
+                            <Field label={tr('Max combo {0}', index + 1)}>
+                              <input
+                                type="number"
+                                min={0}
+                                step={1}
+                                required
+                                value={p.maxCombo ?? ''}
+                                onChange={(e) =>
+                                  player(index, {
+                                    maxCombo: e.target.value ? Number(e.target.value) : null,
+                                  })
+                                }
+                              />
+                            </Field>
+                          )}
+                          {metric === 'MISSES' && (
+                            <Field label={tr('Misses {0}', index + 1)}>
+                              <input
+                                type="number"
+                                min={0}
+                                step={1}
+                                required
+                                value={p.misses ?? ''}
+                                onChange={(e) =>
+                                  player(index, {
+                                    misses: e.target.value ? Number(e.target.value) : null,
+                                  })
+                                }
+                              />
+                            </Field>
+                          )}
                           <div className="flex items-end">
                             <ModsPicker
                               value={p.mods}
@@ -358,8 +405,8 @@ export function MatchScoreDialog({
           {totals ? (
             <div className="flex flex-wrap items-center justify-between gap-4 border-y py-4">
               <p className="text-lg font-semibold">
-                {totals.scoreA.toLocaleString(localeTag(language))} :{' '}
-                {totals.scoreB.toLocaleString(localeTag(language))}
+                {formatMapValue(totals.scoreA, localeTag(language))} :{' '}
+                {formatMapValue(totals.scoreB, localeTag(language))}
               </p>
               <p className={totals.winnerSide === 'A' ? 'text-red-200' : 'text-sky-200'}>
                 {tr('Winner:')} {match.participants[totals.winnerSide].name}

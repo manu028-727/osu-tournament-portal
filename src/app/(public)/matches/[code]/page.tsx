@@ -5,6 +5,8 @@ import { ArrowLeft, ExternalLink, Users } from 'lucide-react';
 import { publicMatches, publicMatchHistory } from '@/lib/public-matches';
 import { matchTime, PUBLIC_MATCH_STATUS, bracketEntrant } from '@/lib/match-display';
 import { MatchStatusBadge } from '@/components/ui/badge';
+import { formatMapValue } from '@/lib/score-pipeline';
+import { localeTag } from '@/lib/i18n';
 export async function generateMetadata({ params }: { params: Promise<{ code: string }> }) {
   const tr = await getServerT();
   const m = (await publicMatches({ code: (await params).code }))[0];
@@ -138,7 +140,7 @@ export default async function Match({ params }: { params: Promise<{ code: string
                     </td>
                     <td className="whitespace-nowrap p-2">
                       {game.scoreA !== null && game.scoreB !== null
-                        ? `${game.scoreA} : ${game.scoreB}`
+                        ? `${formatMapValue(game.scoreA, localeTag(language))} : ${formatMapValue(game.scoreB, localeTag(language))}`
                         : tr('Winner only')}
                     </td>
                   </tr>

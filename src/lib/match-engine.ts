@@ -1,5 +1,6 @@
 import { AppError } from './permissions';
-import { canonicalMods, firstTo, otherSide, type MatchRules, type Side } from './match-rules';
+import { firstTo, otherSide, type MatchRules, type Side } from './match-rules';
+import { lobbyModTokens } from './score-pipeline';
 export type DraftKind = 'PROTECT' | 'BAN' | 'PICK';
 export type DraftAction = {
   id: string;
@@ -225,112 +226,6 @@ export function validateDraftAction(
     throw new AppError('Consecutive picks or bans from this category are not allowed.');
   return slot;
 }
-export type PlayerScore = {
-  osuId: number;
-  side: Side;
-  score: number;
-  accuracy?: number | null;
-  mods: string[];
-};
-export function convertedScore(rules: MatchRules, raw: number, mods: readonly string[], slot = '') {
-  if (!Number.isFinite(raw) || raw < 0 || raw > Number.MAX_SAFE_INTEGER)
-    throw new AppError('Scores must be non-negative and within the supported score range.');
-  const key = canonicalMods(mods);
-  let multiplier = 1;
-  if (rules.multiplierMode === 'CUSTOM')
-    multiplier =
-      rules.slotModMultipliers.find((m) => m.slot === slot && m.mods === key)?.multiplier ?? 1;
-  else if (rules.multiplierMode === 'UNIVERSAL') multiplier = rules.modMultipliers[key] ?? 1;
-  else if (rules.multiplierMode === 'LEGACY_PRODUCT')
-    multiplier =
-      rules.modMultipliers[key] ??
-      mods.filter((m) => m !== 'NF').reduce((n, m) => n * (rules.modMultipliers[m] ?? 1), 1);
-  const adjusted = raw * multiplier;
-  if (!Number.isFinite(adjusted) || adjusted > Number.MAX_SAFE_INTEGER)
-    throw new AppError('The configured score multiplier exceeds the supported score range.');
-  return {
-    multiplier,
-    adjusted: rules.multiplierMode === 'LEGACY_PRODUCT' ? Math.round(adjusted) : adjusted,
-  };
-}
-export function aggregateScores(
-  rules: MatchRules,
-  category: string,
-  players: PlayerScore[],
-  roster: Record<Side, number[]>,
-  manualA: number,
-  manualB: number,
-  slotName = '',
-) {
-  const validScore = (value: number) =>
-    Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER;
-  const validRaw = (value: number, team = false) =>
-    validScore(value) &&
-    (rules.scoreMode === 'ACCURACY'
-      ? value <= 100 * (team ? rules.teamSize : 1)
-      : Number.isSafeInteger(value));
-  if (!players.length) {
-    if (!validRaw(manualA, true) || !validRaw(manualB, true))
-      throw new AppError('Scores must be non-negative, safe whole numbers.');
-    if (manualA === manualB)
-      throw new AppError('Tied maps must be replayed before awarding a point.');
-    return {
-      scoreA: manualA,
-      scoreB: manualB,
-      winnerSide: manualA > manualB ? ('A' as const) : ('B' as const),
-    };
-  }
-  if (new Set(players.map((p) => p.osuId)).size !== players.length)
-    throw new AppError('A player score is duplicated.');
-  const totals = { A: 0, B: 0 };
-  for (const side of ['A', 'B'] as const) {
-    const scores = players.filter((p) => p.side === side);
-    if (scores.length !== rules.teamSize)
-      throw new AppError(
-        'Enter exactly {0} player scores for Team {1}, or use aggregate entry.',
-        400,
-        [rules.teamSize, side],
-      );
-    let hidden = 0,
-      hardrock = 0;
-    for (const p of scores) {
-      if (!validRaw(p.score))
-        throw new AppError('Scores must be non-negative, safe whole numbers.');
-      if (
-        (p.mods.includes('EZ') && p.mods.includes('HR')) ||
-        ((p.mods.includes('DT') || p.mods.includes('NC')) && p.mods.includes('HT')) ||
-        (p.mods.includes('NF') && (p.mods.includes('SD') || p.mods.includes('PF')))
-      )
-        throw new AppError('This score contains incompatible mods.');
-      if (!roster[side].includes(p.osuId))
-        throw new AppError('This player is not in the snapshotted match roster.');
-      if (rules.enforceNoFail && !p.mods.includes('NF'))
-        throw new AppError('NoFail is required for individual score entries.');
-      if (
-        rules.freeModCategories.includes(category) &&
-        p.mods.some((m) => !rules.freeModAllowed.includes(m as never))
-      )
-        throw new AppError('This mod is not allowed in FreeMod.');
-      if (p.mods.includes('HR')) hardrock++;
-      else if (p.mods.includes('HD') || p.mods.includes('EZ')) hidden++;
-      totals[side] += convertedScore(rules, p.score, p.mods, slotName).adjusted;
-      if (!validScore(totals[side]))
-        throw new AppError('The configured score multiplier exceeds the supported score range.');
-    }
-    if (
-      rules.freeModCategories.includes(category) &&
-      (hidden < rules.freeModRequiredHD || hardrock < rules.freeModRequiredHR)
-    )
-      throw new AppError('The team does not meet the configured FreeMod requirements.');
-  }
-  if (totals.A === totals.B)
-    throw new AppError('Tied maps must be replayed before awarding a point.');
-  return {
-    scoreA: totals.A,
-    scoreB: totals.B,
-    winnerSide: totals.A > totals.B ? ('A' as const) : ('B' as const),
-  };
-}
 export function lobbyCommands(
   rules: MatchRules,
   acronym: string,
@@ -360,7 +255,7 @@ export function lobbyCommands(
       ? `!mp map ${slot.beatmapId} ${{ osu: 0, taiko: 1, fruits: 2, mania: 3 }[rules.gameMode]}`
       : '',
     mods: slot
-      ? `!mp mods ${[rules.enforceNoFail ? 'NF' : '', rules.categoryMods[slot.category] || ''].filter(Boolean).join(' ') || 'None'}`
+      ? `!mp mods ${lobbyModTokens(rules, slot.category).join(' ') || 'None'}`
       : '',
     start: '!mp start 5',
     timer: `!mp timer ${rules.readySeconds}`,

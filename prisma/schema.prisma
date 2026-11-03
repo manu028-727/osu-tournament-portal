@@ -1024,6 +1024,8 @@ model MatchPlayerScore {
   side        MatchSide
   score       Float
   accuracy    Float?
+  maxCombo    Int?
+  misses      Int?
   mods        Json
 
   @@unique([resultId, osuId])

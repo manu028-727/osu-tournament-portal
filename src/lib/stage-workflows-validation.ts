@@ -32,6 +32,9 @@ export const stageRulePatchSchema = z
     tiebreakerBanFirstSide: matchRulesSchema.shape.tiebreakerBanFirstSide
       .removeDefault()
       .optional(),
+    winCondition: matchRulesSchema.shape.winCondition.removeDefault().optional(),
+    requiredMods: matchRulesSchema.shape.requiredMods.removeDefault().optional(),
+    freeModQuotas: matchRulesSchema.shape.freeModQuotas,
   })
   .strict()
   .refine(

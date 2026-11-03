@@ -1,13 +1,39 @@
 import { z } from 'zod';
 export const SIDES = ['A', 'B'] as const;
 export type Side = (typeof SIDES)[number];
-export const MODS = ['EZ', 'HD', 'HR', 'DT', 'NC', 'HT', 'FL', 'SD', 'PF', 'NF'] as const;
+export const MODS = ['EZ', 'HD', 'HR', 'DT', 'NC', 'HT', 'FL', 'SD', 'PF', 'RX', 'NF'] as const;
 export const START_RULES = ['CHOICE', 'ROLL_WINNER', 'ROLL_LOSER', 'RED', 'BLUE'] as const;
+export const WIN_METRICS = ['SCORE', 'ACCURACY', 'COMBO', 'MISSES'] as const;
+const modKey = /^(?:NM|(?:EZ|HD|HR|DT|NC|HT|FL|SD|PF|RX){1,8})$/;
+const categoryKey = /^[A-Z0-9_-]{1,20}$/;
 export const matchRulesSchema = z
   .object({
     gameMode: z.enum(['osu', 'taiko', 'fruits', 'mania']).default('osu'),
     teamMode: z.enum(['TEAM_VS', 'HEAD_TO_HEAD', 'TAG_COOP', 'TAG_TEAM_VS']).default('TEAM_VS'),
+    // What Bancho is told to score with. Who wins a map is `winCondition`, never this.
     scoreMode: z.enum(['SCORE_V2', 'SCORE', 'COMBO', 'ACCURACY']).default('SCORE_V2'),
+    winCondition: z
+      .strictObject({
+        metric: z.enum(WIN_METRICS),
+        teamAggregation: z.enum(['SUM', 'AVERAGE']),
+        applyMultipliers: z.boolean(),
+      })
+      .default({ metric: 'SCORE', teamAggregation: 'SUM', applyMultipliers: true }),
+    requiredMods: z.array(z.enum(MODS)).max(8).default([]),
+    categoryOptionalMods: z
+      .record(z.string().regex(categoryKey), z.array(z.enum(MODS)))
+      .default({}),
+    categoryAllowedMods: z.record(z.string().regex(categoryKey), z.array(z.enum(MODS))).default({}),
+    freeModQuotas: z
+      .array(
+        z.strictObject({
+          label: z.string().trim().min(1).max(20),
+          min: z.number().int().min(0).max(8),
+          satisfiedBy: z.array(z.enum(MODS)).min(1).max(10),
+        }),
+      )
+      .max(8)
+      .optional(),
     gameplayScoring: z.enum(['SCORE_V1', 'SCORE_V2', 'LAZER']).optional(),
     draftSequence: z
       .array(z.enum(['PROTECT', 'BAN', 'PICK', 'TB_BAN']))
@@ -66,7 +92,7 @@ export const matchRulesSchema = z
       .array(
         z.object({
           slot: z.string().regex(/^[A-Z0-9_-]{1,20}$/),
-          mods: z.string().regex(/^(?:NM|(?:EZ|HD|HR|DT|NC|HT|FL|SD|PF){1,8})$/),
+          mods: z.string().regex(modKey),
           multiplier: z.number().min(0.01).max(10),
         }),
       )
@@ -80,10 +106,7 @@ export const matchRulesSchema = z
     doublePickPolicy: z.string().max(2000).default(''),
     doubleBanPolicy: z.string().max(2000).default(''),
     modMultipliers: z
-      .record(
-        z.string().regex(/^(?:NM|(?:EZ|HD|HR|DT|NC|HT|FL|SD|PF){1,8})$/),
-        z.number().min(0.01).max(10),
-      )
+      .record(z.string().regex(modKey), z.number().min(0.01).max(10))
       .default({ EZ: 2, EZHD: 2, FL: 1.2 }),
     categoryMods: z
       .record(
@@ -122,6 +145,42 @@ export const matchRulesSchema = z
       ),
   })
   .superRefine((rules, ctx) => {
+    // Only new fields are checked here: parsing must keep accepting every saved snapshot.
+    const win = rules.winCondition;
+    if (win.metric === 'ACCURACY' && win.teamAggregation !== 'AVERAGE')
+      ctx.addIssue({
+        code: 'custom',
+        path: ['winCondition', 'teamAggregation'],
+        message: 'Team accuracy is an average.',
+      });
+    if (win.metric !== 'SCORE' && win.applyMultipliers)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['winCondition', 'applyMultipliers'],
+        message: 'Mod multipliers only apply to score.',
+      });
+    if (rules.requiredMods.includes('RX') && rules.enforceNoFail)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['requiredMods'],
+        message: 'Relax cannot be combined with required NoFail.',
+      });
+    if (rules.freeModQuotas) {
+      if (rules.freeModQuotas.reduce((total, quota) => total + quota.min, 0) > rules.teamSize)
+        ctx.addIssue({
+          code: 'custom',
+          path: ['freeModQuotas'],
+          message: 'FreeMod requirements cannot exceed the players per side.',
+        });
+      if (
+        new Set(rules.freeModQuotas.map((quota) => quota.label)).size !== rules.freeModQuotas.length
+      )
+        ctx.addIssue({
+          code: 'custom',
+          path: ['freeModQuotas'],
+          message: 'Each FreeMod requirement needs its own name.',
+        });
+    }
     if (rules.banOrder === 'AB' && rules.bansPerTeam !== 1)
       ctx.addIssue({
         code: 'custom',

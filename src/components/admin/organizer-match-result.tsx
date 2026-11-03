@@ -1,7 +1,9 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { Download, X } from 'lucide-react';
-import { useT } from '@/components/locale';
+import { useLocale, useT } from '@/components/locale';
+import { localeTag } from '@/lib/i18n';
+import { formatMapValue } from '@/lib/score-pipeline';
 import type { MatchView } from '@/lib/matches-types';
 import type {
   ImportGameDecision,
@@ -39,6 +41,7 @@ export function OrganizerMatchResult({
   embedded?: boolean;
 }) {
   const tr = useT();
+  const language = useLocale();
   const { data, error, reload } = useResource<{ match: MatchView }>(
     `match&id=${encodeURIComponent(id)}`,
   );
@@ -388,7 +391,7 @@ export function OrganizerMatchResult({
                       </label>
                       <p className="text-xs text-muted">
                         {game.proposal
-                          ? `${game.proposal.scoreA} : ${game.proposal.scoreB}`
+                          ? `${formatMapValue(game.proposal.scoreA, localeTag(language))} : ${formatMapValue(game.proposal.scoreB, localeTag(language))}`
                           : tr(game.evidence.issue || '')}
                       </p>
                       {decision.included && (

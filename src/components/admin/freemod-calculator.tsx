@@ -4,7 +4,7 @@ import { useLocale, useT } from '@/components/locale';
 
 import { useState } from 'react';
 import { MODS, type MatchRules } from '@/lib/match-rules';
-import { convertedScore } from '@/lib/match-engine';
+import { convertedScore } from '@/lib/score-pipeline';
 import { Field } from './shared';
 export function FreeModCalculator({ rules }: { rules: MatchRules }) {
   const language = useLocale();

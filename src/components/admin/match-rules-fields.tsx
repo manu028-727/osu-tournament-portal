@@ -5,7 +5,8 @@ import { useState } from 'react';
 import { Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Field } from './shared';
-import { MODS, START_RULES, type MatchRules } from '@/lib/match-rules';
+import { MODS, START_RULES, WIN_METRICS, type MatchRules } from '@/lib/match-rules';
+import { effectiveFreeModQuotas } from '@/lib/score-pipeline';
 const numbers = [
   ['teamSize', 'Players per side'],
   ['bestOf', 'Best of'],
@@ -17,9 +18,23 @@ const numbers = [
   ['banSeconds', 'Ban timer (seconds)'],
   ['readySeconds', 'Ready timer (seconds)'],
   ['timeoutSeconds', 'Timeout (seconds)'],
-  ['freeModRequiredHD', 'FreeMod: required HD/EZ players'],
-  ['freeModRequiredHR', 'FreeMod: required HR players'],
 ] as const;
+const WIN_METRIC_LABELS: Record<(typeof WIN_METRICS)[number], string> = {
+  SCORE: 'Highest team score',
+  ACCURACY: 'Highest team average accuracy',
+  COMBO: 'Highest team combo',
+  MISSES: 'Fewest team misses',
+};
+// Accuracy is averaged across a team and unaffected by mod multipliers; score keeps both choices.
+const winConditionFor = (metric: (typeof WIN_METRICS)[number]): MatchRules['winCondition'] => ({
+  metric,
+  teamAggregation: metric === 'ACCURACY' ? 'AVERAGE' : 'SUM',
+  applyMultipliers: metric === 'SCORE',
+});
+const modTokens = (value: string) =>
+  [...new Set(value.toUpperCase().split(/[\s,]+/))].filter((mod): mod is (typeof MODS)[number] =>
+    MODS.includes(mod as never),
+  );
 const flags = [
   ['enforceNoFail', 'Require NoFail'],
   ['enableTiebreaker', 'Use a tiebreaker at match point'],
@@ -78,6 +93,57 @@ export function MatchRulesFields({
                   : rules.scoreMode}{' '}
             {tr('(Tournament Settings)')}
           </output>
+        </Field>
+        <Field label={tr('Maps are won by')}>
+          <select
+            value={rules.winCondition.metric}
+            onChange={(e) =>
+              onChange({
+                ...rules,
+                winCondition: winConditionFor(e.target.value as (typeof WIN_METRICS)[number]),
+              })
+            }
+          >
+            {WIN_METRICS.map((metric) => (
+              <option key={metric} value={metric}>
+                {tr(WIN_METRIC_LABELS[metric])}
+              </option>
+            ))}
+          </select>
+        </Field>
+        {rules.winCondition.metric === 'SCORE' && (
+          <Field label={tr('Team score')}>
+            <select
+              value={rules.winCondition.teamAggregation}
+              onChange={(e) =>
+                onChange({
+                  ...rules,
+                  winCondition: {
+                    ...rules.winCondition,
+                    teamAggregation: e.target.value as 'SUM' | 'AVERAGE',
+                  },
+                })
+              }
+            >
+              <option value="SUM">{tr('Sum of players')}</option>
+              <option value="AVERAGE">{tr('Average of players')}</option>
+            </select>
+          </Field>
+        )}
+        <Field label={tr('Mods required on every map')}>
+          <input
+            value={rules.requiredMods.join(' ')}
+            placeholder={tr('For example RX')}
+            onChange={(e) => {
+              const requiredMods = modTokens(e.target.value);
+              // Relax and NoFail cannot be combined, so choosing one releases the other.
+              onChange({
+                ...rules,
+                requiredMods,
+                ...(requiredMods.includes('RX') ? { enforceNoFail: false } : {}),
+              });
+            }}
+          />
         </Field>
         {numbers.map(([key, label]) => (
           <Field key={key} label={tr(label)}>
@@ -488,20 +554,134 @@ export function MatchRulesFields({
         </label>
       </div>
       <fieldset className="border-t pt-5">
+        <legend className="text-lg font-semibold">{tr('FreeMod requirements')}</legend>
+        <p className="mt-1 text-sm text-muted">
+          {tr('Each player fills the first requirement their mods satisfy.')}
+        </p>
+        <div className="mt-4 space-y-3">
+          {effectiveFreeModQuotas(rules).map((quota, index, quotas) => {
+            const replace = (next: typeof quota | null) =>
+              onChange({
+                ...rules,
+                freeModQuotas: quotas.flatMap((item, position) =>
+                  position === index
+                    ? next
+                      ? [{ ...next, satisfiedBy: [...next.satisfiedBy] }]
+                      : []
+                    : [{ ...item, satisfiedBy: [...item.satisfiedBy] }],
+                ),
+              });
+            return (
+              <div key={index} className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_2fr_auto]">
+                <Field label={tr('Requirement')}>
+                  <input
+                    value={quota.label}
+                    onChange={(e) => replace({ ...quota, label: e.target.value })}
+                  />
+                </Field>
+                <Field label={tr('Minimum players')}>
+                  <input
+                    type="number"
+                    min={0}
+                    max={8}
+                    value={quota.min}
+                    onChange={(e) => replace({ ...quota, min: Number(e.target.value) })}
+                  />
+                </Field>
+                <Field label={tr('Counted mods')}>
+                  <input
+                    value={quota.satisfiedBy.join(' ')}
+                    onChange={(e) => {
+                      const satisfiedBy = modTokens(e.target.value);
+                      if (satisfiedBy.length) replace({ ...quota, satisfiedBy });
+                    }}
+                  />
+                </Field>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label={tr('Remove requirement {0}', quota.label)}
+                  onClick={() => replace(null)}
+                >
+                  <Trash2 size={16} />
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-3"
+          onClick={() =>
+            onChange({
+              ...rules,
+              freeModQuotas: [
+                ...effectiveFreeModQuotas(rules).map((quota) => ({
+                  ...quota,
+                  satisfiedBy: [...quota.satisfiedBy],
+                })),
+                {
+                  label: tr('Requirement {0}', effectiveFreeModQuotas(rules).length + 1),
+                  min: 1,
+                  satisfiedBy: ['HD'],
+                },
+              ],
+            })
+          }
+        >
+          <Plus size={16} />
+          {tr('Add requirement')}
+        </Button>
+      </fieldset>
+      <fieldset className="border-t pt-5">
         <legend className="text-lg font-semibold">{tr('Lobby mod commands')}</legend>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {Object.entries(rules.categoryMods).map(([key, value]) => (
-            <Field key={key} label={tr('{0} lobby mods', key)}>
-              <input
-                value={value}
-                onChange={(e) =>
-                  onChange({
-                    ...rules,
-                    categoryMods: { ...rules.categoryMods, [key]: e.target.value },
-                  })
-                }
-              />
-            </Field>
+            <div key={key} className="space-y-2">
+              <Field label={tr('{0} lobby mods', key)}>
+                <input
+                  value={value}
+                  onChange={(e) =>
+                    onChange({
+                      ...rules,
+                      categoryMods: { ...rules.categoryMods, [key]: e.target.value },
+                    })
+                  }
+                />
+              </Field>
+              <Field label={tr('{0} optional player mods', key)}>
+                <input
+                  value={(rules.categoryOptionalMods[key] || []).join(' ')}
+                  placeholder={tr('For example HD')}
+                  onChange={(e) =>
+                    onChange({
+                      ...rules,
+                      categoryOptionalMods: {
+                        ...rules.categoryOptionalMods,
+                        [key]: modTokens(e.target.value),
+                      },
+                    })
+                  }
+                />
+              </Field>
+              <Field label={tr('{0} allowed player mods', key)}>
+                <input
+                  value={(rules.categoryAllowedMods[key] || []).join(' ')}
+                  placeholder={tr('Any mods')}
+                  onChange={(e) => {
+                    const others = { ...rules.categoryAllowedMods };
+                    delete others[key];
+                    const allowed = modTokens(e.target.value);
+                    onChange({
+                      ...rules,
+                      categoryAllowedMods: allowed.length ? { ...others, [key]: allowed } : others,
+                    });
+                  }}
+                />
+              </Field>
+            </div>
           ))}
         </div>
         <div className="mt-4 flex items-end gap-2">

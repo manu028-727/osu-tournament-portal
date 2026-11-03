@@ -4,7 +4,8 @@ import { generateCompetition, recalculateCompetition } from '../src/lib/competit
 import { groupResultsHash, resolvedGroupSeeds } from '../src/lib/competition-groups';
 import type { CompetitionNode, CompetitionRound } from '../src/lib/competition-types';
 import { inheritedRules } from '../src/lib/gameplay-scoring';
-import { aggregateScores, convertedScore, lobbyCommands } from '../src/lib/match-engine';
+import { lobbyCommands } from '../src/lib/match-engine';
+import { aggregateScores, convertedScore } from '../src/lib/score-pipeline';
 import { DEFAULT_MATCH_RULES, matchRulesSchema } from '../src/lib/match-rules';
 import { DEFAULT_QUALIFIER_POLICY, qualifierPolicySchema } from '../src/lib/qualifier-policy';
 import { qualifierEffectiveScore } from '../src/lib/qualifier-score';

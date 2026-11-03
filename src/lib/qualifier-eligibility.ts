@@ -1,9 +1,20 @@
 import { MODS, type MatchRules } from './match-rules';
+import { freeModQuotaMet, playerModViolation, type ModViolation } from './score-pipeline';
+
+// Stored as eligibility reasons on saved scores, so these keep their original wording.
+const QUALIFIER_MOD_MESSAGES: Record<ModViolation, string> = {
+  INCOMPATIBLE: 'Incompatible mods.',
+  NOFAIL: 'NoFail is required.',
+  REQUIRED_MOD: 'A required mod is missing.',
+  FREEMOD_MOD: 'This mod is not allowed in FreeMod.',
+  CATEGORY_MOD: 'This mod is not allowed on this map.',
+};
 
 export function qualifierDefaultMods(rules: MatchRules, category: string) {
   return [
     ...new Set([
       ...(rules.enforceNoFail ? ['NF'] : []),
+      ...rules.requiredMods,
       ...(!rules.freeModCategories.includes(category)
         ? (rules.categoryMods[category] || '')
             .toUpperCase()
@@ -16,18 +27,8 @@ export function qualifierDefaultMods(rules: MatchRules, category: string) {
 
 // The raw performance is evidence even when tournament rules exclude it.
 export function qualifierScoreViolation(rules: MatchRules, category: string, mods: string[]) {
-  if (
-    (mods.includes('EZ') && mods.includes('HR')) ||
-    ((mods.includes('DT') || mods.includes('NC')) && mods.includes('HT')) ||
-    (mods.includes('NF') && (mods.includes('SD') || mods.includes('PF')))
-  )
-    return 'Incompatible mods.';
-  if (rules.enforceNoFail && !mods.includes('NF')) return 'NoFail is required.';
-  if (
-    rules.freeModCategories.includes(category) &&
-    mods.some((mod) => !rules.freeModAllowed.includes(mod as never))
-  )
-    return 'This mod is not allowed in FreeMod.';
+  const violation = playerModViolation(rules, category, mods);
+  if (violation) return QUALIFIER_MOD_MESSAGES[violation];
   if (
     !rules.freeModCategories.includes(category) &&
     rules.categoryMods[category] !== undefined &&
@@ -37,7 +38,12 @@ export function qualifierScoreViolation(rules: MatchRules, category: string, mod
       [
         ...new Set(
           values
-            .filter((m) => !['NF', 'NM', 'NONE', ''].includes(m))
+            .filter(
+              (m) =>
+                !['NF', 'NM', 'NONE', ''].includes(m) &&
+                !rules.requiredMods.includes(m as never) &&
+                !rules.categoryOptionalMods[category]?.includes(m as never),
+            )
             .map((m) => (m === 'NC' ? 'DT' : m === 'PF' ? 'SD' : m)),
         ),
       ]
@@ -58,9 +64,11 @@ export function qualifierTeamModViolation(
   if (!rules.freeModCategories.includes(category)) return null;
   if (scores.length && scores.every((s) => s.eligible === true && !!s.eligibilityReason))
     return null;
-  return scores.filter((s) => s.mods.includes('HR')).length < rules.freeModRequiredHR ||
-    scores.filter((s) => !s.mods.includes('HR') && (s.mods.includes('HD') || s.mods.includes('EZ')))
-      .length < rules.freeModRequiredHD
-    ? 'Team does not meet the FreeMod requirements.'
-    : null;
+  return freeModQuotaMet(
+    rules,
+    category,
+    scores.map((s) => s.mods),
+  )
+    ? null
+    : 'Team does not meet the FreeMod requirements.';
 }

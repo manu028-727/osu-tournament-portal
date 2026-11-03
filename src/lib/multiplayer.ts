@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { aggregateScores } from './match-engine';
 import { MODS } from './match-rules';
+import { aggregateScores, reportedPlayerScore } from './score-pipeline';
 import type { MatchView } from './matches-types';
 const mod = z.union([z.string(), z.object({ acronym: z.string() }).transform((v) => v.acronym)]);
 const gameSchema = z.object({
@@ -19,6 +19,7 @@ const gameSchema = z.object({
       max_combo: z.number().int().nonnegative(),
       accuracy: z.number().min(0).max(1),
       mods: z.array(mod),
+      statistics: z.object({ count_miss: z.number().int().nonnegative() }).partial().optional(),
       match: z.object({ team: z.string() }),
     }),
   ),
@@ -36,6 +37,8 @@ export type MultiplayerProposal = {
     side: 'A' | 'B';
     score: number;
     accuracy: number;
+    maxCombo: number;
+    misses: number | null;
     mods: (typeof MODS)[number][];
   }[];
 };
@@ -226,13 +229,14 @@ export function multiplayerProposals(
           osuId: score.user_id,
           side,
           mods: mods as (typeof MODS)[number][],
-          score:
-            match.rules.scoreMode === 'COMBO'
-              ? score.max_combo
-              : match.rules.scoreMode === 'ACCURACY'
-                ? score.accuracy * 100
-                : score.score,
+          score: reportedPlayerScore(match.rules, {
+            score: score.score,
+            accuracy: score.accuracy,
+            maxCombo: score.max_combo,
+          }),
           accuracy: score.accuracy * 100,
+          maxCombo: score.max_combo,
+          misses: score.statistics?.count_miss ?? null,
         };
       });
       const slot = slots[0];

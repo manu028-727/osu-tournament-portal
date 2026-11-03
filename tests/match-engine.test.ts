@@ -3,8 +3,6 @@ import { matchRulesSchema, firstTo } from '../src/lib/match-rules';
 import {
   nextDraftStep,
   validateDraftAction,
-  aggregateScores,
-  convertedScore,
   lobbyCommands,
   matchWorkflow,
   replayDraft,
@@ -12,6 +10,7 @@ import {
   type DraftState,
   type DraftAction,
 } from '../src/lib/match-engine';
+import { aggregateScores, convertedScore } from '../src/lib/score-pipeline';
 const rules = (extra = {}) => matchRulesSchema.parse({ ...extra });
 const action = (
   kind: DraftAction['kind'],
