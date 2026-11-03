@@ -297,6 +297,7 @@ function bracketInput(
     format: 'SINGLE_ELIMINATION',
     thirdPlace: false,
     grandFinalReset: true,
+    byePlacement: 'BALANCED',
     groupCount: 1,
     advancePerGroup: 2,
     roundStages: {},

@@ -85,7 +85,11 @@ export type CompetitionPlan = {
     key: string;
     roundKey: string;
     position: number;
-    slots: (Omit<CompetitionSlot, 'sourceNodeId'> & { sourceKey: string | null })[];
+    // `entryRef` names who will sit here when a phase's bracket predates its entrants.
+    slots: (Omit<CompetitionSlot, 'sourceNodeId'> & {
+      sourceKey: string | null;
+      entryRef?: string | null;
+    })[];
   }[];
 };
 export async function generateCompetition(
@@ -98,7 +102,7 @@ export async function generateCompetition(
     | 'groupCount'
     | 'stageId'
     | 'roundStages'
-  >,
+  > & { byePlacement?: CompetitionCreate['byePlacement'] },
   stages: readonly ProgressionStage[] = [],
 ): Promise<CompetitionPlan> {
   if (new Set(input.teamIds).size !== input.teamIds.length)
@@ -107,6 +111,8 @@ export async function generateCompetition(
     throw new AppError('Choose between 2 and 128 participants.');
   if (input.format === 'GROUPS' && input.groupCount > Math.floor(input.teamIds.length / 2))
     throw new AppError('Every group needs at least two participants.');
+  if (input.format === 'SINGLE_ELIMINATION' && input.thirdPlace && input.teamIds.length === 2)
+    throw new AppError('A third-place match needs at least three participants.');
   const storage = new MemoryStorage(),
     manager = new BracketsManager(storage);
   const type =
@@ -128,7 +134,7 @@ export async function generateCompetition(
       size,
       groupCount: input.groupCount,
       seedOrdering: type === 'round_robin' ? ['groups.seed_optimized'] : ['inner_outer'],
-      balanceByes: true,
+      balanceByes: input.byePlacement !== 'TOP_SEEDS',
       grandFinal: input.grandFinalReset ? 'double' : 'simple',
       consolationFinal: input.thirdPlace && type === 'single_elimination',
     },
@@ -369,6 +375,7 @@ export function competitionEliminated(
   rounds: CompetitionRound[],
   format: string,
   teamId: string,
+  lossesAllowed?: number | null,
 ): boolean {
   if (format === 'GROUPS') return false;
   const defeats = nodes.filter(
@@ -377,7 +384,8 @@ export function competitionEliminated(
       node.match.winnerSide &&
       (node.match.winnerSide === 'A' ? node.match.teamBId : node.match.teamAId) === teamId,
   );
-  if (defeats.length >= (format === 'DOUBLE_ELIMINATION' ? 2 : 1)) return true;
+  // An entrant placed straight into Losers has only the one life.
+  if (defeats.length >= (lossesAllowed ?? (format === 'DOUBLE_ELIMINATION' ? 2 : 1))) return true;
   return defeats.some(
     (node) =>
       rounds.find((r) => r.id === node.roundId)?.lane === 'FINALS' &&

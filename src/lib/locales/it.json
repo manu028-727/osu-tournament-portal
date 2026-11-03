@@ -3676,5 +3676,22 @@
   "Max combo for {0}": "Combo massima di {0}",
   "Accuracy evidence is unavailable; review this score before counting it.": "L'accuratezza non è disponibile; controlla questo punteggio prima di conteggiarlo.",
   "Combo evidence is unavailable; review this score before counting it.": "La combo non è disponibile; controlla questo punteggio prima di conteggiarlo.",
-  "%MAX requires a positive best score on every map.": "%MAX richiede un punteggio migliore positivo su ogni mappa."
+  "%MAX requires a positive best score on every map.": "%MAX richiede un punteggio migliore positivo su ogni mappa.",
+  "A third-place match needs at least three participants.": "Una finale per il terzo posto richiede almeno tre partecipanti.",
+  "Every seed in {0} needs an entrant before the draw.": "Ogni testa di serie in {0} deve avere un partecipante prima del sorteggio.",
+  "Enter the drawn groups for {0}.": "Inserisci i gruppi sorteggiati per {0}.",
+  "Each entrant in {0} must be drawn exactly once.": "Ogni partecipante in {0} deve essere sorteggiato una sola volta.",
+  "A group in {0} does not hold one entrant from each pot.": "Un gruppo in {0} non contiene un partecipante per ogni fascia.",
+  "A random draw needs a stored seed.": "Un sorteggio casuale richiede un seed salvato.",
+  "Finalize {0} before advancing entrants.": "Finalizza {0} prima di far avanzare i partecipanti.",
+  "Seed {0} is no longer active. Choose a replacement or leave a bye.": "La testa di serie {0} non è più attiva. Scegli un sostituto o lascia un bye.",
+  "Rank {0} has no entrant, so its opponent receives a bye.": "La posizione {0} non ha partecipanti, quindi l'avversario riceve un bye.",
+  "Choose all {0} entrants from {1}.": "Scegli tutti i {0} partecipanti da {1}.",
+  "Complete every group in {0} before advancing entrants.": "Completa tutti i gruppi in {0} prima di far avanzare i partecipanti.",
+  "Review the tied group standings before advancing placement {0}.": "Controlla le classifiche a pari merito prima di far avanzare il piazzamento {0}.",
+  "Review the tie between placement {0} entrants across groups.": "Controlla la parità tra i piazzati al posto {0} dei vari gruppi.",
+  "An entrant advancing from {0} is no longer active.": "Un partecipante che avanza da {0} non è più attivo.",
+  "No pairing avoids every rematch. Set the opening matches manually.": "Nessun abbinamento evita tutte le rivincite. Imposta manualmente i primi incontri.",
+  "A reseeded round needs an even field.": "Un turno con nuovo seeding richiede un numero pari di partecipanti.",
+  "The bracket graph does not match the opening pairs.": "Il tabellone non corrisponde agli abbinamenti iniziali."
 }

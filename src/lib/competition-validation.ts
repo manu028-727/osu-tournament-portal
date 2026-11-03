@@ -15,6 +15,9 @@ export const competitionCreateFields = {
   generationKey: id,
   thirdPlace: z.boolean().default(false),
   grandFinalReset: z.boolean().default(true),
+  // Saved brackets without this keep the placement they were generated with, because a
+  // retained position is restored by regenerating its original plan.
+  byePlacement: z.enum(['BALANCED', 'TOP_SEEDS']).default('BALANCED'),
   groupCount: z.number().int().min(1).max(32).default(1),
   advancePerGroup: z.number().int().min(1).max(32).default(2),
   sourceStandingId: id.optional(),

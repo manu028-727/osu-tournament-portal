@@ -1487,7 +1487,7 @@ Keep this current so an interrupted session can continue from it.
 | --------- | -------------------------------------------------------------------------------- | -------- |
 | M0        | Audit, rule contradictions, witness tests, `FormatPlan` contract                 | Verified |
 | M1        | Win condition, one score pipeline, RX, FM quotas, accuracy, %MAX, placements     | Verified |
-| M2        | Pure graph, advancement, draw, rematch and tiebreak engine                       | Planned  |
+| M2        | Pure graph, advancement, draw, rematch and tiebreak engine                       | Verified |
 | M3        | Setup workspace replacing Overview, `setup.apply`, templates, readiness          | Planned  |
 | M4        | Lock format, placeholders, advancement persistence, guards, archive, projections | Planned  |
 | M5        | Referee rule enforcement: lineups, timers, attempts, forfeits, sanctions         | Planned  |
@@ -1529,16 +1529,16 @@ these values from `b974d8c`; never update one to make a test pass.
 
 Recorded for human ruling. Simulations use the stated assumption and report it.
 
-| Source              | Finding                                                                                                                                                                                                                                                  | Handling                                                  |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| MIR Cup             | The brief says 4 groups of 4; the attached rules say RO16 double elimination with no group stage or group pool                                                                                                                                           | Simulate both; brief variant assumes top two per group    |
-| MIR Cup             | Ban text says RO16 1 and QF-GF 2; the table says RO16/QF/SF 2 and F/GF 3                                                                                                                                                                                 | Configurable per stage; simulation uses the table         |
-| MIR Cup             | No FreeMod quota despite FM pools, no tiebreaker mods, reset unstated, NoFail unmentioned                                                                                                                                                                | Explicit settings; RX with NF unverified on Bancho        |
-| Italian Cup 9       | "24 giorni" for extra lobbies is probably 24 hours. Exact 2nd-vs-3rd pairing and "closest allowed seed" need interpretation. Reset and withdrawals unstated                                                                                              | Solver previews and is editable; organizer reviews        |
-| OIDC2026            | Forum and rules document differ: EZ/EZHD/FL-count-as-HD appears only in the document; forum says best per map, document 3.7 says "run migliore"                                                                                                          | Quotas configurable; run policy reported from sheet       |
-| OIDC2026            | The reference sheet reconciles with native bonus removal and no tournament multiplier, not the written 2x/1.2x, across 17 EZ/FL rows                                                                                                                     | **Needs a host ruling**; both remain expressible          |
-| Italian Draft Cup 3 | Perk effects are unpublished; the sheet lists only prices (QF 4x500, SF 800, F 1000, GF 1500). Post uses $, sheet uses EUR. Team count (sheet shows 8), Losers structure and bid idle window unstated. "Random order from the seeding list" is ambiguous | Perks stay human-judged; lot order is an explicit setting |
-| OWC 2025            | One wiki line on Contender seeds appears to conflict with the bracket table                                                                                                                                                                              | Re-read at M2; the table is authoritative                 |
+| Source              | Finding                                                                                                                                                                                                                                                  | Handling                                                      |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| MIR Cup             | The brief says 4 groups of 4; the attached rules say RO16 double elimination with no group stage or group pool                                                                                                                                           | Simulate both; brief variant assumes top two per group        |
+| MIR Cup             | Ban text says RO16 1 and QF-GF 2; the table says RO16/QF/SF 2 and F/GF 3                                                                                                                                                                                 | Configurable per stage; simulation uses the table             |
+| MIR Cup             | No FreeMod quota despite FM pools, no tiebreaker mods, reset unstated, NoFail unmentioned                                                                                                                                                                | Explicit settings; RX with NF unverified on Bancho            |
+| Italian Cup 9       | "24 giorni" for extra lobbies is probably 24 hours. Exact 2nd-vs-3rd pairing and "closest allowed seed" need interpretation. Reset and withdrawals unstated                                                                                              | Solver previews and is editable; organizer reviews            |
+| OIDC2026            | Forum and rules document differ: EZ/EZHD/FL-count-as-HD appears only in the document; forum says best per map, document 3.7 says "run migliore"                                                                                                          | Quotas configurable; run policy reported from sheet           |
+| OIDC2026            | The reference sheet reconciles with native bonus removal and no tournament multiplier, not the written 2x/1.2x, across 17 EZ/FL rows                                                                                                                     | **Needs a host ruling**; both remain expressible              |
+| Italian Draft Cup 3 | Perk effects are unpublished; the sheet lists only prices (QF 4x500, SF 800, F 1000, GF 1500). Post uses $, sheet uses EUR. Team count (sheet shows 8), Losers structure and bid idle window unstated. "Random order from the seeding list" is ambiguous | Perks stay human-judged; lot order is an explicit setting     |
+| OWC 2025            | The wiki's prose numbers bracket seeds differently from its table and names only "Groups E through F" for Contender seeds, while the table uses E-H. Re-read at M2                                                                                       | The 16-match table is authoritative and is reproduced exactly |
 
 **OIDC2026 run policy, from evidence.** The reference sheet reconciles under
 `BEST_PER_MAP`, so the forum's wording matches what was actually scored.
@@ -1581,6 +1581,23 @@ condition on an unplayed snapshot; and accuracy-seeded %MAX through real qualifi
 Still unverified on real Bancho: `!mp mods` with RX, and the RX with NoFail restriction.
 Miss counts come from the API's `statistics.count_miss`, exercised only with synthetic
 evidence so far. Rule editor controls have no browser evidence until M3.
+
+### M2 Checks
+
+`format-graph` and `format-advancement` are pure. Asymmetric double elimination reuses the
+library's standard graph of twice the size with Winners round 1 removed, so no drop routing
+is hand-written. A plan with no Losers lane produces the library's exact node keys and
+routes. In-memory runs cover all six plans using the same `recalculateCompetition` as the
+database path: OWC's published 16-match Round of 16 and seed labels; Italian Cup 9's pots,
+reproducible draw, placement lanes, 5-v-4 pairing, 2nd-v-3rd rule, forfeit map difference
+and rematch solver; bracket reset played and skipped; Losers-only entrants eliminated on
+one loss; head-to-head within tied entrants; and reseeded playoffs with third place.
+
+Six deliberate mutations (rematch tie order, forfeit counting, label order, Losers lives,
+Losers final stage, cross-group tiebreak) were each caught by the suite, then reverted.
+New brackets give byes to the best seeds while brackets without the new setting keep their
+saved placement. Nothing here is reachable from the interface or database yet; persistence
+is M4. Per-round reseeding has its graph and pairing logic but no apply path until M4.
 
 ## Completion Rules
 

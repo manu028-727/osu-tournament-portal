@@ -711,6 +711,7 @@ function CreateCompetition({
       teamIds: options.teams.map((t) => t.id),
       thirdPlace: false,
       grandFinalReset: true,
+      byePlacement: 'TOP_SEEDS',
       groupCount: 1,
       advancePerGroup: 2,
       roundStages: {},
