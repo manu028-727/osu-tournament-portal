@@ -138,7 +138,7 @@ describe('setup readiness', () => {
     teamSize: 2,
     maxPlayers: 3,
     stages: [{ name: 'Finals', kind: 'ELIMINATION', poolSlots: 10, poolPublished: true }],
-    plan: { exists: true, valid: true, locked: false },
+    plan: { exists: true, valid: true, locked: true },
     approvedEntrants: 4,
     staff: 1,
     homePublished: true,
@@ -174,6 +174,7 @@ describe('setup readiness', () => {
       'scoring',
       'stages',
       'format',
+      'lock',
       'pools',
       'publish',
     ]);
@@ -183,7 +184,7 @@ describe('setup readiness', () => {
   });
 
   it('never treats a saved but invalid plan as ready', () => {
-    expect(missing({ ...ready, plan: { exists: true, valid: false, locked: false } })).toEqual([
+    expect(missing({ ...ready, plan: { exists: true, valid: false, locked: true } })).toEqual([
       'format',
     ]);
   });

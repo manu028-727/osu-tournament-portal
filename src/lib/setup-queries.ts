@@ -1,4 +1,5 @@
 import { db as rootDb } from './db';
+import { formatStatus } from './format-lifecycle-service';
 import { loadFormatPlan } from './format-plan-service';
 import { rulesHash } from './match-record';
 import { matchRulesSchema } from './match-rules';
@@ -43,8 +44,8 @@ export async function setupWorkspaceData(actor: Actor) {
         where: { slug: { in: ['home', 'rules'] } },
         select: { slug: true, draftRevisionId: true, publishedRevisionId: true },
       }),
-      db.team.count({ where: { status: 'APPROVED' } }),
-      db.team.count(),
+      db.team.count({ where: { status: 'APPROVED', supersededAt: null } }),
+      db.team.count({ where: { supersededAt: null } }),
       db.staffMember.count(),
       db.qualifierLobby.count({ where: { deletedAt: null } }),
       db.bracket.count(),
@@ -131,6 +132,7 @@ export async function setupWorkspaceData(actor: Actor) {
     planLocked: plan.locked,
     planInvalid: plan.invalid,
     counts: { entrants, approvedEntrants, staff, sessions, brackets, matches },
+    format: await formatStatus(rootDb, tournamentId),
     readiness: setupReadiness(summary),
     setupState,
   };

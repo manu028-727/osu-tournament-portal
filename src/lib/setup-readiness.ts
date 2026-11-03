@@ -64,6 +64,13 @@ export function setupReadiness(summary: SetupSummary): ReadinessItem[] {
       done: summary.plan.exists && summary.plan.valid,
     },
     {
+      id: 'lock',
+      section: 'format',
+      label: 'Lock the format to create its matches',
+      required: true,
+      done: summary.plan.locked,
+    },
+    {
       id: 'pools',
       section: 'stages',
       label: unpublishedPools.length

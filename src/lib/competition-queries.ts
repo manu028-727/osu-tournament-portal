@@ -14,6 +14,7 @@ import { db } from './db';
 import { AppError, assertPermission, can, type Actor, type PermissionKey } from './permissions';
 import { publicTournamentWhere } from './public-visibility';
 import { competitionStoredConfigSchema } from './competition-archive';
+import { rankGroups } from './format-advancement';
 import { orderedCompetitionStages } from './competition-stages';
 
 import { GroupConfig, resolvedGroupSeeds, reviewedGroupOrder } from './competition-groups';
@@ -72,7 +73,40 @@ export async function allNodes(
 export function withStandings<T extends CompetitionBracketData & { config: Prisma.JsonValue }>(
   bracket: T,
 ): T & Pick<CompetitionBracketData, 'standings'> {
-  const config = bracket.config as { advancePerGroup?: number; manualMatches?: boolean };
+  const config = bracket.config as {
+    advancePerGroup?: number;
+    manualMatches?: boolean;
+    phaseRanking?: Parameters<typeof rankGroups>[0];
+    phaseAdvancing?: Record<string, number[]>;
+  };
+  // A format chooses its own tiebreakers and which placements go on, for each group.
+  if (config.phaseRanking) {
+    const reviewed = reviewedGroupOrder(bracket, bracket.nodes);
+    const { rows } = rankGroups(
+      config.phaseRanking,
+      bracket.nodes,
+      bracket.rounds,
+      bracket.entries,
+      reviewed,
+    );
+    return {
+      ...bracket,
+      manualMatches: false,
+      standings: rows.map((row) => ({
+        group: `GROUP_${row.group}`,
+        teamId: row.teamId,
+        played: row.played,
+        wins: row.wins,
+        losses: row.losses,
+        mapDifference: row.mapDifference,
+        seed: row.seed,
+        rank: row.placement,
+        qualified: !!config.phaseAdvancing?.[row.group]?.includes(row.placement),
+        tied: row.tied,
+        tieResolved: reviewed.includes(row.teamId),
+      })),
+    };
+  }
   return {
     ...bracket,
     manualMatches: !!config.manualMatches,
@@ -260,6 +294,7 @@ export async function publicCompetitionData(
           mode: s.mode,
           sourceNodeId: s.sourceNodeId,
           outcome: s.outcome,
+          entryLabel: s.teamId ? null : s.entryLabel,
         })),
         match: visibleMatch(n.match) ? n.match : null,
       })),
@@ -309,12 +344,16 @@ export async function competitionEligibilityOptions(actor: Actor): Promise<
             : entry.status !== 'ACTIVE'
               ? `Participant is ${entry.status.toLowerCase()} in this path.`
               : '';
-        if (!reason && competitionEliminated(path, bracket.rounds, bracket.format, team.id))
+        if (
+          !reason &&
+          competitionEliminated(path, bracket.rounds, bracket.format, team.id, entry?.lossesAllowed)
+        )
           reason = 'Participant is eliminated from this competition path.';
         const standing = standings.find((s) => s.teamId === team.id);
         if (
           !reason &&
           standing &&
+          !(bracket.config as { phaseKey?: string }).phaseKey &&
           standings
             .filter((s) => s.group === standing.group)
             .every(

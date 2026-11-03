@@ -89,6 +89,7 @@ export type CompetitionPlan = {
     slots: (Omit<CompetitionSlot, 'sourceNodeId'> & {
       sourceKey: string | null;
       entryRef?: string | null;
+      entryLabel?: string | null;
     })[];
   }[];
 };

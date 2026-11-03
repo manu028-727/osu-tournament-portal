@@ -1,12 +1,12 @@
 import { Prisma } from '@/generated/prisma/client';
 import { z } from 'zod';
 import {
+  competitionCreationSchema,
   competitionStoredConfigSchema,
   remapCompetitionConfig,
   remapCompetitionSeedOrder,
 } from './competition-archive';
 import { recalculateCompetition } from './competition-engine';
-import { competitionActionSchema } from './competition-validation';
 import { AppError } from './permissions';
 
 import { GroupConfig, groupResultsHash, resolvedGroupSeeds, stable } from './competition-groups';
@@ -286,8 +286,8 @@ export async function rebindImportedCompetition(
     const expected = remapCompetitionConfig(old.config, ids),
       config = competitionStoredConfigSchema.parse(current.config);
     if (
-      stable(competitionActionSchema.options[0].parse(expected)) !==
-        stable(competitionActionSchema.options[0].parse(config)) ||
+      stable(competitionCreationSchema.parse(expected)) !==
+        stable(competitionCreationSchema.parse(config)) ||
       stable(current.seedOrder) !== stable(remapCompetitionSeedOrder(old.seedOrder, ids))
     )
       throw new AppError(

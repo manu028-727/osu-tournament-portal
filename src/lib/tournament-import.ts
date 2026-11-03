@@ -1,3 +1,4 @@
+import { rebindImportedAdvancements } from './format-lifecycle-service';
 import { FORMAT_PLAN_VERSION, formatPlanSchema } from './format-plan';
 import { randomUUID } from 'node:crypto';
 import { remapArchiveValue } from './archive-identities';
@@ -25,7 +26,7 @@ import { cleanHtml } from './rich-text';
 import { blockSchema, settingsFieldsSchema, safeUrl } from './validation';
 import { matchRulesSchema } from './match-rules';
 import type { Prisma } from '@/generated/prisma/client';
-import { competitionActionSchema } from './competition-validation';
+import { competitionStoredConfigSchema } from './competition-archive';
 import { qualifierPolicySchema } from './qualifier-policy';
 import { rebindImportedQualifierStandings } from './qualifier-standings-restoration';
 import { rebindImportedCompetition, validateCompetitionArchive } from './competition-restoration';
@@ -111,7 +112,7 @@ export async function inspectArchive(bytes: Buffer) {
         })),
     });
   for (const bracket of archive.data.brackets) {
-    const config = competitionActionSchema.options[0].parse(bracket.config);
+    const config = competitionStoredConfigSchema.parse(bracket.config);
     if (config.teamIds.some((id) => !archive.data.teams.some((team) => team.id === id)))
       throw new AppError('Bracket configuration refers to a participant outside the archive.');
     if (
@@ -438,6 +439,7 @@ export async function importTournament(
           archive.data,
           ids,
         );
+        await rebindImportedAdvancements(tx, tournamentId);
         const counts: Record<string, number> = {};
         for (const table of archiveInsertionOrder) {
           const rows = await archiveDelegate(tx, table).findMany({

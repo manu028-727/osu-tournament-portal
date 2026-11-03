@@ -8,6 +8,9 @@ export type CompetitionSlot = {
   mode: string;
   sourceNodeId: string | null;
   outcome: string | null;
+  // Set on slots a format fills later: what they wait for, and how to describe it.
+  entryRef?: string | null;
+  entryLabel?: string | null;
 };
 export type CompetitionMatch = {
   id: string;
@@ -58,7 +61,7 @@ export type CompetitionBracketData = {
   format: string;
   version: number;
   published: boolean;
-  configuration?: import('./competition-validation').CompetitionCreate;
+  configuration?: import('./competition-validation').CompetitionCreate & { phaseKey?: string };
   manualMatches?: boolean;
   sourceStandingId?: string | null;
   rounds: CompetitionRound[];

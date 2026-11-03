@@ -159,7 +159,10 @@ export function CompetitionWorkspace({ actor }: { actor: Actor }) {
                 <RotateCcw size={16} />
                 {tr('Generate missing matches')}
               </Button>
-              {can(actor, 'matches.delete') && (
+              {bracket.configuration?.phaseKey && (
+                <span className="text-sm text-muted">{tr('Managed by the tournament format')}</span>
+              )}
+              {can(actor, 'matches.delete') && !bracket.configuration?.phaseKey && (
                 <>
                   <Button
                     variant="outline"

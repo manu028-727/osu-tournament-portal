@@ -98,6 +98,15 @@ export const SETUP_OPERATIONS = [
   'pooling.plan.save',
   'format.plan.save',
 ] as const;
+const advancementFields = {
+  phaseKey: z.string().min(1).max(40),
+  randomSeed: z.string().min(1).max(64).optional(),
+  manual: z.record(z.string(), z.array(z.array(id).max(32)).max(32)).optional(),
+  explicit: z.record(z.string(), z.array(id).max(256)).optional(),
+  reviewedOrder: z.array(id).max(256).optional(),
+  overrides: z.record(z.string(), id.nullable()).optional(),
+  reason: z.string().trim().max(1000).optional(),
+};
 export const actionSchema = z.discriminatedUnion('type', [
   base.extend({
     type: z.literal('format.plan.save'),
@@ -105,6 +114,15 @@ export const actionSchema = z.discriminatedUnion('type', [
     plan: z.unknown(),
   }),
   base.extend({ type: z.literal('format.plan.preview'), plan: formatPlanSchema }),
+  base.extend({ type: z.literal('format.lock'), baseToken: z.string().regex(/^[a-f0-9]{64}$/) }),
+  base.extend({ type: z.literal('format.unlock'), baseToken: z.string().regex(/^[a-f0-9]{64}$/) }),
+  base.extend({ type: z.literal('format.advance.preview'), ...advancementFields }),
+  base.extend({
+    type: z.literal('format.advance'),
+    ...advancementFields,
+    reviewHash: z.string().regex(/^[a-f0-9]{64}$/),
+  }),
+  base.extend({ type: z.literal('format.reseed'), phaseKey: z.string().min(1).max(40) }),
   base.extend({
     type: z.literal('setup.apply'),
     operations: z

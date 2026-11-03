@@ -39,6 +39,7 @@ export default defineConfig({
       'tests/format-witnesses.integration.test.ts',
       'tests/format-scoring.integration.test.ts',
       'tests/setup-workspace.integration.test.ts',
+      'tests/format-lifecycle.integration.test.ts',
     ],
     env: { DATABASE_URL: process.env.TEST_DATABASE_URL },
     fileParallelism: false,

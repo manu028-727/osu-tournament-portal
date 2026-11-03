@@ -15,6 +15,8 @@ const slug = `setup-${randomUUID()}`;
 const emptySlug = `setup-empty-${randomUUID()}`;
 const root = `/t/${slug}/admin`;
 const users: string[] = [];
+const extraTournaments: string[] = [];
+const participants: number[] = [];
 let ownerToken = '';
 let editorToken = '';
 
@@ -121,7 +123,15 @@ test.beforeAll(async () => {
   });
 });
 test.afterAll(async () => {
-  const where = { tournamentId: { in: [slug, emptySlug] } };
+  const where = { tournamentId: { in: [slug, emptySlug, ...extraTournaments] } };
+  await db.tournamentPhase.updateMany({ where, data: { bracketId: null } });
+  await db.bracketSlot.deleteMany({ where });
+  await db.bracketNode.deleteMany({ where });
+  await db.bracketRound.deleteMany({ where });
+  await db.bracketEntry.deleteMany({ where });
+  await db.bracket.deleteMany({ where });
+  await db.match.deleteMany({ where });
+  await db.team.deleteMany({ where });
   await db.tournamentPhase.deleteMany({ where });
   await db.poolPlan.deleteMany({ where });
   await db.mappool.deleteMany({ where });
@@ -130,7 +140,8 @@ test.afterAll(async () => {
   await db.auditLog.deleteMany({ where });
   await db.userRole.deleteMany({ where });
   await db.role.deleteMany({ where });
-  await db.tournament.deleteMany({ where: { id: { in: [slug, emptySlug] } } });
+  await db.tournament.deleteMany({ where: { id: { in: [slug, emptySlug, ...extraTournaments] } } });
+  await db.participant.deleteMany({ where: { osuId: { in: participants } } });
   await db.user.deleteMany({ where: { id: { in: users } } });
   await db.$disconnect();
 });
@@ -303,6 +314,101 @@ test('rejects a stale format and keeps the organizer’s work visible', async ({
     where: { tournamentId: slug, key: 'main' },
     data: { name: 'Playoffs' },
   });
+});
+
+test('locks a format, advances entrants and creates real matches', async ({ page, context }) => {
+  const id = `setup-run-${randomUUID()}`;
+  await tournament(id);
+  extraTournaments.push(id);
+  const stage = await db.tournamentStage.create({
+    data: { tournamentId: id, name: 'Finals', slug: 'finals', kind: 'ELIMINATION', position: 0 },
+  });
+  const teams = [];
+  for (let index = 0; index < 4; index++) {
+    const osuId = randomInt(1_700_000_000, 1_749_000_000);
+    await db.participant.create({ data: { osuId, username: `run-${osuId}`, avatarUrl: '' } });
+    participants.push(osuId);
+    const team = await db.team.create({
+      data: {
+        tournamentId: id,
+        name: `Runner ${index + 1}`,
+        slug: `runner-${index + 1}`,
+        status: 'APPROVED',
+        format: 'TEAM',
+        seed: index + 1,
+      },
+    });
+    await db.teamMember.createMany({
+      data: [{ tournamentId: id, teamId: team.id, osuId, position: 0, captain: true }],
+    });
+    teams.push(team);
+  }
+  await db.tournamentSettings.update({
+    where: { tournamentId: id },
+    data: {
+      matchRules: JSON.parse(JSON.stringify(matchRulesSchema.parse({ teamSize: 1, bestOf: 3 }))),
+    },
+  });
+  await db.tournamentPhase.create({
+    data: {
+      tournamentId: id,
+      key: 'main',
+      position: 0,
+      kind: 'SINGLE_ELIMINATION',
+      name: 'Playoffs',
+      stageId: stage.id,
+      config: {
+        entries: [{ source: { kind: 'REGISTRATION', count: 4 }, seedFrom: 1 }],
+        size: 4,
+        pairing: 'STANDARD',
+        thirdPlace: false,
+        reseed: 'NONE',
+        roundStages: {},
+        rematch: 'ALLOW',
+      },
+    },
+  });
+  await login(context, ownerToken);
+  await page.goto(`/t/${id}/admin#format`);
+  await page.getByRole('button', { name: 'Lock format' }).click();
+  await page.getByRole('button', { name: 'Confirm', exact: true }).click();
+  await expect(page.getByText('Format locked. Its matches are reserved.')).toBeVisible();
+  await expect(page.getByText('Waiting for entrants')).toBeVisible();
+  // A locked format can no longer be edited, though it can be unlocked until play starts.
+  await expect(page.getByRole('button', { name: 'Save format' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Unlock format' })).toBeVisible();
+  const nodes = await db.bracketNode.findMany({ where: { tournamentId: id } });
+  expect(nodes.map((node) => node.matchNumber).sort()).toEqual([1, 2, 3]);
+  expect(await db.match.count({ where: { tournamentId: id } })).toBe(0);
+
+  await page.getByRole('button', { name: 'Review entrants' }).click();
+  await expect(page.getByRole('combobox', { name: 'Seed 1 in Playoffs' })).toHaveValue(teams[0].id);
+  await page.screenshot({ path: `${evidence}/advance-review-1366.png` });
+  // Changing a seat needs a fresh review and a recorded reason before it can apply.
+  await page.getByRole('combobox', { name: 'Seed 2 in Playoffs' }).selectOption(teams[3].id);
+  await page.getByRole('combobox', { name: 'Seed 4 in Playoffs' }).selectOption(teams[1].id);
+  await expect(page.getByRole('button', { name: 'Apply entrants' })).toBeDisabled();
+  await page.getByLabel('Why are you setting seats by hand?').fill('Hosts swapped two seeds');
+  await page.getByRole('button', { name: 'Review entrants' }).first().click();
+  await expect(page.getByRole('button', { name: 'Apply entrants' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Apply entrants' }).click();
+  await expect(page.getByText('Entrants applied.')).toBeVisible();
+  await expect(page.getByText('Entrants set, revision 1')).toBeVisible();
+  const row = await db.tournamentPhase.findFirstOrThrow({ where: { tournamentId: id } });
+  const history = await db.phaseAdvancement.findFirstOrThrow({ where: { phaseId: row.id } });
+  expect(history.reason).toBe('Hosts swapped two seeds');
+  // Seeds 1 v 4 and 2 v 3 become real matches using their reserved numbers.
+  const matches = await db.match.findMany({
+    where: { tournamentId: id },
+    orderBy: { matchNumber: 'asc' },
+  });
+  expect(matches.map((match) => match.matchNumber)).toEqual([1, 2]);
+  expect([matches[0].teamAId, matches[0].teamBId]).toEqual([teams[0].id, teams[1].id]);
+
+  await page.getByRole('link', { name: 'Open bracket' }).click();
+  await expect(page.getByText('Managed by the tournament format')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Delete bracket' })).toHaveCount(0);
+  await page.screenshot({ path: `${evidence}/advance-bracket-1366.png` });
 });
 
 test('shows only what a limited role can act on', async ({ page, context }) => {

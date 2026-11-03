@@ -105,9 +105,16 @@ export async function qualifierCorrectionImpact(
         ? group.bracketId
         : null;
   };
+  // A format's bracket can read several sources, which its saved configuration lists.
+  const sourceIds = (value: unknown, field: 'sourceStandingIds' | 'sourceBracketIds') =>
+    ((value as Record<string, unknown> | null)?.[field] as string[] | undefined) ?? [];
   const affected = new Set(
     records
-      .filter((b) => b.sourceStandingId && standingIds.has(b.sourceStandingId))
+      .filter(
+        (b) =>
+          (b.sourceStandingId && standingIds.has(b.sourceStandingId)) ||
+          sourceIds(b.config, 'sourceStandingIds').some((id) => standingIds.has(id)),
+      )
       .map((b) => b.id),
   );
   let previous = -1;
@@ -115,7 +122,11 @@ export async function qualifierCorrectionImpact(
     previous = affected.size;
     for (const record of records) {
       const parent = sourceBracket(record.config);
-      if (parent && affected.has(parent)) affected.add(record.id);
+      if (
+        (parent && affected.has(parent)) ||
+        sourceIds(record.config, 'sourceBracketIds').some((id) => affected.has(id))
+      )
+        affected.add(record.id);
     }
   }
   const brackets: QualifierCorrectionImpact['brackets'] = records

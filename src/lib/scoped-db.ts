@@ -23,6 +23,7 @@ const direct = new Set([
   'pageRevision',
   'tournamentStage',
   'tournamentPhase',
+  'phaseAdvancement',
   'modCategory',
   'mappool',
   'mappoolRevision',

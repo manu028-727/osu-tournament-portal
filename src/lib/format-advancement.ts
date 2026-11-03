@@ -5,7 +5,7 @@ import { GROUP_TIEBREAKERS, type FormatPhase, type FormatSource } from './format
 import { AppError } from './permissions';
 
 export type GroupsPhase = Extract<FormatPhase, { kind: 'GROUPS' }>;
-type EliminationPhase = Extract<FormatPhase, { kind: 'SINGLE_ELIMINATION' | 'DOUBLE_ELIMINATION' }>;
+type EntryPhase = Extract<FormatPhase, { entries: unknown }>;
 type Tiebreaker = (typeof GROUP_TIEBREAKERS)[number];
 
 export type SourceEntrant = {
@@ -345,13 +345,13 @@ export type AdvancementSources = {
 };
 
 export function resolveEntries(
-  phase: EliminationPhase,
+  phase: EntryPhase,
   sources: AdvancementSources,
 ): { seats: AdvancementSeat[]; issues: AdvancementIssue[] } {
   const seats: AdvancementSeat[] = [];
   const issues: AdvancementIssue[] = [];
   const seat = (
-    item: EliminationPhase['entries'][number],
+    item: EntryPhase['entries'][number],
     offset: number,
     teamId: string | null,
     detail: string,

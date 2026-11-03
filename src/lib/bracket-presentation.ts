@@ -33,12 +33,18 @@ export function bracketRoundDetails(bracket: RoundContext, round: Round, tr: Tra
       : round.lane === 'LOSERS'
         ? tr('Losers Bracket')
         : round.lane.startsWith('GROUP_')
-          ? tr('Group {0}', round.lane.slice(6))
+          ? groupHeading(round, tr)
           : round.lane === 'FINALS'
             ? ''
             : tr('Third-place match');
   const stage = round.stageName || tr('Stage');
   return { stage, role, group, label: [group, stage, role].filter(Boolean).join(' / ') };
+}
+
+// A format can name its groups, such as Group D; older brackets number them.
+export function groupHeading(round: { lane: string; name?: string }, tr: Translate) {
+  const named = round.name?.match(/^(Group \S+) \d+$/);
+  return named ? named[1] : tr('Group {0}', round.lane.slice(6));
 }
 
 export function bracketSlotLabel(
@@ -53,6 +59,7 @@ export function bracketSlotLabel(
   if (slot?.teamId) return tr('Participant');
   if (node.state === 'SKIPPED') return tr('Not required');
   if (slot?.resolved) return tr('Bye');
+  if (slot?.entryLabel) return slot.entryLabel;
   const source = bracket.nodes.find((item) => item.id === slot?.sourceNodeId);
   const number = source?.match?.matchNumber || source?.matchNumber;
   if (number) {

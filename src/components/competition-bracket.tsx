@@ -23,6 +23,7 @@ import {
   bracketRoundDetails,
   bracketSlotLabel,
   BRACKET_CARD_WIDTH,
+  groupHeading,
 } from '@/lib/bracket-presentation';
 
 export function CompetitionViewToggle({
@@ -417,7 +418,13 @@ export function CompetitionBracket({
                   : section.lane === 'LOSERS'
                     ? tr('Losers Bracket')
                     : section.lane.startsWith('GROUP_')
-                      ? tr('Group {0}', section.lane.slice(6))
+                      ? groupHeading(
+                          bracket.rounds.find((round) => round.lane === section.lane) ?? {
+                            lane: section.lane,
+                            name: '',
+                          },
+                          tr,
+                        )
                       : tr('Third-place match')}
               </h2>
             ))}

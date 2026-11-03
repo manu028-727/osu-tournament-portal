@@ -41,6 +41,7 @@ model User {
   ircLobbyRequests     IrcLobbyRequest[]
 
   @@index([username])
+  phaseAdvancements PhaseAdvancement[]
 }
 
 model Session {
@@ -159,6 +160,9 @@ model TournamentPhase {
   name         String
   stageId      String?
   stage        TournamentStage? @relation(fields: [stageId, tournamentId], references: [id, tournamentId], onDelete: Restrict, map: "TournamentPhase_stage_fkey")
+  bracketId    String?
+  bracket      Bracket?         @relation(fields: [bracketId, tournamentId], references: [id, tournamentId], onDelete: Restrict, map: "TournamentPhase_bracket_fkey")
+  advancements PhaseAdvancement[]
   config       Json
   state        String           @default("PLANNED")
   version      Int              @default(1)
@@ -167,7 +171,26 @@ model TournamentPhase {
 
   @@unique([id, tournamentId])
   @@unique([tournamentId, key])
+  @@unique([bracketId, tournamentId])
   @@index([stageId, tournamentId])
+}
+
+model PhaseAdvancement {
+  id           String          @id @default(cuid())
+  tournamentId String
+  phaseId      String
+  phase        TournamentPhase @relation(fields: [phaseId, tournamentId], references: [id, tournamentId], onDelete: Cascade, map: "PhaseAdvancement_phase_fkey")
+  revision     Int
+  kind         String
+  sourceHash   String
+  assignment   Json
+  reason       String          @default("")
+  actorId      String?
+  actor        User?           @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt    DateTime        @default(now())
+
+  @@unique([phaseId, revision])
+  @@index([tournamentId])
 }
 
 model TournamentSettings {
@@ -578,6 +601,7 @@ model Team {
   bracketSlots        BracketSlot[]
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
+  supersededAt DateTime?
 
   @@unique([tournamentId, slug])
   @@unique([id, tournamentId])
@@ -783,6 +807,7 @@ model Bracket {
   rounds           BracketRound[]
   nodes            BracketNode[]
   entries          BracketEntry[]
+  phase            TournamentPhase?
 
   @@unique([id, tournamentId])
   @@unique([tournamentId, generationKey])
@@ -840,6 +865,8 @@ model BracketSlot {
   sourceNodeId String?
   sourceNode   BracketNode? @relation("ProgressionSource", fields: [sourceNodeId, tournamentId], references: [id, tournamentId], onDelete: Restrict, map: "BracketSlot_sourceNode_fkey")
   outcome      String?
+  entryRef     String?
+  entryLabel   String?
 
   @@unique([nodeId, side])
   @@index([sourceNodeId, tournamentId])
@@ -853,6 +880,12 @@ model BracketEntry {
   team         Team    @relation(fields: [teamId, tournamentId], references: [id, tournamentId], onDelete: Restrict, map: "BracketEntry_team_fkey")
   seed         Int
   status       String  @default("ACTIVE")
+  groupIndex   Int?
+  pot          Int?
+  tier         String?
+  entryLane    String?
+  lossesAllowed Int?
+  provenance   String?
 
   @@id([bracketId, teamId])
   @@unique([bracketId, seed])

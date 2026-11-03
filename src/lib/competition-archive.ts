@@ -13,6 +13,18 @@ export const competitionGroupSourceSchema = z.object({
 });
 export const competitionStoredConfigSchema = competitionActionSchema.options[0]
   .extend({
+    // A format's bracket exists before its entrants, so saved seeds may be empty.
+    teamIds: z.array(key).max(128),
+    phaseKey: key.optional(),
+    phaseRanking: z
+      .object({
+        tiebreakers: z.array(z.string()),
+        forfeitMapDifference: z.enum(['COUNT', 'IGNORE']),
+      })
+      .optional(),
+    phaseAdvancing: z.record(z.string(), z.array(z.number().int())).optional(),
+    sourceStandingIds: z.array(key).optional(),
+    sourceBracketIds: z.array(key).optional(),
     groupTieOrder: z.array(key).max(128).optional(),
     groupTieReason: z.string().trim().min(3).max(1000).optional(),
     groupTieSourceHash: z
@@ -23,6 +35,11 @@ export const competitionStoredConfigSchema = competitionActionSchema.options[0]
   })
   .passthrough();
 
+// The creation request alone, for comparing a bracket's identity across an archive.
+export const competitionCreationSchema = competitionActionSchema.options[0].extend({
+  teamIds: z.array(key).max(128),
+});
+
 function mapped(ids: ReadonlyMap<string, string>, id: string) {
   const target = ids.get(id);
   if (!target)
@@ -32,7 +49,6 @@ function mapped(ids: ReadonlyMap<string, string>, id: string) {
 export function remapCompetitionSeedOrder(value: unknown, ids: ReadonlyMap<string, string>) {
   return z
     .array(key)
-    .min(2)
     .max(128)
     .parse(value)
     .map((id) => mapped(ids, id));
@@ -48,6 +64,12 @@ export function remapCompetitionConfig(value: unknown, ids: ReadonlyMap<string, 
       Object.entries(config.roundStages).map(([round, stageId]) => [round, mapped(ids, stageId)]),
     ),
     ...(config.sourceStandingId ? { sourceStandingId: mapped(ids, config.sourceStandingId) } : {}),
+    ...(config.sourceStandingIds
+      ? { sourceStandingIds: config.sourceStandingIds.map((id) => mapped(ids, id)) }
+      : {}),
+    ...(config.sourceBracketIds
+      ? { sourceBracketIds: config.sourceBracketIds.map((id) => mapped(ids, id)) }
+      : {}),
     ...(config.sourceBracketId ? { sourceBracketId: mapped(ids, config.sourceBracketId) } : {}),
     ...(config.groupTieOrder
       ? { groupTieOrder: config.groupTieOrder.map((id) => mapped(ids, id)) }

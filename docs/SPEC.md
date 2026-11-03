@@ -280,12 +280,20 @@ Creation makes a fresh unpublished graph with fresh database identities. If
 generation is canceled or fails after deletion, the deleted history stays erased;
 the generation form remains available for retry.
 
-**Partial.** A tournament's format is a reviewed plan of composable phases: qualifiers,
-team formation, tiered groups and single or double elimination, reading registered
-entrants, qualifier ranks, group placements or organizer choices, with Losers-only entry,
-explicit opening pairs, tiebreak chains and rematch limits. Plans validate, preview their
-matches and save today; running them is delivered in a later milestone (see
-[PLAN.md](PLAN.md#universal-format-engine-and-setup-workspace)).
+**Current.** A tournament's format is a reviewed plan of composable phases: qualifiers,
+tiered groups and single or double elimination, reading registered entrants, qualifier
+ranks, group placements or organizer choices, with Losers-only entry, explicit opening
+pairs, tiebreak chains and rematch limits. Locking creates every phase's bracket at once,
+reserving match numbers in phase order before anyone has qualified, and can be undone until
+a match starts. Slots wait under a label such as Qualifiers #1 or Group D #2.
+
+Advancing entrants is a reviewed step recording what it read, with a preview that shows who
+goes where. Draws from pots are reproducible from a stored value, or entered by hand.
+Entrants placed directly into Losers are eliminated on their first loss. Rematch limits move
+the closest allowed opponent, keeping better seeds in place, and ask for a person when
+nothing fits. A staff decision can replace any seat with a recorded reason. Correcting a
+result that fed a later phase is allowed until that phase has been played, and that phase
+must then be advanced again before it can start. Team formation is delivered separately.
 
 Native single elimination, double elimination/reset and groups support deterministic
 seeding, byes, previews, configurable round/stage assignments, manual/locked slots,

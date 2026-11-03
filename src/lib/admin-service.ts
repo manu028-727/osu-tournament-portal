@@ -45,8 +45,16 @@ import { applyUserRoles } from './user-roles-service';
 import { roleConfiguration } from './role-configuration';
 import { saveFormatPlan } from './format-plan-service';
 import { previewFormatPlan } from './format-preview';
+import {
+  advancementPreview,
+  applyAdvancement,
+  lockFormat,
+  reseedPhaseRound,
+  unlockFormat,
+} from './format-lifecycle-service';
 export function actionPermission(a: AdminAction): PermissionKey {
-  if (a.type === 'format.plan.save' || a.type === 'format.plan.preview') return 'matches.manage';
+  if (a.type === 'format.unlock') return 'matches.delete';
+  if (a.type.startsWith('format.')) return 'matches.manage';
   if (a.type === 'setup.state') return 'settings.manage';
   if (a.type === 'stage.duplicate') return 'mappools.create';
   if (a.type === 'stage.rules.patch' || a.type === 'stage.rules.apply') return 'matches.manage';
@@ -191,6 +199,21 @@ async function applyAdminOperation(
           })
         ).map((stage) => stage.id),
       );
+      break;
+    case 'format.lock':
+      result = await lockFormat(tx, actor, tournamentId, a);
+      break;
+    case 'format.unlock':
+      result = await unlockFormat(tx, actor, tournamentId, a);
+      break;
+    case 'format.advance.preview':
+      result = await advancementPreview(tx, actor, tournamentId, a);
+      break;
+    case 'format.advance':
+      result = await applyAdvancement(tx, actor, tournamentId, a);
+      break;
+    case 'format.reseed':
+      result = await reseedPhaseRound(tx, actor, tournamentId, a);
       break;
     case 'setup.state':
       await tx.tournamentSettings.update({
@@ -791,6 +814,7 @@ async function applyAdminOperation(
   if (
     !a.type.startsWith('competition.') &&
     !a.type.startsWith('qualifier.standings.') &&
+    !a.type.endsWith('.preview') &&
     a.type !== 'qualifier.policy.save' &&
     a.type !== 'stage.reconcile'
   )
@@ -811,6 +835,7 @@ async function applyAdminOperation(
             : a.type === 'match.delete'
               ? { code: a.confirmCode, reason: a.reason }
               : a.type.startsWith('pooling.') ||
+                  a.type.startsWith('format.') ||
                   a.type.startsWith('matches.') ||
                   a.type === 'staff.bulk'
                 ? JSON.parse(JSON.stringify(a))

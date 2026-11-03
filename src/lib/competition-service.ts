@@ -1,3 +1,4 @@
+import { advancedSlot, assertPhaseSourcesCurrent, consumersOfBracket } from './format-guards';
 import { Prisma } from '@/generated/prisma/client';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
@@ -303,7 +304,7 @@ const pending = {
   logoImageId: null,
   members: [],
 };
-async function persistRecalculation(
+export async function persistRecalculation(
   tx: Prisma.TransactionClient,
   tournamentId: string,
   before: CompetitionNode[],
@@ -553,6 +554,8 @@ async function lifecyclePlan(
       (candidate.config as GroupConfig).sourceBracketId === bracket.id,
   );
   if (request.operation === 'delete') {
+    if ((bracket.config as { phaseKey?: string }).phaseKey)
+      reasons.push('This bracket belongs to the tournament format. Unlock the format instead.');
     if (dependencies.length)
       reasons.push('Delete dependent brackets before deleting their seed source.');
     if (
@@ -1282,12 +1285,13 @@ export async function applyCompetitionAction(
           }
         }
         if (a.mode === 'AUTO' && !slot.sourceNodeId) {
-          const plan = await generateCompetition(
-            competitionActionSchema.options[0].parse(bracket.config),
-          );
-          const original = plan.nodes
-            .find((n) => n.key === node.key)
-            ?.slots.find((s) => s.side === a.side);
+          const original = (bracket.config as { phaseKey?: string }).phaseKey
+            ? await advancedSlot(tx, tournamentId, bracket.id, node.key, a.side)
+            : (
+                await generateCompetition(competitionActionSchema.options[0].parse(bracket.config))
+              ).nodes
+                .find((n) => n.key === node.key)
+                ?.slots.find((s) => s.side === a.side);
           if (!original) throw new AppError('Original seed position unavailable.');
           Object.assign(slot, {
             teamId: original.teamId,
@@ -1413,6 +1417,7 @@ export async function assertCompetitionMatchStart(
       'Source group standings changed. Review the frozen downstream seeds before starting; automatic reseeding is disabled.',
       409,
     );
+  await assertPhaseSourcesCurrent(tx, tournamentId, bracket.id);
   const computed = recalculateCompetition(nodes).find((n) => n.id === node.id)!;
   if (
     computed.state !== 'READY' ||
@@ -1476,6 +1481,9 @@ export async function previewCompetitionCorrection(
     },
     select: { id: true, name: true, version: true },
   });
+  // A format's later phase can be re-advanced after a correction, until it has been played.
+  for (const consumer of await consumersOfBracket(tx, tournamentId, target.bracketId, before))
+    seededBrackets.push(consumer);
   const simulated = structuredClone(before),
     current = simulated.find((n) => n.id === target.id)!;
   current.match!.winnerSide = proposedWinnerSide;
@@ -1552,7 +1560,7 @@ export async function competitionEligibility(
     };
   const nodes = await allNodes(tx, tournamentId),
     path = recalculateCompetition(nodes).filter((n) => n.bracketId === bracketId);
-  if (bracket.format === 'GROUPS') {
+  if (bracket.format === 'GROUPS' && !(bracket.config as { phaseKey?: string }).phaseKey) {
     const standings = groupStandings(
       path,
       bracket.rounds,
@@ -1570,7 +1578,9 @@ export async function competitionEligibility(
       !row.tied
     )
       return { eligible: false, reason: 'Participant did not qualify from this group.' };
-  } else if (competitionEliminated(path, bracket.rounds, bracket.format, teamId))
+  } else if (
+    competitionEliminated(path, bracket.rounds, bracket.format, teamId, entry.lossesAllowed)
+  )
     return { eligible: false, reason: 'Participant is eliminated from this competition path.' };
   if (
     ignoreNodeId &&

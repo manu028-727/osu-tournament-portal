@@ -14,6 +14,7 @@ import {
 import type { PhasePreview } from '@/lib/format-preview';
 import type { SetupWorkspaceData } from '@/lib/setup-queries';
 import { action, Field, SaveButton, useTask, useUnsaved } from '../shared';
+import { FormatLifecycle } from './setup-advancement';
 import styles from './setup.module.css';
 
 const KIND_LABELS: Record<FormatPhase['kind'], string> = {
@@ -1003,6 +1004,40 @@ export function FormatSection({
         }),
       );
     }, tr('Preview updated.'));
+  const editors = (
+    <fieldset disabled={!canEdit || busy || data.planLocked} className="grid min-w-0 gap-3">
+      {phases.map((phase, index) => (
+        <PhaseEditor
+          key={phase.key}
+          phase={phase}
+          index={index}
+          phases={phases}
+          stages={data.stages}
+          onChange={(next) => replace(index, next)}
+          onMove={(offset) => {
+            const next = [...phases];
+            next.splice(index + offset, 0, next.splice(index, 1)[0]);
+            setPhases(next);
+          }}
+          onRemove={() => setPhases(phases.filter((_, position) => position !== index))}
+        />
+      ))}
+      <div className="flex flex-wrap gap-2">
+        {(Object.keys(KIND_LABELS) as Phase['kind'][]).map((kind) => (
+          <Button
+            key={kind}
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setPhases([...phases, newPhase(kind, phases, data.stages)])}
+          >
+            <Plus size={16} />
+            {tr(KIND_LABELS[kind])}
+          </Button>
+        ))}
+      </div>
+    </fieldset>
+  );
   const replace = (index: number, phase: Phase) =>
     setPhases(phases.map((item, position) => (position === index ? phase : item)));
   return (
@@ -1015,42 +1050,18 @@ export function FormatSection({
         </p>
       )}
       {data.planLocked && (
-        <p className="text-sm text-muted">
-          {tr('This format is locked, so its reserved matches stay as they are.')}
-        </p>
+        <FormatLifecycle data={data} reload={reload} canEdit={canEdit} dirty={dirty} />
       )}
-      <fieldset disabled={!canEdit || busy || data.planLocked} className="grid min-w-0 gap-3">
-        {phases.map((phase, index) => (
-          <PhaseEditor
-            key={phase.key}
-            phase={phase}
-            index={index}
-            phases={phases}
-            stages={data.stages}
-            onChange={(next) => replace(index, next)}
-            onMove={(offset) => {
-              const next = [...phases];
-              next.splice(index + offset, 0, next.splice(index, 1)[0]);
-              setPhases(next);
-            }}
-            onRemove={() => setPhases(phases.filter((_, position) => position !== index))}
-          />
-        ))}
-        <div className="flex flex-wrap gap-2">
-          {(Object.keys(KIND_LABELS) as Phase['kind'][]).map((kind) => (
-            <Button
-              key={kind}
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setPhases([...phases, newPhase(kind, phases, data.stages)])}
-            >
-              <Plus size={16} />
-              {tr(KIND_LABELS[kind])}
-            </Button>
-          ))}
-        </div>
-      </fieldset>
+      {data.planLocked ? (
+        <details>
+          <summary className="min-h-10 cursor-pointer py-2 text-sm">
+            {tr('This format is locked, so its reserved matches stay as they are.')}
+          </summary>
+          {editors}
+        </details>
+      ) : (
+        editors
+      )}
       {issues.length > 0 && (
         <ul className={styles.issues} role="status">
           {issues.slice(0, 8).map((issue, index) => (
@@ -1092,6 +1103,9 @@ export function FormatSection({
         </form>
       )}
       {preview && <PlanPreview plan={preview} stages={data.stages} />}
+      {!data.planLocked && (
+        <FormatLifecycle data={data} reload={reload} canEdit={canEdit} dirty={dirty} />
+      )}
     </div>
   );
 }

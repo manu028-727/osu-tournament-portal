@@ -499,8 +499,29 @@ entrants on teams. `TournamentPhase` rows persist it with a token witness, throu
 before entrants exist, using `entryRef` placeholders with `resolved:false` so nothing reads
 as a bye. A Losers lane fed from outside is the library's standard graph of twice the size
 with Winners round 1 removed. `format-advancement.ts` owns draws, group labels, tiebreak
-chains, placement routing and the rematch solver. These are pure, and persistence of locked
-plans arrives with its milestone in [PLAN.md](PLAN.md).
+chains, placement routing and the rematch solver. These are pure.
+
+`format-lifecycle-service.ts` persists them. `format.lock` creates a `Bracket` per phase with
+`config.phaseKey` and reserves numbers through the normal allocator, holding the established
+stage then tournament row lock order. Its config stores no entrants until advancement, so
+`competitionStoredConfigSchema` allows empty `teamIds`; `competitionCreationSchema` compares
+creation requests across archives. `format.advance` re-derives everything from
+`format-guards.ts`, compares a review hash, then writes entries, slots and an append-only
+`PhaseAdvancement` holding the source witness and resulting slot map. Regenerating an AUTO
+slot reads that map rather than a library plan. `persistRecalculation` still owns slot,
+state and lazy match writes, so protected-match and roster checks apply unchanged.
+
+A phase may read several sources, so its bracket lists `sourceStandingIds` and
+`sourceBracketIds` instead of the single-source fields. `assertPhaseSourcesCurrent` runs at
+match start beside the older source checks. `consumersOfBracket` blocks a correction only
+when the later phase has been played, and qualifier reopening walks the same lists. Hashes
+name database identities, so import calls `rebindImportedAdvancements` after standings and
+competition rebinding. `phaseRanking` and `phaseAdvancing` in the saved config let standings
+and eligibility read a group's own tiebreakers without loading the plan. `BracketEntry.
+lossesAllowed` carries the one-life rule. Whole-bracket deletion refuses format brackets;
+`format.unlock` removes them all, and resets numbering only under the existing empty-counter
+exception. Rounds gain no columns, because their projection is spread publicly: group labels
+live in the round name, and public slots expose only `entryLabel`.
 
 `setup.apply` runs several pure configuration operations in one transaction, resolving
 `ref:<name>` so later operations can read a stage created earlier. It has no authority of

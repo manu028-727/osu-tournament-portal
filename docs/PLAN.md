@@ -1489,7 +1489,7 @@ Keep this current so an interrupted session can continue from it.
 | M1        | Win condition, one score pipeline, RX, FM quotas, accuracy, %MAX, placements     | Verified |
 | M2        | Pure graph, advancement, draw, rematch and tiebreak engine                       | Verified |
 | M3        | Setup workspace replacing Overview, `setup.apply`, templates, readiness          | Verified |
-| M4        | Lock format, placeholders, advancement persistence, guards, archive, projections | Planned  |
+| M4        | Lock format, placeholders, advancement persistence, guards, archive, projections | Verified |
 | M5        | Referee rule enforcement: lineups, timers, attempts, forfeits, sanctions         | Planned  |
 | M6        | Eligibility, team formation, auction board, derived resources                    | Planned  |
 | M7        | Every-page editing sweep and obsolete-setting cleanup                            | Planned  |
@@ -1623,6 +1623,24 @@ foreign stages, per-operation permissions and protection of stages in a format.
 Not yet possible: locking a plan or running its phases (M4), and rank-sum eligibility and
 team formation execution (M6). Qualifier sessions and matches are linked rather than embedded
 in the schedule section; reassess at M7.
+
+### M4 Checks
+
+Applied `20261103040000_phase_advancement` to the isolated test database only. Eighteen
+real-record tests run Italian Cup 9's shape end to end: all 47 positions numbered with groups
+before the main bracket; reproducible draws from pots with real qualifier seeds kept;
+placements routed to Winners and Losers; no group rematches in the Losers opening round; a
+stale review refused; a correction allowed before downstream play and then requiring
+re-advancement, with revisions retained; one-life Losers entrants; refusal to change entrants
+or unlock after play; public projections free of configuration; and archive round trips of
+both a running format, with sources still current, and a locked one nobody has entered. Also
+byes on the best seeds, recorded staff overrides, unlocking with numbering reset, per-round
+reseeding from real survivors, and ordinary brackets unaffected. Browser: lock, review, a
+reasoned override, and real matches on their reserved numbers.
+
+Those tests complete matches directly in the database, so results flowing through referee
+workflows into a later phase are only proven at M8. Team formation sources stay organizer
+choices until M6. Group ties across a reviewed order use the existing group-resolution action.
 
 ## Completion Rules
 

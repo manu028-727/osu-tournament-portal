@@ -10,7 +10,7 @@ export type PhasePreview = {
   openings: { lane: string; pairs: [string, string][] }[];
 };
 
-const sourceLabels = (phases: readonly FormatPhase[], phase: FormatPhase) => {
+export const sourceLabels = (phases: readonly FormatPhase[], phase: FormatPhase) => {
   const labels = new Map<number, string>();
   if (!('entries' in phase)) return labels;
   for (const item of phase.entries) {

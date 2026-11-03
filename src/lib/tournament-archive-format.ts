@@ -143,7 +143,7 @@ export const ARCHIVE_TABLES = {
   participants: def('participant', 'osuId:i username:s avatarUrl:s country:s? updatedAt:d'),
   teams: def(
     'team',
-    'id:s tournamentId:s name:s slug:s description:s format:s logoImageId:s? seed:i? rankSum:i? qualifierPlayed:b? sourceKey:s? position:i status:s published:b version:i rejectionReason:s adminNotes:s registrationAnswers:j? createdAt:d updatedAt:d',
+    'id:s tournamentId:s name:s slug:s description:s format:s logoImageId:s? seed:i? rankSum:i? qualifierPlayed:b? sourceKey:s? position:i status:s published:b version:i rejectionReason:s adminNotes:s registrationAnswers:j? createdAt:d updatedAt:d supersededAt:d?',
     { tournamentId: 'tournament', logoImageId: 'media' },
   ),
   rosters: def(
@@ -226,6 +226,16 @@ export const ARCHIVE_TABLES = {
     { lobbyId: 'qualifierLobbies' },
     ['lobby'],
   ),
+  tournamentPhases: def(
+    'tournamentPhase',
+    'id:s tournamentId:s key:s position:i kind:s name:s stageId:s? bracketId:s? config:j state:s version:i createdAt:d updatedAt:d',
+    { tournamentId: 'tournament', stageId: 'stages', bracketId: 'brackets' },
+  ),
+  phaseAdvancements: def(
+    'phaseAdvancement',
+    'id:s tournamentId:s phaseId:s revision:i kind:s sourceHash:s assignment:j reason:s actorId:s? createdAt:d',
+    { tournamentId: 'tournament', phaseId: 'tournamentPhases', actorId: 'identities' },
+  ),
   audits: def(
     'auditLog',
     'id:s tournamentId:s actorId:s? action:s entityType:s entityId:s details:j createdAt:d',
@@ -258,7 +268,7 @@ export const ARCHIVE_TABLES = {
   ),
   bracketSlots: def(
     'bracketSlot',
-    'id:s tournamentId:s nodeId:s side:s teamId:s? resolved:b mode:s sourceNodeId:s? outcome:s?',
+    'id:s tournamentId:s nodeId:s side:s teamId:s? resolved:b mode:s sourceNodeId:s? outcome:s? entryRef:s? entryLabel:s?',
     {
       tournamentId: 'tournament',
       nodeId: 'bracketNodes',
@@ -266,22 +276,21 @@ export const ARCHIVE_TABLES = {
       sourceNodeId: 'bracketNodes',
     },
   ),
-  bracketEntries: def('bracketEntry', 'tournamentId:s bracketId:s teamId:s seed:i status:s', {
-    tournamentId: 'tournament',
-    bracketId: 'brackets',
-    teamId: 'teams',
-  }),
+  bracketEntries: def(
+    'bracketEntry',
+    'tournamentId:s bracketId:s teamId:s seed:i status:s groupIndex:i? pot:i? tier:s? entryLane:s? lossesAllowed:i? provenance:s?',
+    {
+      tournamentId: 'tournament',
+      bracketId: 'brackets',
+      teamId: 'teams',
+    },
+  ),
   identities: def(
     'user',
     'id:s osuId:i username:s avatarUrl:s profileUrl:s country:s?',
     {},
     undefined,
     true,
-  ),
-  tournamentPhases: def(
-    'tournamentPhase',
-    'id:s tournamentId:s key:s position:i kind:s name:s stageId:s? config:j state:s version:i createdAt:d updatedAt:d',
-    { tournamentId: 'tournament', stageId: 'stages' },
   ),
   roles: def(
     'role',
@@ -323,7 +332,6 @@ export type ArchiveTable = keyof typeof ARCHIVE_TABLES;
 export const archiveInsertionOrder: ArchiveTable[] = [
   'media',
   'stages',
-  'tournamentPhases',
   'categories',
   'poolPlans',
   'poolSkillsets',
@@ -360,6 +368,8 @@ export const archiveInsertionOrder: ArchiveTable[] = [
   'bracketNodes',
   'bracketSlots',
   'bracketEntries',
+  'tournamentPhases',
+  'phaseAdvancements',
   'audits',
 ];
 export const archiveDeferredFields: Partial<Record<ArchiveTable, readonly string[]>> = {
@@ -686,6 +696,7 @@ export function validateArchiveData(input: unknown): ArchiveData {
     pages: [['slug']],
     stages: [['slug']],
     tournamentPhases: [['key']],
+    phaseAdvancements: [['phaseId', 'revision']],
     categories: [['acronym']],
     pools: [['stageId']],
     slots: [
