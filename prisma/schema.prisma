@@ -42,6 +42,7 @@ model User {
 
   @@index([username])
   phaseAdvancements PhaseAdvancement[]
+  mapAttempts MatchMapAttempt[]
 }
 
 model Session {
@@ -961,6 +962,7 @@ model Match {
   multiplayerGames      MultiplayerGame[]
   ircLobbyRequests      IrcLobbyRequest[]
   bracketNode           BracketNode?
+  attempts MatchMapAttempt[]
 
   @@unique([tournamentId, code])
   @@unique([tournamentId, matchNumber])
@@ -1034,7 +1036,28 @@ model RefereeImport {
   @@index([tournamentId, createdAt])
 }
 
+model MatchMapAttempt {
+  id              String          @id @default(cuid())
+  matchId         String
+  match           Match           @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  actionId        String?
+  action          MatchMapAction? @relation(fields: [actionId], references: [id], onDelete: SetNull)
+  kind            String
+  side            MatchSide?
+  osuId           Int?
+  scoreA          Float?
+  scoreB          Float?
+  reason          String
+  beyondAllowance Boolean         @default(false)
+  actorId         String?
+  actor           User?           @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt       DateTime        @default(now())
+
+  @@index([matchId])
+}
+
 model MatchMapAction {
+  attempts MatchMapAttempt[]
   id               String            @id @default(cuid())
   matchId          String
   match            Match             @relation(fields: [matchId], references: [id], onDelete: Cascade)

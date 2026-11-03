@@ -180,6 +180,12 @@ export const ARCHIVE_TABLES = {
     { resultId: 'mapResults', osuId: 'participants' },
     ['result', 'match'],
   ),
+  mapAttempts: def(
+    'matchMapAttempt',
+    'id:s matchId:s actionId:s? kind:s side:s? osuId:i? scoreA:n? scoreB:n? reason:s beyondAllowance:b actorId:s? createdAt:d',
+    { matchId: 'matches', actionId: 'actions', actorId: 'identities' },
+    ['match'],
+  ),
   events: def(
     'matchEvent',
     'id:s matchId:s version:i actorId:s? kind:s side:s? notes:s data:j createdAt:d',
@@ -354,6 +360,7 @@ export const archiveInsertionOrder: ArchiveTable[] = [
   'actions',
   'mapResults',
   'playerScores',
+  'mapAttempts',
   'events',
   'resultRevisions',
   'multiplayerGames',

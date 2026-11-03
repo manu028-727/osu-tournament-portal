@@ -388,3 +388,202 @@ describe.sequential('qualifier metrics through real actions', () => {
     expect(alpha.selected.find((map) => map.slotName === 'NM1')?.score).toBe(99);
   });
 });
+
+describe.sequential('referee procedures through real actions', () => {
+  let who: Actor;
+  let matchId: string;
+  const version = async () =>
+    (await db.match.findUniqueOrThrow({ where: { id: matchId } })).version;
+  const pendingPick = async () =>
+    (
+      await db.matchMapAction.findFirstOrThrow({
+        where: { matchId, kind: 'PICK', voided: false },
+        orderBy: { sequence: 'desc' },
+      })
+    ).id;
+
+  beforeAll(async () => {
+    who = await createTournament('referee');
+    const tournamentId = who.tournamentId!;
+    await entrants(tournamentId);
+    const { stageId } = await stageWithPool(tournamentId, 'Finals', 'ELIMINATION');
+    await act(who, {
+      type: 'match.rules.save',
+      stageId,
+      baseHash: rulesHash(null),
+      rules: {
+        ...matchRulesSchema.parse({ teamSize: 2, bestOf: 3, bansPerTeam: 0, banOrder: 'ABAB' }),
+        replayAllowance: { scope: 'PLAYER', perMatch: 1 },
+      },
+    });
+    const created = (await act(who, {
+      type: 'match.create',
+      code: `${prefix}-referee`,
+      stageId,
+      teamAId: teamA,
+      teamBId: teamB,
+      refereeIds: [],
+    })) as { id: string };
+    matchId = created.id;
+    await act(who, { type: 'match.start', id: matchId, baseVersion: 1 });
+    await act(who, {
+      type: 'match.roll',
+      id: matchId,
+      baseVersion: 2,
+      rollA: 90,
+      rollB: 1,
+      firstPickSide: 'A',
+      firstBanSide: 'A',
+    });
+    await act(who, {
+      type: 'match.draft',
+      id: matchId,
+      baseVersion: 3,
+      kind: 'PICK',
+      side: 'A',
+      slotName: 'NM1',
+    });
+  });
+
+  it('counts a replay per player and asks before going over the allowance', async () => {
+    const input = {
+      type: 'match.attempt',
+      id: matchId,
+      actionId: await pendingPick(),
+      kind: 'REPLAY',
+      osuId: osuIds[0],
+      reason: 'Disconnect in the first quarter',
+    };
+    await act(who, { ...input, baseVersion: await version() });
+    await expect(act(who, { ...input, baseVersion: await version() })).rejects.toThrow(
+      'allowance is used up',
+    );
+    await act(who, { ...input, baseVersion: await version(), beyondAllowance: true });
+    const attempts = await db.matchMapAttempt.findMany({
+      where: { matchId },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(attempts.map((row) => row.beyondAllowance)).toEqual([false, true]);
+    // A different player's allowance is untouched.
+    await act(who, { ...input, osuId: osuIds[1], baseVersion: await version() });
+  });
+
+  it('refuses a replay naming someone outside the roster, and needs a player', async () => {
+    const input = {
+      type: 'match.attempt',
+      id: matchId,
+      actionId: await pendingPick(),
+      kind: 'REPLAY',
+      reason: 'Disconnect in the first quarter',
+    };
+    await expect(act(who, { ...input, osuId: 999, baseVersion: await version() })).rejects.toThrow(
+      'not in the snapshotted',
+    );
+    await expect(act(who, { ...input, baseVersion: await version() })).rejects.toThrow(
+      'Choose the player',
+    );
+  });
+
+  it('records a draw without awarding the map', async () => {
+    await act(who, {
+      type: 'match.attempt',
+      id: matchId,
+      baseVersion: await version(),
+      actionId: await pendingPick(),
+      kind: 'DRAW',
+      scoreA: 500000,
+      scoreB: 500000,
+      reason: 'Equal team totals',
+    });
+    expect(await db.matchMapResult.count({ where: { matchId } })).toBe(0);
+    expect(await db.matchMapAttempt.count({ where: { matchId, kind: 'DRAW' } })).toBe(1);
+  });
+
+  it('records a warning without changing the score', async () => {
+    await act(who, {
+      type: 'match.sanction',
+      id: matchId,
+      baseVersion: await version(),
+      sanction: 'WARNING',
+      side: 'A',
+      timerKind: 'PICK',
+      reason: 'First pick overrun',
+    });
+    const event = await db.matchEvent.findFirstOrThrow({
+      where: { matchId, kind: 'match.sanction' },
+    });
+    expect(event).toMatchObject({ side: 'A', notes: 'First pick overrun' });
+    expect((await db.match.findUniqueOrThrow({ where: { id: matchId } })).scoreA).toBe(0);
+  });
+
+  it('loses a map through the normal result, keeping the state machine in charge', async () => {
+    await act(who, {
+      type: 'match.sanction',
+      id: matchId,
+      baseVersion: await version(),
+      sanction: 'MAP_LOSS',
+      side: 'A',
+      reason: 'Refused to ready up',
+    });
+    const match = await db.match.findUniqueOrThrow({
+      where: { id: matchId },
+      include: { results: true },
+    });
+    expect(match.scoreB).toBe(1);
+    expect(match.results[0]).toMatchObject({ winnerSide: 'B', entryMode: 'WINNER_ONLY' });
+    expect(
+      await db.matchEvent.count({ where: { matchId, kind: 'sanction.MAP_LOSS', side: 'A' } }),
+    ).toBe(1);
+    // No map is awaiting a result now, so a second map loss has nothing to apply to.
+    await expect(
+      act(who, {
+        type: 'match.sanction',
+        id: matchId,
+        baseVersion: await version(),
+        sanction: 'MAP_LOSS',
+        side: 'A',
+        reason: 'Refused again',
+      }),
+    ).rejects.toThrow('Pick a map');
+    await expect(
+      act(who, {
+        type: 'match.attempt',
+        id: matchId,
+        baseVersion: await version(),
+        actionId: match.results[0].actionId,
+        kind: 'DRAW',
+        reason: 'Too late',
+      }),
+    ).rejects.toThrow('already has a result');
+  });
+
+  it('forfeits through the normal action, awaiting confirmation', async () => {
+    await act(who, {
+      type: 'match.sanction',
+      id: matchId,
+      baseVersion: await version(),
+      sanction: 'MATCH_LOSS',
+      side: 'A',
+      reason: 'Team left the lobby',
+    });
+    const match = await db.match.findUniqueOrThrow({ where: { id: matchId } });
+    expect(match).toMatchObject({
+      status: 'AWAITING_CONFIRMATION',
+      winnerSide: 'B',
+      forfeitSide: 'A',
+    });
+  });
+
+  it('carries attempts through the database and blocks a stale sanction', async () => {
+    await expect(
+      act(who, {
+        type: 'match.sanction',
+        id: matchId,
+        baseVersion: 1,
+        sanction: 'WARNING',
+        side: 'A',
+        reason: 'Stale form',
+      }),
+    ).rejects.toThrow('Another referee updated');
+  });
+});

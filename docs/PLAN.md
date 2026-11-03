@@ -1490,7 +1490,7 @@ Keep this current so an interrupted session can continue from it.
 | M2        | Pure graph, advancement, draw, rematch and tiebreak engine                       | Verified |
 | M3        | Setup workspace replacing Overview, `setup.apply`, templates, readiness          | Verified |
 | M4        | Lock format, placeholders, advancement persistence, guards, archive, projections | Verified |
-| M5        | Referee rule enforcement: lineups, timers, attempts, forfeits, sanctions         | Planned  |
+| M5        | Referee rule enforcement: lineups, timers, attempts, forfeits, sanctions         | Verified |
 | M6        | Eligibility, team formation, auction board, derived resources                    | Planned  |
 | M7        | Every-page editing sweep and obsolete-setting cleanup                            | Planned  |
 | M8        | All formats simulated through the normal UI, full gates, final report            | Planned  |
@@ -1641,6 +1641,23 @@ reasoned override, and real matches on their reserved numbers.
 Those tests complete matches directly in the database, so results flowing through referee
 workflows into a later phase are only proven at M8. Team formation sources stay organizer
 choices until M6. Group ties across a reviewed order use the existing group-resolution action.
+
+### M5 Checks
+
+Applied `20261103050000_match_map_attempts` to the isolated test database only. Real-action
+tests cover per-player replay allowances and a recorded overage, roster checks, a draw that
+awards nothing, a warning that changes no score, a map loss and forfeit through the normal
+actions, and stale forms. Browser: the expired timer suggesting a warning then a random map
+with its `!roll`, nothing moving by itself, replays, and a map loss producing a real point.
+All existing referee browser tests, including mock Bancho IRC, still pass in production.
+This caught a label collision with the correction form, fixed by distinct labels.
+
+Timer consequences and `!mp start 10` or `!roll` are suggestions the referee carries out, not
+automation. Lineups are enforced as before: exactly the side's players from the roster on
+individual entry and live capture, with reviewed imports intentionally lenient. Passing a
+turn is recorded while the turn's owner stays the same in the draft sequence, because the
+order itself must not change; the opponent's choice is entered on that turn. Unverified on
+real Bancho: `!roll` behaviour with the suggested count.
 
 ## Completion Rules
 

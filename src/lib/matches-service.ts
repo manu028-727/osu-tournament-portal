@@ -121,6 +121,69 @@ export async function applyMatchAction(
   const tournamentId = actor.tournamentId || 'main';
   tx = scopedDb(tx, tournamentId);
   assertMatchActionPermission(actor, a);
+  // These change the result, so they run through the same actions a referee would use and
+  // the state machine still decides what is allowed. The sanction is recorded alongside.
+  if (
+    a.type === 'match.sanction' &&
+    ['MAP_LOSS', 'MATCH_LOSS', 'DISQUALIFICATION'].includes(a.sanction)
+  ) {
+    const opponent = otherSide(a.side);
+    const current = await tx.match.findFirstOrThrow({
+      where: { id: a.id, tournamentId },
+      include: matchInclude,
+    });
+    let outcome;
+    if (a.sanction === 'MAP_LOSS') {
+      const pending = current.actions.find(
+        (action) =>
+          !action.voided &&
+          action.kind === 'PICK' &&
+          !current.results.some((result) => !result.voided && result.actionId === action.id),
+      );
+      if (!pending) throw new AppError('Pick a map before awarding it as a sanction.', 409);
+      outcome = await applyMatchAction(tx, actor, {
+        type: 'match.winner',
+        id: a.id,
+        baseVersion: a.baseVersion,
+        actionId: pending.id,
+        winnerSide: opponent,
+        reason: a.reason,
+        notes: a.reason,
+      } as MatchAction);
+    } else {
+      outcome = await applyMatchAction(tx, actor, {
+        type: 'match.forfeit',
+        id: a.id,
+        baseVersion: a.baseVersion,
+        winnerSide: opponent,
+        reason: a.reason,
+      });
+      if (a.sanction === 'DISQUALIFICATION') {
+        const teamId = a.side === 'A' ? current.teamAId : current.teamBId;
+        const node = await tx.bracketNode.findFirst({ where: { matchId: a.id, tournamentId } });
+        if (teamId && node)
+          await tx.bracketEntry.updateMany({
+            where: { tournamentId, bracketId: node.bracketId, teamId },
+            data: { status: 'DISQUALIFIED' },
+          });
+      }
+    }
+    // Each event owns one match version, so the sanction takes the next one.
+    await tx.match.update({ where: { id: a.id }, data: { version: { increment: 1 } } });
+    const version = outcome.version! + 1;
+    await tx.matchEvent.create({
+      data: {
+        matchId: a.id,
+        version,
+        actorId: actor.id,
+        kind: `sanction.${a.sanction}`,
+        side: a.side,
+        notes: a.reason,
+        data: json({ sanction: a.sanction, side: a.side, timerKind: a.timerKind }),
+      },
+    });
+    return { id: a.id, version };
+  }
   if (a.type === 'match.rules.save') {
     const scoring = (await tx.tournamentSettings.findUniqueOrThrow({ where: { tournamentId } }))
       .gameplayScoring;
@@ -970,6 +1033,63 @@ export async function applyMatchAction(
       }
       break;
     }
+    case 'match.attempt': {
+      active(match);
+      const picked = match.actions.find(
+        (action) => action.id === a.actionId && action.kind === 'PICK' && !action.voided,
+      );
+      if (!picked) throw new AppError('Select an active picked map.');
+      if (match.results.some((result) => !result.voided && result.actionId === picked.id))
+        throw new AppError(
+          'This map already has a result. Correct it instead of replaying it.',
+          409,
+        );
+      let beyondAllowance = false;
+      if (a.kind === 'REPLAY' && rules.replayAllowance.scope !== 'NONE') {
+        const scope = rules.replayAllowance.scope;
+        if (scope === 'PLAYER' && !a.osuId)
+          throw new AppError('Choose the player using their replay.');
+        if (scope === 'TEAM' && !a.side) throw new AppError('Choose the team using their replay.');
+        if (
+          a.osuId &&
+          ![...participants.A.members, ...participants.B.members].some(
+            (member) => member.osuId === a.osuId,
+          )
+        )
+          throw new AppError('This player is not in the snapshotted match roster.');
+        const used = await tx.matchMapAttempt.count({
+          where: {
+            matchId: match.id,
+            kind: 'REPLAY',
+            ...(scope === 'PLAYER' ? { osuId: a.osuId } : { side: a.side }),
+          },
+        });
+        beyondAllowance = used >= rules.replayAllowance.perMatch;
+        // Rules commonly leave the final word to the referee, so going over is a recorded choice.
+        if (beyondAllowance && !a.beyondAllowance)
+          throw new AppError('This replay allowance is used up. Confirm it to record it anyway.');
+      }
+      await tx.matchMapAttempt.create({
+        data: {
+          matchId: match.id,
+          actionId: picked.id,
+          kind: a.kind,
+          side: a.side,
+          osuId: a.osuId,
+          scoreA: a.scoreA,
+          scoreB: a.scoreB,
+          reason: a.reason,
+          beyondAllowance,
+          actorId: actor.id,
+        },
+      });
+      eventData = { reason: a.reason, kind: a.kind, slotName: picked.slotName, beyondAllowance };
+      break;
+    }
+    case 'match.sanction':
+      active(match);
+      eventData = { sanction: a.sanction, side: a.side, timerKind: a.timerKind };
+      break;
     case 'match.lobby':
       if (['COMPLETED', 'CANCELLED'].includes(match.status))
         throw new AppError('Reopen the match before editing its lobby.');

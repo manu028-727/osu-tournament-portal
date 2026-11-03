@@ -9,6 +9,7 @@ import {
   startingSide,
   type DraftState,
   type DraftAction,
+  timerConsequence,
 } from '../src/lib/match-engine';
 import { aggregateScores, convertedScore } from '../src/lib/score-pipeline';
 const rules = (extra = {}) => matchRulesSchema.parse({ ...extra });
@@ -326,5 +327,96 @@ describe('configured referee match engine', () => {
         0,
       ),
     ).toThrow('score range');
+  });
+});
+
+describe('configurable referee rules', () => {
+  const slots = [
+    { name: 'HR1', category: 'HR', beatmapId: 1 },
+    { name: 'HR2', category: 'HR', beatmapId: 2 },
+    { name: 'NM1', category: 'NM', beatmapId: 3 },
+    { name: 'NM2', category: 'NM', beatmapId: 4 },
+    { name: 'DT1', category: 'DT', beatmapId: 5 },
+  ];
+  const state = (actions: { side: 'A' | 'B'; slotName: string; category: string }[]) => ({
+    firstPickSide: 'A' as const,
+    firstBanSide: 'A' as const,
+    firstProtectSide: 'A' as const,
+    scoreA: 0,
+    scoreB: 0,
+    pendingPick: false,
+    actions: actions.map((action, index) => ({
+      id: `a${index}`,
+      kind: 'PICK' as const,
+      voided: false,
+      ...action,
+    })),
+  });
+  const base = { bansPerTeam: 0, protectsPerTeam: 0, pickOrder: 'ABAB' as const };
+  // A then B have picked, so it is A's turn again with HR already used by A two picks ago.
+  const history = state([
+    { side: 'A', slotName: 'HR1', category: 'HR' },
+    { side: 'B', slotName: 'DT1', category: 'DT' },
+  ]);
+
+  it('limits consecutive selections by default, since the turn order rarely repeats a team', () => {
+    const consecutive = rules(base);
+    expect(() =>
+      validateDraftAction(consecutive, history, slots, {
+        kind: 'PICK',
+        side: 'A',
+        slotName: 'HR2',
+      }),
+    ).toThrow('Consecutive picks');
+  });
+
+  it('can limit any two from one category, with exempt categories still free', () => {
+    const anyTwo = rules({ ...base, doubleSelectionScope: 'ANY' });
+    expect(() =>
+      validateDraftAction(anyTwo, history, slots, { kind: 'PICK', side: 'A', slotName: 'HR2' }),
+    ).toThrow('already chose a map from this category');
+    const withNoMod = state([
+      { side: 'A', slotName: 'NM1', category: 'NM' },
+      { side: 'B', slotName: 'DT1', category: 'DT' },
+    ]);
+    expect(
+      validateDraftAction(anyTwo, withNoMod, slots, { kind: 'PICK', side: 'A', slotName: 'NM2' })
+        .name,
+    ).toBe('NM2');
+  });
+
+  it('suggests a timer consequence, with a first-offence warning when configured', () => {
+    const none = rules();
+    expect(timerConsequence(none, 'PICK', 0)).toBeNull();
+    const strict = rules({
+      timerExpiry: {
+        pick: 'RANDOM_MAP',
+        ban: 'PASS_TO_OPPONENT',
+        ready: 'FORCE_START',
+        warnFirst: true,
+      },
+    });
+    expect(timerConsequence(strict, 'PICK', 0)).toBe('WARNING');
+    expect(timerConsequence(strict, 'PICK', 1)).toBe('RANDOM_MAP');
+    expect(timerConsequence(strict, 'BAN', 3)).toBe('PASS_TO_OPPONENT');
+    expect(timerConsequence(strict, 'READY', 1)).toBe('FORCE_START');
+    expect(
+      timerConsequence(
+        rules({
+          timerExpiry: { pick: 'PASS_TO_OPPONENT', ban: 'NONE', ready: 'NONE', warnFirst: false },
+        }),
+        'PICK',
+        0,
+      ),
+    ).toBe('PASS_TO_OPPONENT');
+  });
+
+  it('keeps every older snapshot behaving as it did', () => {
+    expect(rules()).toMatchObject({
+      doubleSelectionScope: 'CONSECUTIVE',
+      inviteWholeRoster: false,
+      replayAllowance: { scope: 'NONE', perMatch: 0 },
+      timerExpiry: { pick: 'NONE', ban: 'NONE', ready: 'NONE', warnFirst: false },
+    });
   });
 });

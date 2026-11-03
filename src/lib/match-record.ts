@@ -19,6 +19,7 @@ export const matchInclude = {
     include: { actor: { select: { username: true } } },
   },
   results: { include: { playerScores: true }, orderBy: { createdAt: 'asc' as const } },
+  attempts: { orderBy: { createdAt: 'asc' as const } },
 };
 export type MatchRecord = Prisma.MatchGetPayload<{ include: typeof matchInclude }>;
 export const rulesHash = (value: unknown) =>

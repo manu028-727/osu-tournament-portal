@@ -554,6 +554,136 @@ export function MatchRulesFields({
         </label>
       </div>
       <fieldset className="border-t pt-5">
+        <legend className="text-lg font-semibold">{tr('Referee procedures')}</legend>
+        <div className="mt-4 grid-fields">
+          <Field label={tr('Same-category limit applies to')}>
+            <select
+              value={rules.doubleSelectionScope}
+              onChange={(e) =>
+                onChange({
+                  ...rules,
+                  doubleSelectionScope: e.target.value as MatchRules['doubleSelectionScope'],
+                })
+              }
+            >
+              <option value="CONSECUTIVE">{tr('Two in a row')}</option>
+              <option value="ANY">{tr('Any two in the match')}</option>
+            </select>
+          </Field>
+          <Field label={tr('Replays are counted per')}>
+            <select
+              value={rules.replayAllowance.scope}
+              onChange={(e) =>
+                onChange({
+                  ...rules,
+                  replayAllowance: {
+                    ...rules.replayAllowance,
+                    scope: e.target.value as MatchRules['replayAllowance']['scope'],
+                  },
+                })
+              }
+            >
+              <option value="NONE">{tr('Not counted')}</option>
+              <option value="PLAYER">{tr('Player')}</option>
+              <option value="TEAM">{tr('Team')}</option>
+            </select>
+          </Field>
+          {rules.replayAllowance.scope !== 'NONE' && (
+            <Field label={tr('Replays allowed per match')}>
+              <input
+                type="number"
+                min={0}
+                max={8}
+                value={rules.replayAllowance.perMatch}
+                onChange={(e) =>
+                  onChange({
+                    ...rules,
+                    replayAllowance: {
+                      ...rules.replayAllowance,
+                      perMatch: Number(e.target.value),
+                    },
+                  })
+                }
+              />
+            </Field>
+          )}
+          <Field label={tr('When the pick timer runs out')}>
+            <select
+              value={rules.timerExpiry.pick}
+              onChange={(e) =>
+                onChange({
+                  ...rules,
+                  timerExpiry: {
+                    ...rules.timerExpiry,
+                    pick: e.target.value as MatchRules['timerExpiry']['pick'],
+                  },
+                })
+              }
+            >
+              <option value="NONE">{tr('Referee decides')}</option>
+              <option value="PASS_TO_OPPONENT">{tr('Turn passes to the opponent')}</option>
+              <option value="RANDOM_MAP">{tr('A random map is chosen')}</option>
+            </select>
+          </Field>
+          <Field label={tr('When the ban timer runs out')}>
+            <select
+              value={rules.timerExpiry.ban}
+              onChange={(e) =>
+                onChange({
+                  ...rules,
+                  timerExpiry: {
+                    ...rules.timerExpiry,
+                    ban: e.target.value as MatchRules['timerExpiry']['ban'],
+                  },
+                })
+              }
+            >
+              <option value="NONE">{tr('Referee decides')}</option>
+              <option value="PASS_TO_OPPONENT">{tr('Turn passes to the opponent')}</option>
+              <option value="RANDOM_MAP">{tr('A random map is chosen')}</option>
+            </select>
+          </Field>
+          <Field label={tr('When the ready timer runs out')}>
+            <select
+              value={rules.timerExpiry.ready}
+              onChange={(e) =>
+                onChange({
+                  ...rules,
+                  timerExpiry: {
+                    ...rules.timerExpiry,
+                    ready: e.target.value as MatchRules['timerExpiry']['ready'],
+                  },
+                })
+              }
+            >
+              <option value="NONE">{tr('Referee decides')}</option>
+              <option value="FORCE_START">{tr('Force the map to start')}</option>
+            </select>
+          </Field>
+          <label className="flex min-h-11 items-center gap-2">
+            <input
+              type="checkbox"
+              checked={rules.timerExpiry.warnFirst}
+              onChange={(e) =>
+                onChange({
+                  ...rules,
+                  timerExpiry: { ...rules.timerExpiry, warnFirst: e.target.checked },
+                })
+              }
+            />
+            {tr('A team’s first overrun is only a warning')}
+          </label>
+          <label className="flex min-h-11 items-center gap-2">
+            <input
+              type="checkbox"
+              checked={rules.inviteWholeRoster}
+              onChange={(e) => onChange({ ...rules, inviteWholeRoster: e.target.checked })}
+            />
+            {tr('Invite the whole roster, not just captains')}
+          </label>
+        </div>
+      </fieldset>
+      <fieldset className="border-t pt-5">
         <legend className="text-lg font-semibold">{tr('FreeMod requirements')}</legend>
         <p className="mt-1 text-sm text-muted">
           {tr('Each player fills the first requirement their mods satisfy.')}

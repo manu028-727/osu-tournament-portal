@@ -74,6 +74,15 @@ export type MatchResultView = {
   }[];
 };
 export type MatchView = MatchSummary & {
+  attempts?: {
+    id: string;
+    actionId: string | null;
+    kind: string;
+    side: Side | null;
+    osuId: number | null;
+    reason: string;
+    beyondAllowance: boolean;
+  }[];
   importedHistory?: {
     worksheet: string;
     discord: string;

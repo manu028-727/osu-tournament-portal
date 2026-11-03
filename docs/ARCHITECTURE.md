@@ -307,6 +307,12 @@ revisions. Structure-only copy never invents beatmaps or copies review assignmen
 
 ## Match State, Numbers And Brackets
 
+`MatchMapAttempt` records draws and replays on a pick, which cannot be results because a
+result needs a winner and one per action. `match.attempt` counts allowances from those rows.
+`match.sanction` writes an event; `MAP_LOSS`, `MATCH_LOSS` and `DISQUALIFICATION` delegate to
+`match.winner` and `match.forfeit` under their own permissions, then take the next event
+version, so no result is written around the state machine. `timerConsequence` only suggests.
+
 `match-engine.ts` is pure workflow/calculation; `matches-service.ts` owns persistence,
 with shared validation/rule/type modules. Matches freeze participants/rules/pool
 revision so registration/stage edits cannot silently change play. States: SCHEDULED,

@@ -217,14 +217,33 @@ export function validateDraftAction(
       : input.kind === 'BAN'
         ? !rules.allowDoubleBans
         : false;
-  if (
-    restricted &&
-    !expected.tiebreakerOnly &&
-    previous?.category === slot.category &&
-    !rules.categoryExceptions.includes(slot.category)
-  )
-    throw new AppError('Consecutive picks or bans from this category are not allowed.');
+  if (restricted && !expected.tiebreakerOnly && !rules.categoryExceptions.includes(slot.category)) {
+    if (
+      rules.doubleSelectionScope === 'ANY' &&
+      actions.some(
+        (a) => a.side === input.side && a.kind === input.kind && a.category === slot.category,
+      )
+    )
+      throw new AppError('This team already chose a map from this category.');
+    if (previous?.category === slot.category)
+      throw new AppError('Consecutive picks or bans from this category are not allowed.');
+  }
   return slot;
+}
+// What the rules ask for when a timer runs out, given how often this team has done so.
+export function timerConsequence(
+  rules: MatchRules,
+  kind: 'PICK' | 'BAN' | 'READY',
+  priorOffences: number,
+) {
+  const configured =
+    kind === 'PICK'
+      ? rules.timerExpiry.pick
+      : kind === 'BAN'
+        ? rules.timerExpiry.ban
+        : rules.timerExpiry.ready;
+  if (configured === 'NONE') return null;
+  return rules.timerExpiry.warnFirst && priorOffences === 0 ? ('WARNING' as const) : configured;
 }
 export function lobbyCommands(
   rules: MatchRules,

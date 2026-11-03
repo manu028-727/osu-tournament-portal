@@ -39,6 +39,7 @@ import {
 } from './shared';
 import { MatchScoreDialog, type ScoreSelection } from './match-score-dialog';
 import { MatchTimer } from './match-timer';
+import { RefereeRulesPanel } from './referee-rules-panel';
 import { MATCH_STATUS_LABELS } from '@/lib/match-display';
 import { useTournamentTime, useTournamentScope } from '@/components/tournament-scope';
 import { GuidedMatch } from './guided-match';
@@ -551,6 +552,14 @@ export function RefereePanel({
                 )
               }
             />
+            {active && operate && (
+              <RefereeRulesPanel
+                match={m}
+                serverNow={data.serverNow}
+                busy={busy}
+                post={(input, message) => void post(input, message)}
+              />
+            )}
             {m.rollA !== null && (
               <p className="text-sm text-muted">
                 {tr('Roll A:')} {m.rollA} {tr('· Roll B:')} {m.rollB} {tr('· First pick: Team')}{' '}
@@ -620,7 +629,10 @@ export function RefereePanel({
                           ...(['A', 'B'] as const).flatMap((side) =>
                             m.participants[side].members
                               .filter(
-                                (p) => p.captain || m.participants[side].format === 'INDIVIDUAL',
+                                (p) =>
+                                  m.rules.inviteWholeRoster ||
+                                  p.captain ||
+                                  m.participants[side].format === 'INDIVIDUAL',
                               )
                               .map((p) => `!mp invite #${p.osuId}`),
                           ),

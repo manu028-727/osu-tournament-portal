@@ -347,6 +347,13 @@ reuse. Include lobby setup, invites, referee/timer/start helpers, Discord match
 pings and configured rule references. Commands use actual tournament game mode,
 NoFail policy, team/scoring settings and registered player IDs.
 
+Rules can limit same-category selections to two in a row or any two in the match, and invite
+whole rosters. When a timer runs out, the panel says what the rules ask for, with a first
+overrun as only a warning if configured, and the referee records it; nothing moves by itself.
+Replays count per player or team against a configured allowance, which a referee may exceed
+as a recorded choice, and draws are recorded without awarding the map. Sanctions run through
+the normal result and forfeit actions, so losing a map or match stays inside the state machine.
+
 Persist chronological actions, map/player scores, converted values, current score,
 events and result revisions. Best-of completion, submission, confirmation, forfeits,
 disputes, reopening, undo/corrections and permanent deletion use permission-checked,

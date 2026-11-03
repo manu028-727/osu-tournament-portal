@@ -58,6 +58,24 @@ export const matchRulesSchema = z
     protectOrder: z.enum(['ABAB', 'ABBA']).default('ABBA'),
     tiebreakerBanOrder: z.enum(['ABAB', 'ABBA']).default('ABBA'),
     tiebreakerBanFirstSide: z.enum(SIDES).default('A'),
+    // Whether a double pick means two in a row, or any two from one category all match.
+    doubleSelectionScope: z.enum(['CONSECUTIVE', 'ANY']).default('CONSECUTIVE'),
+    inviteWholeRoster: z.boolean().default(false),
+    replayAllowance: z
+      .strictObject({
+        scope: z.enum(['NONE', 'PLAYER', 'TEAM']),
+        perMatch: z.number().int().min(0).max(8),
+      })
+      .default({ scope: 'NONE', perMatch: 0 }),
+    // What the rules say happens when a timer runs out. The referee always carries it out.
+    timerExpiry: z
+      .strictObject({
+        pick: z.enum(['NONE', 'PASS_TO_OPPONENT', 'RANDOM_MAP']),
+        ban: z.enum(['NONE', 'PASS_TO_OPPONENT', 'RANDOM_MAP']),
+        ready: z.enum(['NONE', 'FORCE_START']),
+        warnFirst: z.boolean(),
+      })
+      .default({ pick: 'NONE', ban: 'NONE', ready: 'NONE', warnFirst: false }),
     allowDoublePicks: z.boolean().default(false),
     allowDoubleBans: z.boolean().default(false),
     categoryExceptions: z
@@ -243,6 +261,7 @@ export function neutralMatchRules(
   const required = fields.teamSize >= 2 ? 1 : 0;
   return matchRulesSchema.parse({
     ...fields,
+    inviteWholeRoster: true,
     multiplierMode: 'NONE',
     modMultipliers: {},
     freeModRequiredHD: required,

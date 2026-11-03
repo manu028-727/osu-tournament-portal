@@ -328,6 +328,8 @@ async function applyAdminOperation(
     case 'match.multiplayer.associate':
     case 'match.timer':
     case 'match.incident':
+    case 'match.attempt':
+    case 'match.sanction':
     case 'match.lobby':
     case 'match.submit':
     case 'match.confirm':
