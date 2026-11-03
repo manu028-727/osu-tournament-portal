@@ -860,6 +860,8 @@ async function applyAdminOperation(
     !a.type.startsWith('competition.') &&
     !a.type.startsWith('qualifier.standings.') &&
     !a.type.endsWith('.preview') &&
+    // Checking pasted lines changes nothing; only applying them belongs in the history.
+    !(a.type === 'formation.paste' && !a.apply) &&
     a.type !== 'qualifier.policy.save' &&
     a.type !== 'stage.reconcile'
   )

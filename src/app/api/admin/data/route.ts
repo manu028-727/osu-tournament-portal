@@ -95,8 +95,10 @@ export async function GET(request: Request) {
             .string()
             .max(100)
             .parse(url.searchParams.get('q') || '');
+          // A solo entry retired by team formation stays in history, not in the list to edit.
           const where = q
             ? {
+                supersededAt: null,
                 OR: [
                   { name: { contains: q, mode: 'insensitive' as const } },
                   {
@@ -115,7 +117,7 @@ export async function GET(request: Request) {
                   },
                 ],
               }
-            : {};
+            : { supersededAt: null };
           const window =
             url.searchParams.get('paged') === '1'
               ? pageWindow(

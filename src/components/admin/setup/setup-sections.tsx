@@ -219,7 +219,7 @@ export function RegistrationSection({ data, reload }: SectionProps) {
           save({}, tr('Registration settings saved.'));
         }}
       >
-        <RegistrationSettings value={registration} onChange={setRegistration} />
+        <RegistrationSettings value={registration} onChange={setRegistration} rostersElsewhere />
         <QualifierBookingSettings value={booking} onChange={setBooking} />
         <div className="flex flex-wrap items-center gap-2">
           <SaveButton busy={busy} disabled={busy || !dirty}>

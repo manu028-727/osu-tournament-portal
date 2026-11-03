@@ -133,11 +133,11 @@ Principal handlers under `src/app/api`:
 | `/api/irc/ticket`, `/api/internal/irc`            | Session-bound ticket and signed reauthorized RPC                           |
 | `/api/health`                                     | Runtime health used by image checks                                        |
 
-Admin data includes overview, homepage/rules, settings, stages/mappools/pooling,
+Admin data includes the setup workspace, homepage/rules, settings, stages/mappools/pooling,
 staff/media/users/roles/teams, matches/referee/detail/history/events, referees,
 multiplayer history, qualifiers/stages/standings, competition/correction, stage
 reconciliation, audit and sheet data. Exact projections live in route/types. Empty
-authorized collections are valid; unknown sections are 404. Audit/overview return
+authorized collections are valid; unknown sections are 404. Audit returns
 summary columns, not sensitive raw audit payloads.
 
 The primary mutation pipeline:
@@ -566,8 +566,9 @@ reads it too. `settings.save` merges `copy` onto what is stored, so text for ret
 in the record and in archives while `siteCopy` no longer offers it.
 
 `resources.ts` derives balances; nothing stores one. `resource-service.ts` reads auction prices
-from lots, earnings from `COMPLETED` matches and their non-voided results, and rounds from each
-node's key, so `g2-r3` is round 3 of its lane. `resourcePolicy` is configuration saved through
+from lots, earnings from each `COMPLETED` match's own map score, which any correction or summary
+result updates, ignoring forfeits because they record the target score without maps, and rounds
+from each node's key, so `g2-r3` is round 3 of its lane. `resourcePolicy` is configuration saved through
 `settings.save`. Purchases snapshot their price and compare the price the operator saw.
 Purchases and adjustments restrict team deletion and block reopening a board.
 

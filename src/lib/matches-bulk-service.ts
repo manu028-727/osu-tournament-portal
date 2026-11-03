@@ -145,7 +145,12 @@ export async function applyBulkScheduleAction(
           [record.matchNumber, targetRules.teamSize],
         );
       const approved = await tx.team.count({
-        where: { tournamentId, id: { in: roster.map((team) => team.id!) }, status: 'APPROVED' },
+        where: {
+          tournamentId,
+          id: { in: roster.map((team) => team.id!) },
+          status: 'APPROVED',
+          supersededAt: null,
+        },
       });
       if (approved !== 2)
         throw new AppError('Match {0} needs two approved entrants.', 400, [record.matchNumber]);

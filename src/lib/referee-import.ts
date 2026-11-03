@@ -122,7 +122,7 @@ export async function importPreview(actor: Actor, id: string) {
       orderBy: { position: 'asc' },
     }),
     db.team.findMany({
-      where: { status: 'APPROVED' },
+      where: { status: 'APPROVED', supersededAt: null },
       select: { id: true, name: true },
       orderBy: { name: 'asc' },
     }),
@@ -410,7 +410,11 @@ export async function applyWorkbook(original: Actor, input: z.infer<typeof impor
           include: { mappool: { include: { publishedRevision: { include: { slots: true } } } } },
         });
         const teams = await tx.team.findMany({
-          where: { id: { in: [input.create.teamAId, input.create.teamBId] }, status: 'APPROVED' },
+          where: {
+            id: { in: [input.create.teamAId, input.create.teamBId] },
+            status: 'APPROVED',
+            supersededAt: null,
+          },
           include: teamInclude,
         });
         const tournament = await tx.tournament.findUniqueOrThrow({ where: { id: tournamentId } });

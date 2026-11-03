@@ -323,7 +323,7 @@ export async function applyQualifierParticipantMove(
   if (source) {
     if (
       (await tx.team.count({
-        where: { tournamentId, id: { in: action.teamIds }, status: 'APPROVED' },
+        where: { tournamentId, id: { in: action.teamIds }, status: 'APPROVED', supersededAt: null },
       })) !== action.teamIds.length
     )
       throw new AppError('Select approved entrants from this tournament.');
@@ -336,7 +336,7 @@ export async function applyQualifierParticipantMove(
     });
   } else {
     const teams = await tx.team.findMany({
-      where: { tournamentId, id: { in: action.teamIds }, status: 'APPROVED' },
+      where: { tournamentId, id: { in: action.teamIds }, status: 'APPROVED', supersededAt: null },
       include: teamInclude,
     });
     if (teams.length !== action.teamIds.length)

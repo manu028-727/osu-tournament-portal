@@ -15,7 +15,9 @@ const match = (fields: Partial<ConfirmedMatch> = {}): ConfirmedMatch => ({
   teamAId: 'a',
   teamBId: 'b',
   winnerSide: 'A',
-  mapWinners: ['A', 'A', 'B', 'A'],
+  scoreA: 3,
+  scoreB: 1,
+  forfeit: false,
   ...fields,
 });
 // The written earnings of one real event: 200 per map, 100 in losers rounds after the second.
@@ -66,9 +68,11 @@ describe('match earnings', () => {
     expect(matchEarnings(paid, match(), 'b').amount).toBe(10);
   });
 
-  it('earns no map money from a forfeit, which plays no maps', () => {
-    const forfeit = match({ mapWinners: [] });
+  it('earns no map money from a forfeit, whose score records no maps played', () => {
+    const forfeit = match({ scoreA: 6, scoreB: 0, forfeit: true });
     expect(matchEarnings(policy, forfeit, 'a')).toEqual({ maps: 0, amount: 0 });
+    const paid = resourcePolicy({ earnings: { mapWin: 10, matchWin: 100 } });
+    expect(matchEarnings(paid, forfeit, 'a').amount).toBe(100);
   });
 
   it('ignores teams that did not play', () => {
@@ -100,7 +104,7 @@ describe('team balance', () => {
   });
 
   it('falls with a corrected result without anything being recorded', () => {
-    const corrected = { ...base, matches: [match({ mapWinners: ['A', 'B', 'B', 'B'] })] };
+    const corrected = { ...base, matches: [match({ scoreA: 1, scoreB: 3, winnerSide: 'B' })] };
     expect(teamBalance('a', base).balance - teamBalance('a', corrected).balance).toBe(400);
   });
 

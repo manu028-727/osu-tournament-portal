@@ -1455,7 +1455,12 @@ export async function assertCompetitionMatchStart(
     throw new AppError('The frozen match rosters do not satisfy the configured team size.', 409);
   if (
     (await tx.team.count({
-      where: { tournamentId, id: { in: computed.slots.map((s) => s.teamId!) }, status: 'APPROVED' },
+      where: {
+        tournamentId,
+        id: { in: computed.slots.map((s) => s.teamId!) },
+        status: 'APPROVED',
+        supersededAt: null,
+      },
     })) !== 2
   )
     throw new AppError('Both bracket participants must still have approved registrations.', 409);

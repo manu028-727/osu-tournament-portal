@@ -75,7 +75,7 @@ async function context(tx: Prisma.TransactionClient, tournamentId: string, stage
     stage.qualifierPolicy || { requiredPlayers: rules.teamSize },
   );
   const teams = await tx.team.findMany({
-    where: { status: 'APPROVED' },
+    where: { status: 'APPROVED', supersededAt: null },
     include: teamInclude,
     orderBy: { id: 'asc' },
   });

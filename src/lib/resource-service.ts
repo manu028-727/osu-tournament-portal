@@ -53,7 +53,9 @@ async function ledgers(transaction: Prisma.TransactionClient, tournamentId: stri
         teamAId: true,
         teamBId: true,
         winnerSide: true,
-        results: { where: { voided: false }, select: { winnerSide: true } },
+        scoreA: true,
+        scoreB: true,
+        forfeitSide: true,
         bracketNode: { select: { round: { select: { lane: true, key: true } } } },
       },
     }),
@@ -74,7 +76,9 @@ async function ledgers(transaction: Prisma.TransactionClient, tournamentId: stri
     teamAId: match.teamAId,
     teamBId: match.teamBId,
     winnerSide: match.winnerSide,
-    mapWinners: match.results.map((result) => result.winnerSide),
+    scoreA: match.scoreA,
+    scoreB: match.scoreB,
+    forfeit: !!match.forfeitSide,
   }));
   // Once teams are formed they hold the budgets, and unsold players have nothing to spend.
   const holders = formed.length

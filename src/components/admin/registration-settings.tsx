@@ -1,19 +1,60 @@
 'use client';
+import { useState } from 'react';
 import { useT } from '@/components/locale';
 import type { RegistrationPolicy } from '@/lib/registration-policy';
 import { localDateTimeInput } from '@/lib/utils';
 import { Field } from './shared';
 import { Button } from '../ui/button';
 
+type NumberKey = 'minPlayers' | 'maxPlayers' | 'maxSubstitutes' | 'minRank' | 'maxRank';
+const NUMBER_LABELS: Record<NumberKey, string> = {
+  minPlayers: 'Minimum starters (0 uses gameplay rules)',
+  maxPlayers: 'Maximum roster size',
+  maxSubstitutes: 'Maximum substitutes',
+  minRank: 'Minimum rank (optional)',
+  maxRank: 'Maximum rank (optional)',
+};
 export function RegistrationSettings({
   value,
   onChange,
+  rostersElsewhere = false,
 }: {
   value: RegistrationPolicy;
   onChange: (value: RegistrationPolicy) => void;
+  // The setup workspace edits roster sizes and entry format beside team size.
+  rostersElsewhere?: boolean;
 }) {
   const tr = useT();
   const update = (patch: Partial<RegistrationPolicy>) => onChange({ ...value, ...patch });
+  // Limits stay folded until an event uses them, and open once one is set.
+  const [limitsOpen] = useState(
+    !!(
+      value.minRank ||
+      value.maxRank ||
+      value.rankSumMin ||
+      value.rankSumMax ||
+      value.rankLockAt ||
+      value.countries.length ||
+      value.countryTeams ||
+      value.ineligible !== 'REJECT'
+    ),
+  );
+  const numberField = (key: NumberKey) => (
+    <Field key={key} label={tr(NUMBER_LABELS[key])}>
+      <input
+        type="number"
+        min={key.includes('Rank') ? 1 : 0}
+        max={key.includes('Rank') ? 2147483647 : 32}
+        value={value[key] ?? ''}
+        onChange={(event) =>
+          update({
+            [key]:
+              event.target.value === '' && key.includes('Rank') ? null : Number(event.target.value),
+          })
+        }
+      />
+    </Field>
+  );
   return (
     <section id="registration" className="form-section space-y-4">
       <h2 className="text-lg font-semibold">{tr('Tournament registration')}</h2>
@@ -32,18 +73,20 @@ export function RegistrationSettings({
             <option value="EXTERNAL">{tr('External registration link')}</option>
           </select>
         </Field>
-        <Field label={tr('Entry format')}>
-          <select
-            value={value.format}
-            onChange={(event) =>
-              update({ format: event.target.value as RegistrationPolicy['format'] })
-            }
-          >
-            <option value="AUTO">{tr('Use tournament format')}</option>
-            <option value="TEAM">{tr('Teams')}</option>
-            <option value="INDIVIDUAL">{tr('Solo')}</option>
-          </select>
-        </Field>
+        {!rostersElsewhere && (
+          <Field label={tr('Entry format')}>
+            <select
+              value={value.format}
+              onChange={(event) =>
+                update({ format: event.target.value as RegistrationPolicy['format'] })
+              }
+            >
+              <option value="AUTO">{tr('Use tournament format')}</option>
+              <option value="TEAM">{tr('Teams')}</option>
+              <option value="INDIVIDUAL">{tr('Solo')}</option>
+            </select>
+          </Field>
+        )}
         {(['opensAt', 'closesAt', 'rosterClosesAt'] as const).map((key, index) => (
           <Field
             key={key}
@@ -66,118 +109,97 @@ export function RegistrationSettings({
             />
           </Field>
         ))}
-        {(['minPlayers', 'maxPlayers', 'maxSubstitutes', 'minRank', 'maxRank'] as const).map(
-          (key, index) => (
+        {!rostersElsewhere &&
+          (['minPlayers', 'maxPlayers', 'maxSubstitutes'] as const).map(numberField)}
+      </div>
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={value.rosterLocked}
+          onChange={(event) => update({ rosterLocked: event.target.checked })}
+        />
+        {tr('Lock captain roster edits')}
+      </label>
+      <details open={limitsOpen} className="border-y py-2">
+        <summary className="min-h-11 cursor-pointer py-2 font-semibold">
+          {tr('Eligibility limits')}
+        </summary>
+        <div className="mt-3 grid gap-4 sm:grid-cols-2">
+          {(['minRank', 'maxRank'] as const).map(numberField)}
+          {(['rankSumMin', 'rankSumMax'] as const).map((key, index) => (
             <Field
               key={key}
               label={tr(
-                [
-                  'Minimum starters (0 uses gameplay rules)',
-                  'Maximum roster size',
-                  'Maximum substitutes',
-                  'Minimum rank (optional)',
-                  'Maximum rank (optional)',
-                ][index],
+                ['Lowest team rank sum (optional)', 'Highest team rank sum (optional)'][index],
               )}
             >
               <input
                 type="number"
-                min={key.includes('Rank') ? 1 : 0}
-                max={key.includes('Rank') ? 2147483647 : 32}
+                min={1}
+                max={2147483647}
                 value={value[key] ?? ''}
                 onChange={(event) =>
-                  update({
-                    [key]:
-                      event.target.value === '' && key.includes('Rank')
-                        ? null
-                        : Number(event.target.value),
-                  })
+                  update({ [key]: event.target.value === '' ? null : Number(event.target.value) })
                 }
               />
             </Field>
-          ),
-        )}
-        {(['rankSumMin', 'rankSumMax'] as const).map((key, index) => (
+          ))}
+          {(value.rankSumMin !== null || value.rankSumMax !== null) && (
+            <Field label={tr('The rank sum counts')}>
+              <select
+                value={value.rankSumScope}
+                onChange={(event) =>
+                  update({ rankSumScope: event.target.value as RegistrationPolicy['rankSumScope'] })
+                }
+              >
+                <option value="STARTERS">{tr('Starting players')}</option>
+                <option value="ROSTER">{tr('The whole roster')}</option>
+              </select>
+            </Field>
+          )}
           <Field
-            key={key}
-            label={tr(
-              ['Lowest team rank sum (optional)', 'Highest team rank sum (optional)'][index],
-            )}
+            label={tr('Ranks lock at (your timezone, optional)')}
+            hint={tr('After this, a player already on a roster keeps their recorded rank.')}
           >
             <input
-              type="number"
-              min={1}
-              max={2147483647}
-              value={value[key] ?? ''}
+              type="datetime-local"
+              value={localDateTimeInput(value.rankLockAt)}
               onChange={(event) =>
-                update({ [key]: event.target.value === '' ? null : Number(event.target.value) })
+                update({
+                  rankLockAt: event.target.value
+                    ? new Date(event.target.value).toISOString()
+                    : null,
+                })
               }
             />
           </Field>
-        ))}
-        {(value.rankSumMin !== null || value.rankSumMax !== null) && (
-          <Field label={tr('The rank sum counts')}>
+          <Field label={tr('When a player does not meet these limits')}>
             <select
-              value={value.rankSumScope}
+              value={value.ineligible}
               onChange={(event) =>
-                update({ rankSumScope: event.target.value as RegistrationPolicy['rankSumScope'] })
+                update({ ineligible: event.target.value as RegistrationPolicy['ineligible'] })
               }
             >
-              <option value="STARTERS">{tr('Starting players')}</option>
-              <option value="ROSTER">{tr('The whole roster')}</option>
+              <option value="REJECT">{tr('Refuse the registration')}</option>
+              <option value="REVIEW">{tr('Keep it for an organizer to decide')}</option>
             </select>
           </Field>
-        )}
-        <Field
-          label={tr('Ranks lock at (your timezone, optional)')}
-          hint={tr('After this, a player already on a roster keeps their recorded rank.')}
-        >
-          <input
-            type="datetime-local"
-            value={localDateTimeInput(value.rankLockAt)}
-            onChange={(event) =>
-              update({
-                rankLockAt: event.target.value ? new Date(event.target.value).toISOString() : null,
-              })
-            }
-          />
-        </Field>
-        <Field label={tr('When a player does not meet these limits')}>
-          <select
-            value={value.ineligible}
-            onChange={(event) =>
-              update({ ineligible: event.target.value as RegistrationPolicy['ineligible'] })
-            }
-          >
-            <option value="REJECT">{tr('Refuse the registration')}</option>
-            <option value="REVIEW">{tr('Keep it for an organizer to decide')}</option>
-          </select>
-        </Field>
-        <Field label={tr('Eligible countries (ISO codes, optional)')}>
-          <input
-            defaultValue={value.countries.join(', ')}
-            placeholder="IT, FR"
-            onBlur={(event) =>
-              update({
-                countries: event.target.value
-                  .split(',')
-                  .map((code) => code.trim().toUpperCase())
-                  .filter(Boolean),
-              })
-            }
-          />
-        </Field>
-      </div>
-      <div className="flex flex-wrap gap-5">
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={value.rosterLocked}
-            onChange={(event) => update({ rosterLocked: event.target.checked })}
-          />
-          {tr('Lock captain roster edits')}
-        </label>
-        <label className="flex items-center gap-2">
+          <Field label={tr('Eligible countries (ISO codes, optional)')}>
+            <input
+              defaultValue={value.countries.join(', ')}
+              placeholder="IT, FR"
+              onBlur={(event) =>
+                update({
+                  countries: event.target.value
+                    .split(',')
+                    .map((code) => code.trim().toUpperCase())
+                    .filter(Boolean),
+                })
+              }
+            />
+          </Field>
+        </div>
+        <label className="mt-4 flex items-center gap-2">
           <input
             type="checkbox"
             checked={value.countryTeams}
@@ -185,7 +207,7 @@ export function RegistrationSettings({
           />
           {tr('National teams: one team per country, with players from that country')}
         </label>
-      </div>
+      </details>
       <h3 className="font-semibold">{tr('Custom registration fields')}</h3>
       <p className="text-xs text-muted">
         {tr(

@@ -691,37 +691,30 @@ describe.sequential('budgets and items', () => {
         participants: {},
       },
     });
-    const action = await db.matchMapAction.create({
-      data: {
-        matchId: created.id,
-        sequence: 1,
-        kind: 'PICK',
-        side: 'A',
-        slotName: 'NM1',
-        category: 'NM',
-      },
-    });
-    const result = await db.matchMapResult.create({
-      data: { matchId: created.id, actionId: action.id, winnerSide: 'A', scoreA: 2, scoreB: 1 },
-    });
     const before = (await balance(teamA.id)).balance;
-    // Still in progress, so a recorded map earns nothing yet.
+    // Still in progress, so nothing is earned even with a score on the board.
+    await db.match.update({ where: { id: created.id }, data: { scoreA: 2 } });
     expect((await balance(teamA.id)).earned).toBe(0);
     await db.match.update({
       where: { id: created.id },
-      data: { status: 'COMPLETED', winnerSide: 'A', scoreA: 2, scoreB: 0 },
+      data: { status: 'COMPLETED', winnerSide: 'A', scoreA: 2, scoreB: 1 },
     });
-    expect((await balance(teamA.id)).earned).toBe(200);
-    expect((await balance(teamA.id)).balance).toBe(before + 200);
-    expect((await balance(teamB.id)).earned).toBe(0);
-    // A correction moves the money with no ledger entry having to be written.
-    await db.matchMapResult.update({ where: { id: result.id }, data: { winnerSide: 'B' } });
-    expect((await balance(teamA.id)).earned).toBe(0);
+    expect((await balance(teamA.id)).earned).toBe(400);
+    expect((await balance(teamA.id)).balance).toBe(before + 400);
     expect((await balance(teamB.id)).earned).toBe(200);
-    await db.matchMapResult.update({ where: { id: result.id }, data: { voided: true } });
+    // A correction moves the money with no ledger entry having to be written.
+    await db.match.update({
+      where: { id: created.id },
+      data: { winnerSide: 'B', scoreA: 0, scoreB: 2 },
+    });
+    expect((await balance(teamA.id)).earned).toBe(0);
+    expect((await balance(teamB.id)).earned).toBe(400);
+    // A forfeit records the target score without a map being played.
+    await db.match.update({
+      where: { id: created.id },
+      data: { forfeitSide: 'A', winnerSide: 'B', scoreA: 0, scoreB: 2 },
+    });
     expect((await balance(teamB.id)).earned).toBe(0);
-    await db.matchMapResult.delete({ where: { id: result.id } });
-    await db.matchMapAction.delete({ where: { id: action.id } });
     await db.match.delete({ where: { id: created.id } });
   });
 
@@ -884,6 +877,20 @@ describe.sequential('boundaries around a formed roster', () => {
         teamIds: [retired, f.teams[1].id],
         generationKey: `${fx.prefix}-sneaky`,
         byePlacement: 'TOP_SEEDS',
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('refuses to seat a retired entrant in a new qualifier lobby', async () => {
+    await expect(
+      act(f.actor, {
+        type: 'qualifier.create',
+        code: `${fx.prefix}-late`,
+        stageId: f.stages.Qualifiers,
+        teamIds: [f.teams[0].id],
+        refereeIds: [],
+        scheduledAt: null,
+        notes: '',
       }),
     ).rejects.toThrow();
   });

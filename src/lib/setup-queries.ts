@@ -30,30 +30,25 @@ export async function setupWorkspaceData(actor: Actor) {
     include: { settings: true },
   });
   const settings = tournament.settings!;
-  const [stages, plan, pages, approvedEntrants, entrants, staff, sessions, brackets, matches] =
-    await Promise.all([
-      db.tournamentStage.findMany({
-        where: { archivedAt: null },
-        orderBy: [{ position: 'asc' }, { id: 'asc' }],
-        include: {
-          poolPlan: true,
-          mappool: {
-            include: { draftRevision: { include: { _count: { select: { slots: true } } } } },
-          },
+  const [stages, plan, pages, approvedEntrants, staff] = await Promise.all([
+    db.tournamentStage.findMany({
+      where: { archivedAt: null },
+      orderBy: [{ position: 'asc' }, { id: 'asc' }],
+      include: {
+        poolPlan: true,
+        mappool: {
+          include: { draftRevision: { include: { _count: { select: { slots: true } } } } },
         },
-      }),
-      loadFormatPlan(rootDb, tournamentId),
-      db.page.findMany({
-        where: { slug: { in: ['home', 'rules'] } },
-        select: { slug: true, draftRevisionId: true, publishedRevisionId: true },
-      }),
-      db.team.count({ where: { status: 'APPROVED', supersededAt: null } }),
-      db.team.count({ where: { supersededAt: null } }),
-      db.staffMember.count(),
-      db.qualifierLobby.count({ where: { deletedAt: null } }),
-      db.bracket.count(),
-      db.match.count({ where: { deletedAt: null } }),
-    ]);
+      },
+    }),
+    loadFormatPlan(rootDb, tournamentId),
+    db.page.findMany({
+      where: { slug: { in: ['home', 'rules'] } },
+      select: { slug: true, draftRevisionId: true, publishedRevisionId: true },
+    }),
+    db.team.count({ where: { status: 'APPROVED', supersededAt: null } }),
+    db.staffMember.count(),
+  ]);
   const registration = registrationPolicySchema.parse(settings.registrationPolicy || {});
   const rules = matchRulesSchema.parse(settings.matchRules);
   const setupState =
@@ -139,7 +134,6 @@ export async function setupWorkspaceData(actor: Actor) {
     planToken: plan.token,
     planLocked: plan.locked,
     planInvalid: plan.invalid,
-    counts: { entrants, approvedEntrants, staff, sessions, brackets, matches },
     format: await formatStatus(rootDb, tournamentId),
     eligibility,
     formation: can(actor, 'teams.view') ? await formationBoards(rootDb, tournamentId) : [],

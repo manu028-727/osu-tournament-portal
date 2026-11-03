@@ -19,6 +19,32 @@ const SANCTION_LABELS = {
 type Sanction = keyof typeof SANCTION_LABELS;
 type TimerKind = 'PICK' | 'BAN' | 'READY';
 
+// Teams announce these before the roll, so this shows from before a match starts.
+export function MatchPurchases({ match }: { match: MatchView }) {
+  const tr = useT();
+  const purchases = match.purchases ?? [];
+  if (!purchases.length) return null;
+  return (
+    <section className="border-y py-4" aria-labelledby="match-purchases">
+      <h3 id="match-purchases" className="font-semibold">
+        {tr('Items bought for this match')}
+      </h3>
+      <p className="text-xs text-muted">
+        {tr('You apply these by hand. Nothing here changes a score.')}
+      </p>
+      <ul className="mt-2 grid gap-1 text-sm">
+        {purchases.map((purchase) => (
+          <li key={purchase.id}>
+            <strong>{match.participants[purchase.side as Side].name}</strong>: {purchase.name}
+            {purchase.description && ` – ${purchase.description}`}
+            {purchase.note && <span className="text-muted"> ({purchase.note})</span>}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 // Suggests and records what the rules say. Nothing here plays a command or moves a turn:
 // the referee does that, and the record says what they decided.
 export function RefereeRulesPanel({
@@ -92,214 +118,192 @@ export function RefereeRulesPanel({
       },
       'Sanction recorded.',
     );
-  const purchases = match.purchases ?? [];
   return (
-    <>
-      {purchases.length > 0 && (
-        <section className="border-t py-4" aria-labelledby="match-purchases">
-          <h3 id="match-purchases" className="font-semibold">
-            {tr('Items bought for this match')}
-          </h3>
-          <p className="text-xs text-muted">
-            {tr('You apply these by hand. Nothing here changes a score.')}
-          </p>
-          <ul className="mt-2 grid gap-1 text-sm">
-            {purchases.map((purchase) => (
-              <li key={purchase.id}>
-                <strong>{match.participants[purchase.side as Side].name}</strong>: {purchase.name}
-                {purchase.description && ` – ${purchase.description}`}
-                {purchase.note && <span className="text-muted"> ({purchase.note})</span>}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      <details className="border-y py-4">
-        <summary className="min-h-10 cursor-pointer font-semibold">
-          {tr('Timers, replays and sanctions')}
-        </summary>
-        <div className="mt-4 grid gap-5">
-          {due && (
-            <div role="status" className="grid gap-2 border-l-2 border-amber-200 pl-3">
-              <p className="text-sm font-semibold">
-                {tr('The timer ran out. The rules ask for: {0}', tr(SANCTION_LABELS[due]))}
-              </p>
-              {due === 'FORCE_START' && <p className="font-mono text-sm">!mp start 10</p>}
-              {due === 'RANDOM_MAP' && randomMaps > 0 && (
-                <p className="font-mono text-sm">!roll {randomMaps}</p>
-              )}
-              <div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => record(due, actingSide, tr('Timer ran out'), timerRule)}
-                >
-                  {tr('Record it')}
-                </Button>
-              </div>
-            </div>
-          )}
-          <form
-            className="grid gap-3"
-            onSubmit={(event) => {
-              event.preventDefault();
-              post(
-                {
-                  type: 'match.attempt',
-                  id: match.id,
-                  baseVersion: match.version,
-                  actionId: pendingPick,
-                  kind: attemptKind,
-                  side: attemptSide,
-                  osuId: attemptPlayer ? Number(attemptPlayer) : null,
-                  reason: attemptReason,
-                  beyondAllowance: overAllowance,
-                },
-                'Attempt recorded.',
-              );
-              setAttemptReason('');
-            }}
-          >
-            <h3 className="font-semibold">{tr('Replay or draw on this map')}</h3>
-            <div className="grid-fields">
-              <Field label={tr('What happened')}>
-                <select
-                  value={attemptKind}
-                  onChange={(event) => setAttemptKind(event.target.value as 'DRAW' | 'REPLAY')}
-                >
-                  <option value="REPLAY">{tr('Replay requested')}</option>
-                  <option value="DRAW">{tr('Draw, to be replayed')}</option>
-                </select>
-              </Field>
-              {attemptKind === 'REPLAY' && rules.replayAllowance.scope !== 'PLAYER' && (
-                <Field label={tr('Team')}>
-                  <select
-                    value={attemptSide}
-                    onChange={(event) => setAttemptSide(event.target.value as Side)}
-                  >
-                    <option value="A">{match.participants.A.name}</option>
-                    <option value="B">{match.participants.B.name}</option>
-                  </select>
-                </Field>
-              )}
-              {attemptKind === 'REPLAY' && rules.replayAllowance.scope === 'PLAYER' && (
-                <Field label={tr('Player')}>
-                  <select
-                    required
-                    value={attemptPlayer}
-                    onChange={(event) => {
-                      setAttemptPlayer(event.target.value);
-                      const member = members.find(
-                        (item) => item.osuId === Number(event.target.value),
-                      );
-                      if (member) setAttemptSide(member.side);
-                    }}
-                  >
-                    <option value="">{tr('Choose a player')}</option>
-                    {members.map((member) => (
-                      <option key={member.osuId} value={member.osuId}>
-                        {member.username}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              )}
-              <Field label={tr('Why this replay or draw')}>
-                <input
-                  required
-                  minLength={3}
-                  maxLength={2000}
-                  value={attemptReason}
-                  onChange={(event) => setAttemptReason(event.target.value)}
-                />
-              </Field>
-            </div>
-            {rules.replayAllowance.scope !== 'NONE' && attemptKind === 'REPLAY' && (
-              <p className="text-sm text-muted">
-                {tr('{0} of {1} replays used.', used, rules.replayAllowance.perMatch)}{' '}
-                {overAllowance ? tr('Recording this goes over the allowance.') : ''}
-              </p>
+    <details className="border-y py-4">
+      <summary className="min-h-10 cursor-pointer font-semibold">
+        {tr('Timers, replays and sanctions')}
+      </summary>
+      <div className="mt-4 grid gap-5">
+        {due && (
+          <div role="status" className="grid gap-2 border-l-2 border-amber-200 pl-3">
+            <p className="text-sm font-semibold">
+              {tr('The timer ran out. The rules ask for: {0}', tr(SANCTION_LABELS[due]))}
+            </p>
+            {due === 'FORCE_START' && <p className="font-mono text-sm">!mp start 10</p>}
+            {due === 'RANDOM_MAP' && randomMaps > 0 && (
+              <p className="font-mono text-sm">!roll {randomMaps}</p>
             )}
             <div>
-              <Button type="submit" size="sm" variant="outline" disabled={busy || !pendingPick}>
-                {tr('Record attempt')}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() => record(due, actingSide, tr('Timer ran out'), timerRule)}
+              >
+                {tr('Record it')}
               </Button>
             </div>
-          </form>
-          <form
-            className="grid gap-3"
-            onSubmit={(event) => {
-              event.preventDefault();
-              record(sanction, sanctionSide, sanctionReason, null);
-              setSanctionReason('');
-            }}
-          >
-            <h3 className="font-semibold">{tr('Sanction')}</h3>
-            <div className="grid-fields">
-              <Field label={tr('Sanction')}>
-                <select
-                  value={sanction}
-                  onChange={(event) => setSanction(event.target.value as Sanction)}
-                >
-                  {(Object.keys(SANCTION_LABELS) as Sanction[]).map((key) => (
-                    <option key={key} value={key}>
-                      {tr(SANCTION_LABELS[key])}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+          </div>
+        )}
+        <form
+          className="grid gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            post(
+              {
+                type: 'match.attempt',
+                id: match.id,
+                baseVersion: match.version,
+                actionId: pendingPick,
+                kind: attemptKind,
+                side: attemptSide,
+                osuId: attemptPlayer ? Number(attemptPlayer) : null,
+                reason: attemptReason,
+                beyondAllowance: overAllowance,
+              },
+              'Attempt recorded.',
+            );
+            setAttemptReason('');
+          }}
+        >
+          <h3 className="font-semibold">{tr('Replay or draw on this map')}</h3>
+          <div className="grid-fields">
+            <Field label={tr('What happened')}>
+              <select
+                value={attemptKind}
+                onChange={(event) => setAttemptKind(event.target.value as 'DRAW' | 'REPLAY')}
+              >
+                <option value="REPLAY">{tr('Replay requested')}</option>
+                <option value="DRAW">{tr('Draw, to be replayed')}</option>
+              </select>
+            </Field>
+            {attemptKind === 'REPLAY' && rules.replayAllowance.scope !== 'PLAYER' && (
               <Field label={tr('Team')}>
                 <select
-                  value={sanctionSide}
-                  onChange={(event) => setSanctionSide(event.target.value as Side)}
+                  value={attemptSide}
+                  onChange={(event) => setAttemptSide(event.target.value as Side)}
                 >
                   <option value="A">{match.participants.A.name}</option>
                   <option value="B">{match.participants.B.name}</option>
                 </select>
               </Field>
-              <Field label={tr('Why this sanction')}>
-                <input
+            )}
+            {attemptKind === 'REPLAY' && rules.replayAllowance.scope === 'PLAYER' && (
+              <Field label={tr('Player')}>
+                <select
                   required
-                  minLength={3}
-                  maxLength={2000}
-                  value={sanctionReason}
-                  onChange={(event) => setSanctionReason(event.target.value)}
-                />
+                  value={attemptPlayer}
+                  onChange={(event) => {
+                    setAttemptPlayer(event.target.value);
+                    const member = members.find(
+                      (item) => item.osuId === Number(event.target.value),
+                    );
+                    if (member) setAttemptSide(member.side);
+                  }}
+                >
+                  <option value="">{tr('Choose a player')}</option>
+                  {members.map((member) => (
+                    <option key={member.osuId} value={member.osuId}>
+                      {member.username}
+                    </option>
+                  ))}
+                </select>
               </Field>
-            </div>
-            <div>
-              <Button
-                type="submit"
-                size="sm"
-                variant="outline"
-                disabled={busy || (sanction === 'MAP_LOSS' && !pendingPick)}
-              >
-                {tr('Record sanction')}
-              </Button>
-            </div>
-          </form>
-          {attempts.length > 0 && (
-            <div>
-              <h3 className="mb-2 font-semibold">{tr('Replays and draws')}</h3>
-              <ul className="space-y-1 text-sm">
-                {attempts.map((row) => (
-                  <li key={row.id}>
-                    {tr(row.kind === 'DRAW' ? 'Draw' : 'Replay')}
-                    {row.osuId
-                      ? ` · ${nameOf(row.osuId)}`
-                      : row.side
-                        ? ` · ${match.participants[row.side].name}`
-                        : ''}
-                    {row.beyondAllowance ? ` · ${tr('over the allowance')}` : ''} · {row.reason}
-                  </li>
-                ))}
-              </ul>
-            </div>
+            )}
+            <Field label={tr('Why this replay or draw')}>
+              <input
+                required
+                minLength={3}
+                maxLength={2000}
+                value={attemptReason}
+                onChange={(event) => setAttemptReason(event.target.value)}
+              />
+            </Field>
+          </div>
+          {rules.replayAllowance.scope !== 'NONE' && attemptKind === 'REPLAY' && (
+            <p className="text-sm text-muted">
+              {tr('{0} of {1} replays used.', used, rules.replayAllowance.perMatch)}{' '}
+              {overAllowance ? tr('Recording this goes over the allowance.') : ''}
+            </p>
           )}
-        </div>
-      </details>
-    </>
+          <div>
+            <Button type="submit" size="sm" variant="outline" disabled={busy || !pendingPick}>
+              {tr('Record attempt')}
+            </Button>
+          </div>
+        </form>
+        <form
+          className="grid gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            record(sanction, sanctionSide, sanctionReason, null);
+            setSanctionReason('');
+          }}
+        >
+          <h3 className="font-semibold">{tr('Sanction')}</h3>
+          <div className="grid-fields">
+            <Field label={tr('Sanction')}>
+              <select
+                value={sanction}
+                onChange={(event) => setSanction(event.target.value as Sanction)}
+              >
+                {(Object.keys(SANCTION_LABELS) as Sanction[]).map((key) => (
+                  <option key={key} value={key}>
+                    {tr(SANCTION_LABELS[key])}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={tr('Team')}>
+              <select
+                value={sanctionSide}
+                onChange={(event) => setSanctionSide(event.target.value as Side)}
+              >
+                <option value="A">{match.participants.A.name}</option>
+                <option value="B">{match.participants.B.name}</option>
+              </select>
+            </Field>
+            <Field label={tr('Why this sanction')}>
+              <input
+                required
+                minLength={3}
+                maxLength={2000}
+                value={sanctionReason}
+                onChange={(event) => setSanctionReason(event.target.value)}
+              />
+            </Field>
+          </div>
+          <div>
+            <Button
+              type="submit"
+              size="sm"
+              variant="outline"
+              disabled={busy || (sanction === 'MAP_LOSS' && !pendingPick)}
+            >
+              {tr('Record sanction')}
+            </Button>
+          </div>
+        </form>
+        {attempts.length > 0 && (
+          <div>
+            <h3 className="mb-2 font-semibold">{tr('Replays and draws')}</h3>
+            <ul className="space-y-1 text-sm">
+              {attempts.map((row) => (
+                <li key={row.id}>
+                  {tr(row.kind === 'DRAW' ? 'Draw' : 'Replay')}
+                  {row.osuId
+                    ? ` · ${nameOf(row.osuId)}`
+                    : row.side
+                      ? ` · ${match.participants[row.side].name}`
+                      : ''}
+                  {row.beyondAllowance ? ` · ${tr('over the allowance')}` : ''} · {row.reason}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </details>
   );
 }

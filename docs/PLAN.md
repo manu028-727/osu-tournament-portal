@@ -1539,6 +1539,7 @@ Recorded for human ruling. Simulations use the stated assumption and report it.
 | OIDC2026            | The reference sheet reconciles with native bonus removal and no tournament multiplier, not the written 2x/1.2x, across 17 EZ/FL rows                                                                                                                     | **Needs a host ruling**; both remain expressible              |
 | Italian Draft Cup 3 | Perk effects are unpublished; the sheet lists only prices (QF 4x500, SF 800, F 1000, GF 1500). Post uses $, sheet uses EUR. Team count (sheet shows 8), Losers structure and bid idle window unstated. "Random order from the seeding list" is ambiguous | Perks stay human-judged; lot order is an explicit setting     |
 | OWC 2025            | The wiki's prose numbers bracket seeds differently from its table and names only "Groups E through F" for Contender seeds, while the table uses E-H. Re-read at M2                                                                                       | The 16-match table is authoritative and is reproduced exactly |
+| Italian Draft Cup 3 | Which team fills first from reserves is unstated (one seat per team in turn is the stated choice here), as are the team seeding formula (average player seed here) and what happens if a fill overdraws a team (shown, not blocked)                      |
 
 **OIDC2026 run policy, from evidence.** The reference sheet reconciles under
 `BEST_PER_MAP`, so the forum's wording matches what was actually scored.

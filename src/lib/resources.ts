@@ -37,7 +37,10 @@ export type ConfirmedMatch = {
   teamAId: string | null;
   teamBId: string | null;
   winnerSide: 'A' | 'B' | null;
-  mapWinners: ('A' | 'B')[];
+  // Maps won, read from the match itself so that a summary result or correction counts too.
+  scoreA: number;
+  scoreB: number;
+  forfeit: boolean;
 };
 export const earningRates = (
   policy: ResourcePolicy,
@@ -52,13 +55,13 @@ export const earningRates = (
   return override ?? policy.earnings;
 };
 
-// What a team earned in one confirmed match. A forfeit plays no maps, so it earns only the
-// match rate: whether a forfeit should pay anything more is the organizers' call to adjust.
+// What a team earned in one confirmed match. A forfeit records the target score without
+// playing a map, so it earns only the match rate; anything more is the organizers' to adjust.
 export function matchEarnings(policy: ResourcePolicy, match: ConfirmedMatch, teamId: string) {
   const side = match.teamAId === teamId ? 'A' : match.teamBId === teamId ? 'B' : null;
   if (!side) return { maps: 0, amount: 0 };
   const rates = earningRates(policy, match);
-  const maps = match.mapWinners.filter((winner) => winner === side).length;
+  const maps = match.forfeit ? 0 : side === 'A' ? match.scoreA : match.scoreB;
   return {
     maps,
     amount: maps * rates.mapWin + (match.winnerSide === side ? rates.matchWin : 0),

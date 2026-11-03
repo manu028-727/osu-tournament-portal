@@ -39,7 +39,7 @@ import {
 } from './shared';
 import { MatchScoreDialog, type ScoreSelection } from './match-score-dialog';
 import { MatchTimer } from './match-timer';
-import { RefereeRulesPanel } from './referee-rules-panel';
+import { MatchPurchases, RefereeRulesPanel } from './referee-rules-panel';
 import { MATCH_STATUS_LABELS } from '@/lib/match-display';
 import { useTournamentTime, useTournamentScope } from '@/components/tournament-scope';
 import { GuidedMatch } from './guided-match';
@@ -379,6 +379,7 @@ export function RefereePanel({
           )}
         </div>
       </header>
+      <MatchPurchases match={m} />
       <DeleteMatchDialog
         match={deleting}
         onClose={() => setDeleting(null)}
