@@ -40,6 +40,7 @@ export default defineConfig({
       'tests/format-scoring.integration.test.ts',
       'tests/setup-workspace.integration.test.ts',
       'tests/format-lifecycle.integration.test.ts',
+      'tests/eligibility.integration.test.ts',
     ],
     env: { DATABASE_URL: process.env.TEST_DATABASE_URL },
     fileParallelism: false,

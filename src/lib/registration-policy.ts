@@ -13,10 +13,18 @@ export const registrationPolicySchema = z
     maxSubstitutes: z.number().int().min(0).max(16).default(2),
     minRank: z.number().int().positive().nullable().default(null),
     maxRank: z.number().int().positive().nullable().default(null),
+    rankSumMin: z.number().int().positive().nullable().default(null),
+    rankSumMax: z.number().int().positive().nullable().default(null),
+    rankSumScope: z.enum(['STARTERS', 'ROSTER']).default('STARTERS'),
+    // After this moment a recorded rank stands, whatever the player's rank does next.
+    rankLockAt: z.iso.datetime().nullable().default(null),
     countries: z
       .array(z.string().regex(/^[A-Z]{2}$/))
       .max(250)
       .default([]),
+    countryTeams: z.boolean().default(false),
+    // REVIEW keeps the registration for an organizer's decision instead of refusing it.
+    ineligible: z.enum(['REJECT', 'REVIEW']).default('REJECT'),
     bookingEnabled: z.boolean().default(true),
     bookingClosesAt: z.iso.datetime().nullable().default(null),
     fields: z
@@ -37,6 +45,8 @@ export const registrationPolicySchema = z
       ctx.addIssue({ code: 'custom', message: 'The minimum roster cannot exceed its maximum.' });
     if (policy.minRank && policy.maxRank && policy.minRank > policy.maxRank)
       ctx.addIssue({ code: 'custom', message: 'The minimum rank cannot exceed its maximum.' });
+    if (policy.rankSumMin && policy.rankSumMax && policy.rankSumMin > policy.rankSumMax)
+      ctx.addIssue({ code: 'custom', message: 'The minimum rank sum cannot exceed its maximum.' });
     if (new Set(policy.fields.map((field) => field.key)).size !== policy.fields.length)
       ctx.addIssue({ code: 'custom', message: 'Each registration field needs a unique key.' });
     if (policy.fields.some((field) => field.type === 'choice' && !field.options.length))

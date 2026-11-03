@@ -366,3 +366,43 @@
     flex-basis: 100%;
   }
 }
+.reviewList {
+  display: grid;
+  gap: 12px;
+}
+.reviewTeam {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.reviewIssue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  font-size: 14px;
+}
+.inlineDecision {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.inlineDecision input {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.reviewDetails summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+.reviewGrant {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  align-items: end;
+  gap: 12px;
+}

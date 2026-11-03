@@ -6,7 +6,9 @@ import { PLATFORM_PERMISSIONS } from './permissions';
 import { actionSchema, type AdminAction } from './validation';
 import { type Actor, type PermissionKey, assertPermission, AppError } from './permissions';
 import { cleanHtml } from './rich-text';
+import { applyEligibilityAction, type EligibilityPrepared } from './eligibility-service';
 import { beatmaps, osuProfile } from './osu';
+import { playerRanks } from './registration-service';
 import { Prisma } from '@/generated/prisma/client';
 import { teamPermission, prepareTeamAction, applyTeamAction } from './teams-service';
 import type { TeamAction } from './teams-validation';
@@ -56,6 +58,9 @@ export function actionPermission(a: AdminAction): PermissionKey {
   if (a.type === 'format.unlock') return 'matches.delete';
   if (a.type.startsWith('format.')) return 'matches.manage';
   if (a.type === 'setup.state') return 'settings.manage';
+  // Allowing a player is the same decision as approving them; a rank reading only edits rosters.
+  if (a.type === 'eligibility.ranks.capture') return 'teams.edit';
+  if (a.type.startsWith('eligibility.')) return 'teams.publish';
   if (a.type === 'stage.duplicate') return 'mappools.create';
   if (a.type === 'stage.rules.patch' || a.type === 'stage.rules.apply') return 'matches.manage';
   if (a.type === 'stage.reorder') return 'mappools.edit';
@@ -146,6 +151,16 @@ export async function executeAction(
         ? { username: existingStaff.username, avatar_url: existingStaff.avatarUrl }
         : await osuProfile(a.osuId)
       : null;
+  const eligibilityPrepared =
+    a.type === 'eligibility.exception.grant'
+      ? {
+          username:
+            (await rootDb.participant.findUnique({ where: { osuId: a.osuId } }))?.username ??
+            (await osuProfile(a.osuId)).username,
+        }
+      : a.type === 'eligibility.ranks.capture'
+        ? { ranks: await playerRanks(tournament.gameMode, a.osuIds) }
+        : null;
   return db.$transaction(
     async (tx) => {
       // Serializes mutations and last-owner checks across every application instance.
@@ -162,6 +177,7 @@ export async function executeAction(
         fetched,
         poolingPrepared,
         profile,
+        eligibilityPrepared,
       });
     },
     { timeout: 15000 },
@@ -178,7 +194,7 @@ async function applyAdminOperation(
   a: AdminAction,
   prepared: AdminOperationPrepared,
 ): Promise<unknown> {
-  const { teamPrepared, fetched, poolingPrepared, profile } = prepared;
+  const { teamPrepared, fetched, poolingPrepared, profile, eligibilityPrepared } = prepared;
   assertActionPermission(actor, a);
   if (['page.save', 'settings.save', 'staff.save'].includes(a.type))
     await assertOwnedMedia(tx as Parameters<typeof assertOwnedMedia>[0], a);
@@ -214,6 +230,11 @@ async function applyAdminOperation(
       break;
     case 'format.reseed':
       result = await reseedPhaseRound(tx, actor, tournamentId, a);
+      break;
+    case 'eligibility.exception.grant':
+    case 'eligibility.exception.revoke':
+    case 'eligibility.ranks.capture':
+      result = await applyEligibilityAction(tx, actor, tournamentId, a, eligibilityPrepared ?? {});
       break;
     case 'setup.state':
       await tx.tournamentSettings.update({
@@ -838,6 +859,7 @@ async function applyAdminOperation(
               ? { code: a.confirmCode, reason: a.reason }
               : a.type.startsWith('pooling.') ||
                   a.type.startsWith('format.') ||
+                  a.type.startsWith('eligibility.') ||
                   a.type.startsWith('matches.') ||
                   a.type === 'staff.bulk'
                 ? JSON.parse(JSON.stringify(a))
@@ -851,4 +873,5 @@ type AdminOperationPrepared = {
   fetched?: Awaited<ReturnType<typeof beatmaps>> | null;
   poolingPrepared?: Awaited<ReturnType<typeof preparePoolingAction>> | null;
   profile?: { username: string; avatar_url: string } | null;
+  eligibilityPrepared?: EligibilityPrepared | null;
 };

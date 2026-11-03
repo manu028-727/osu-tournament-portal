@@ -3,7 +3,8 @@ import { formatStatus } from './format-lifecycle-service';
 import { loadFormatPlan } from './format-plan-service';
 import { rulesHash } from './match-record';
 import { matchRulesSchema } from './match-rules';
-import { AppError, type Actor } from './permissions';
+import { eligibilityReview } from './eligibility-service';
+import { AppError, can, type Actor } from './permissions';
 import { qualifierBookingPolicy } from './qualifier-booking-policy';
 import { registrationPolicySchema } from './registration-policy';
 import { scopedDb } from './scoped-db';
@@ -133,6 +134,8 @@ export async function setupWorkspaceData(actor: Actor) {
     planInvalid: plan.invalid,
     counts: { entrants, approvedEntrants, staff, sessions, brackets, matches },
     format: await formatStatus(rootDb, tournamentId),
+    // Exception reasons can record interviews, so they follow the roster permission.
+    eligibility: can(actor, 'teams.view') ? await eligibilityReview(rootDb, tournamentId) : null,
     readiness: setupReadiness(summary),
     setupState,
   };

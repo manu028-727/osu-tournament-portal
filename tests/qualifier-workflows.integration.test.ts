@@ -314,12 +314,12 @@ describe.sequential('complete native qualifier workflows', () => {
       where: { tournamentId },
       data: { registrationPolicy: json({ ...json(original), minRank: 6000 }) },
     });
-    await expect(register(users[0])).rejects.toThrow('rank eligibility');
+    await expect(register(users[0])).rejects.toThrow('outside the allowed range');
     await db.tournamentSettings.update({
       where: { tournamentId },
       data: { registrationPolicy: json({ ...json(original), countries: ['FR'] }) },
     });
-    await expect(register(users[0])).rejects.toThrow('country eligibility');
+    await expect(register(users[0])).rejects.toThrow('not from an eligible country');
     await db.tournamentSettings.update({
       where: { tournamentId },
       data: {

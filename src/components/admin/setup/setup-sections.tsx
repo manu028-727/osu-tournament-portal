@@ -23,6 +23,7 @@ import {
   type TemplateChoices,
 } from '@/lib/format-templates';
 import { templateOperations } from '@/lib/setup-operations';
+import { EligibilityPanel } from './setup-eligibility';
 import { PhaseFlow } from './setup-format';
 import { MatchRulesFields } from '../match-rules-fields';
 import { QualifierBookingSettings } from '../qualifier-booking-settings';
@@ -211,44 +212,47 @@ export function RegistrationSection({ data, reload }: SectionProps) {
       await reload();
     }, message);
   return (
-    <form
-      className="grid gap-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        save({}, tr('Registration settings saved.'));
-      }}
-    >
-      <RegistrationSettings value={registration} onChange={setRegistration} />
-      <QualifierBookingSettings value={booking} onChange={setBooking} />
-      <div className="flex flex-wrap items-center gap-2">
-        <SaveButton busy={busy} disabled={busy || !dirty}>
-          {tr('Save registration')}
-        </SaveButton>
-        {registration.mode === 'WEBSITE' && (
-          <Button
-            type="button"
-            variant="outline"
-            disabled={busy}
-            onClick={() => {
-              const navigation = data.navigation.some((link) => link.href === '/register')
-                ? data.navigation
-                : [...data.navigation, { label: 'Register', href: '/register' }];
-              save(
-                isOpen ? { status: 'UPCOMING' } : { status: 'REGISTRATIONS_OPEN', navigation },
-                isOpen ? tr('Registration closed.') : tr('Registration opened.'),
-              );
-            }}
-          >
-            {isOpen ? tr('Close registration') : tr('Open registration')}
-          </Button>
-        )}
-        {isOpen && !data.tournament.published && (
-          <span className="text-sm text-muted">
-            {tr('Entrants can register once the tournament is published.')}
-          </span>
-        )}
-      </div>
-    </form>
+    <div className="grid gap-6">
+      <form
+        className="grid gap-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          save({}, tr('Registration settings saved.'));
+        }}
+      >
+        <RegistrationSettings value={registration} onChange={setRegistration} />
+        <QualifierBookingSettings value={booking} onChange={setBooking} />
+        <div className="flex flex-wrap items-center gap-2">
+          <SaveButton busy={busy} disabled={busy || !dirty}>
+            {tr('Save registration')}
+          </SaveButton>
+          {registration.mode === 'WEBSITE' && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={() => {
+                const navigation = data.navigation.some((link) => link.href === '/register')
+                  ? data.navigation
+                  : [...data.navigation, { label: 'Register', href: '/register' }];
+                save(
+                  isOpen ? { status: 'UPCOMING' } : { status: 'REGISTRATIONS_OPEN', navigation },
+                  isOpen ? tr('Registration closed.') : tr('Registration opened.'),
+                );
+              }}
+            >
+              {isOpen ? tr('Close registration') : tr('Open registration')}
+            </Button>
+          )}
+          {isOpen && !data.tournament.published && (
+            <span className="text-sm text-muted">
+              {tr('Entrants can register once the tournament is published.')}
+            </span>
+          )}
+        </div>
+      </form>
+      {data.eligibility && <EligibilityPanel review={data.eligibility} reload={reload} />}
+    </div>
   );
 }
 

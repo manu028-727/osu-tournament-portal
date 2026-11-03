@@ -10,6 +10,8 @@ import {
 import { AppError, type Actor } from './permissions';
 import { registrationPolicySchema, type RegistrationAction } from './registration-policy';
 import { profileSchema, osuGet } from './osu';
+import { rankLocked, rosterEligibility } from './eligibility';
+import { activeExceptions, takenCountries } from './eligibility-service';
 import { teamFields } from './teams-validation';
 import { writeTeam, teamInclude } from './teams-service';
 import { inheritedRules } from './gameplay-scoring';
@@ -26,6 +28,30 @@ const profile = profileSchema.extend({
 });
 type Profile = z.infer<typeof profile>;
 const profileCache = new Map<string, { expires: number; value: Profile }>();
+async function rankedProfile(gameMode: string, osuId: number) {
+  const key = `${gameMode}:${osuId}`;
+  let cached = profileCache.get(key);
+  if (!cached || cached.expires < Date.now()) {
+    cached = {
+      value: profile.parse(await osuGet(`users/${osuId}/${gameMode}`)),
+      expires: Date.now() + 60000,
+    };
+    if (cached.value.id !== osuId)
+      throw new AppError('Profile identity does not match the requested osu! ID.');
+    if (profileCache.size > 1000) profileCache.clear();
+    profileCache.set(key, cached);
+  }
+  return cached.value;
+}
+export async function playerRanks(gameMode: string, osuIds: readonly number[]) {
+  const ranks = [];
+  for (const osuId of osuIds)
+    ranks.push({
+      osuId,
+      rank: (await rankedProfile(gameMode, osuId)).statistics?.global_rank ?? null,
+    });
+  return ranks;
+}
 
 function registrationOpen(
   policy: z.infer<typeof registrationPolicySchema>,
@@ -46,21 +72,8 @@ export async function prepareRegistration(actor: Actor, action: RegistrationActi
   if (action.type !== 'registration.save') return [];
   const { tournament } = await configuration(db, actor.tournamentId!);
   const profiles: Profile[] = [];
-  for (const member of action.members) {
-    const key = `${tournament.gameMode}:${member.osuId}`;
-    let cached = profileCache.get(key);
-    if (!cached || cached.expires < Date.now()) {
-      cached = {
-        value: profile.parse(await osuGet(`users/${member.osuId}/${tournament.gameMode}`)),
-        expires: Date.now() + 60000,
-      };
-      if (cached.value.id !== member.osuId)
-        throw new AppError('Profile identity does not match the requested osu! ID.');
-      if (profileCache.size > 1000) profileCache.clear();
-      profileCache.set(key, cached);
-    }
-    profiles.push(cached.value);
-  }
+  for (const member of action.members)
+    profiles.push(await rankedProfile(tournament.gameMode, member.osuId));
   return profiles;
 }
 export async function registrationData(
@@ -228,23 +241,36 @@ export async function applyRegistration(
     : [];
   if (reservations.some((session) => !qualifierNeverStarted(session)))
     throw new AppError('Qualifier gameplay has locked this roster. Contact an organizer.', 409);
-  for (const member of input.members) {
-    const observed = profiles.find((profile) => profile.id === member.osuId);
-    if (!observed) throw new AppError('Every osu! player must be verified.');
-    const rank = observed.statistics?.global_rank;
-    if (
-      (policy.minRank || policy.maxRank) &&
-      (!rank ||
-        (policy.minRank && rank < policy.minRank) ||
-        (policy.maxRank && rank > policy.maxRank))
-    )
-      throw new AppError('A player does not meet the configured rank eligibility.');
-    if (
-      policy.countries.length &&
-      (!observed.country_code || !policy.countries.includes(observed.country_code))
-    )
-      throw new AppError('A player does not meet the configured country eligibility.');
-  }
+  const now = new Date();
+  // Once ranks are locked, a player already on this roster keeps the rank recorded for them.
+  const lockedRank = (osuId: number) => {
+    if (!rankLocked(policy, now)) return undefined;
+    const member = owned?.members.find((item) => item.osuId === osuId);
+    return member && member.registrationRank !== null ? member : undefined;
+  };
+  const observedRank = (osuId: number) =>
+    profiles.find((item) => item.id === osuId)?.statistics?.global_rank ?? null;
+  for (const member of input.members)
+    if (!profiles.some((item) => item.id === member.osuId))
+      throw new AppError('Every osu! player must be verified.');
+  const issues = rosterEligibility(
+    policy,
+    input.members.map((member) => {
+      const observed = profiles.find((item) => item.id === member.osuId)!;
+      return {
+        osuId: member.osuId,
+        username: observed.username,
+        rank: lockedRank(member.osuId)?.registrationRank ?? observedRank(member.osuId),
+        country: observed.country_code ?? null,
+        captain: member.osuId === actor.osuId,
+        substitute: member.substitute,
+      };
+    }),
+    await activeExceptions(tx, tournamentId),
+    policy.countryTeams ? await takenCountries(tx, tournamentId, owned?.id) : [],
+  );
+  if (issues.length && policy.ineligible === 'REJECT')
+    throw new AppError(issues[0].message, 400, issues[0].values);
   const answers: Record<string, string | number | boolean> = {};
   for (const field of policy.fields) {
     const value = input.answers[field.key];
@@ -284,16 +310,25 @@ export async function applyRegistration(
   });
   const scoped = scopedDb(tx, tournamentId);
   const team = await writeTeam(scoped, fields, profiles, owned?.id);
-  await tx.team.update({ where: { id: team.id }, data: { registrationAnswers: json(answers) } });
-  for (const member of input.members)
+  await tx.team.update({
+    where: { id: team.id },
+    data: {
+      registrationAnswers: json(answers),
+      // The registration is kept, and an organizer decides whether the problem matters.
+      ...(issues.length ? { status: 'PENDING', published: false } : {}),
+    },
+  });
+  for (const member of input.members) {
+    const locked = lockedRank(member.osuId);
     await tx.teamMember.update({
       where: { teamId_osuId: { teamId: team.id, osuId: member.osuId } },
       data: {
-        registrationRank:
-          profiles.find((profile) => profile.id === member.osuId)?.statistics?.global_rank || null,
-        registeredUsername: profiles.find((profile) => profile.id === member.osuId)!.username,
+        registrationRank: locked ? locked.registrationRank : observedRank(member.osuId),
+        rankCapturedAt: locked ? locked.rankCapturedAt : now,
+        registeredUsername: profiles.find((item) => item.id === member.osuId)!.username,
       },
     });
+  }
   for (const session of reservations) {
     await removeQualifierParticipants(
       scoped,

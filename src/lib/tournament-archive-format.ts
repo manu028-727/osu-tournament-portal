@@ -148,7 +148,7 @@ export const ARCHIVE_TABLES = {
   ),
   rosters: def(
     'teamMember',
-    'tournamentId:s teamId:s osuId:i captain:b substitute:b position:i registrationRank:i? registeredUsername:s? discordId:s',
+    'tournamentId:s teamId:s osuId:i captain:b substitute:b position:i registrationRank:i? registeredUsername:s? rankCapturedAt:d? discordId:s',
     { tournamentId: 'tournament', teamId: 'teams', osuId: 'participants' },
   ),
   matches: def(
@@ -241,6 +241,11 @@ export const ARCHIVE_TABLES = {
     'phaseAdvancement',
     'id:s tournamentId:s phaseId:s revision:i kind:s sourceHash:s assignment:j reason:s actorId:s? createdAt:d',
     { tournamentId: 'tournament', phaseId: 'tournamentPhases', actorId: 'identities' },
+  ),
+  eligibilityExceptions: def(
+    'eligibilityException',
+    'id:s tournamentId:s osuId:i username:s kind:s reason:s actorId:s? createdAt:d revokedAt:d? revokedById:s? revokedReason:s',
+    { tournamentId: 'tournament', actorId: 'identities', revokedById: 'identities' },
   ),
   audits: def(
     'auditLog',
@@ -377,6 +382,7 @@ export const archiveInsertionOrder: ArchiveTable[] = [
   'bracketEntries',
   'tournamentPhases',
   'phaseAdvancements',
+  'eligibilityExceptions',
   'audits',
 ];
 export const archiveDeferredFields: Partial<Record<ArchiveTable, readonly string[]>> = {
@@ -704,6 +710,7 @@ export function validateArchiveData(input: unknown): ArchiveData {
     stages: [['slug']],
     tournamentPhases: [['key']],
     phaseAdvancements: [['phaseId', 'revision']],
+    eligibilityExceptions: [['osuId', 'kind']],
     categories: [['acronym']],
     pools: [['stageId']],
     slots: [

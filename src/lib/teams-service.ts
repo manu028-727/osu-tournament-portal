@@ -5,6 +5,7 @@ import { scopedDb } from './scoped-db';
 import { requestScope } from './tournament-context';
 import { AppError, assertPermission, can, type Actor, type PermissionKey } from './permissions';
 import { osuGet, profileSchema } from './osu';
+import { assertApprovable } from './eligibility-service';
 import { parseTeamCsv } from './teams-csv';
 import type { TeamAction, TeamFields } from './teams-validation';
 import type { Prisma } from '@/generated/prisma/client';
@@ -272,7 +273,7 @@ export async function applyTeamAction(
       await tx.team.update({ where: { id: team.id }, data: { adminNotes } });
     return { id: team.id };
   }
-  await currentTeam(tx, a.id, a.baseVersion);
+  const existing = await currentTeam(tx, a.id, a.baseVersion);
   if (a.type === 'team.delete') {
     if (await tx.bracketEntry.count({ where: { teamId: a.id } }))
       throw new AppError(
@@ -294,6 +295,8 @@ export async function applyTeamAction(
   }
   if (a.published && a.status === 'PENDING')
     throw new AppError('Pending teams cannot be published.');
+  if (a.status === 'APPROVED' && existing.status !== 'APPROVED')
+    await assertApprovable(tx, actor.tournamentId || 'main', a.id);
   await tx.team.update({
     where: { id: a.id },
     data: {

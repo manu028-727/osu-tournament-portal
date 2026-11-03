@@ -15,6 +15,7 @@ import { poolingActionOptions, poolPlanSchema } from './pooling-validation';
 import { stageWorkflowActionSchemas } from './stage-workflows-validation';
 import { matchesSchedulingActionOptions } from './matches-bulk-validation';
 import { staffBulkActionSchema } from './staff-bulk-validation';
+import { ELIGIBILITY_EXCEPTIONS } from './eligibility';
 import { registrationPolicySchema } from './registration-policy';
 import { qualifierBookingPolicySchema } from './qualifier-booking-policy';
 export const id = z.string().min(1).max(100);
@@ -123,6 +124,21 @@ export const actionSchema = z.discriminatedUnion('type', [
     reviewHash: z.string().regex(/^[a-f0-9]{64}$/),
   }),
   base.extend({ type: z.literal('format.reseed'), phaseKey: z.string().min(1).max(40) }),
+  base.extend({
+    type: z.literal('eligibility.exception.grant'),
+    osuId: z.number().int().positive().max(2147483647),
+    kind: z.enum(ELIGIBILITY_EXCEPTIONS),
+    reason: z.string().trim().min(3).max(1000),
+  }),
+  base.extend({
+    type: z.literal('eligibility.exception.revoke'),
+    id,
+    reason: z.string().trim().min(3).max(1000),
+  }),
+  base.extend({
+    type: z.literal('eligibility.ranks.capture'),
+    osuIds: z.array(z.number().int().positive().max(2147483647)).min(1).max(25),
+  }),
   base.extend({
     type: z.literal('setup.apply'),
     operations: z

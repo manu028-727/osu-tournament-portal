@@ -179,6 +179,15 @@ configuration and statuses. Registering never books a session, and canceling a
 reservation never unregisters an entrant. Booking has independent opening/closing
 times; registration deadlines and custom fields do not invalidate a booking form.
 Eligibility changes still require the captain to review booking again.
+Registration can also limit a team's rank sum, over its starters or whole roster, and set a
+moment ranks lock: after it, a player already on a roster keeps their recorded rank whatever
+it does next, while a player joining is read as they join. Limits can refuse a registration
+or keep it pending for an organizer to decide. National teams allow one team per country
+with players sharing the captain's. Organizers can allow one player past one limit with a
+recorded reason, before or after that player registers, and removing it applies the limit
+again. Approval requires a known problem to have been decided this way; organizer-entered
+rosters skip that step and appear in the same review. Registration, booking, approval and
+the review all give the same answer because they read one set of rules.
 Captains reserve, move or cancel their entry in existing qualifier sessions. Show
 times in the chosen display timezone, capacity, deadlines and current reservations.
 Validate ownership, eligibility, stage uniqueness, schedule conflicts, capacity and

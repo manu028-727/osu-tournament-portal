@@ -14,6 +14,8 @@ enum PublicationState {
 }
 
 model User {
+  eligibilityGranted EligibilityException[] @relation("EligibilityGranted")
+  eligibilityRevoked EligibilityException[] @relation("EligibilityRevoked")
   poolSuggestions      PoolCandidate[]       @relation("PoolSuggestions")
   poolReviews          PoolReview[]          @relation("PoolReviews")
   platformAdmin        Boolean               @default(false)
@@ -114,6 +116,7 @@ model RolePermission {
 }
 
 model Tournament {
+  eligibilityExceptions EligibilityException[]
   poolCandidates      PoolCandidate[]
   poolPlans           PoolPlan[]
   poolSkillsets       PoolSkillset[]
@@ -609,6 +612,25 @@ model Team {
   @@index([published, status, position])
 }
 
+model EligibilityException {
+  id            String     @id @default(cuid())
+  tournamentId  String
+  tournament    Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  osuId         Int
+  username      String
+  kind          String
+  reason        String
+  actorId       String?
+  actor         User?      @relation("EligibilityGranted", fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt     DateTime   @default(now())
+  revokedAt     DateTime?
+  revokedById   String?
+  revokedBy     User?      @relation("EligibilityRevoked", fields: [revokedById], references: [id], onDelete: SetNull)
+  revokedReason String     @default("")
+
+  @@unique([tournamentId, osuId, kind])
+}
+
 model TeamMember {
   tournamentId       String      @default("main")
   teamId             String
@@ -620,6 +642,7 @@ model TeamMember {
   position           Int
   registrationRank   Int?
   registeredUsername String?
+  rankCapturedAt     DateTime?
   discordId          String      @default("")
 
   @@id([teamId, osuId])

@@ -1,6 +1,8 @@
 import type { Prisma } from '@/generated/prisma/client';
 import { db } from './db';
 import { scopedDb } from './scoped-db';
+import { rosterEligibility } from './eligibility';
+import { activeExceptions, eligibilityPlayers, takenCountries } from './eligibility-service';
 import { AppError, type Actor } from './permissions';
 import { registrationConfiguration } from './registration-configuration';
 import { qualifierBookingPolicy } from './qualifier-booking-policy';
@@ -13,7 +15,10 @@ async function configuration(tx: Prisma.TransactionClient, tournamentId: string)
     eligibility: {
       minRank: registration.minRank,
       maxRank: registration.maxRank,
+      rankSumMin: registration.rankSumMin,
+      rankSumMax: registration.rankSumMax,
       countries: registration.countries,
+      countryTeams: registration.countryTeams,
     },
     format: tournament.format,
     mode: tournament.gameMode,
@@ -122,21 +127,15 @@ export async function applyQualifierBooking(
     (policy.closesAt && new Date(policy.closesAt) <= new Date())
   )
     throw new AppError('Qualifier booking is closed.', 409);
-  if (input.lobbyId)
-    for (const member of owned.members) {
-      if (
-        (registration.minRank || registration.maxRank) &&
-        (!member.registrationRank ||
-          (registration.minRank && member.registrationRank < registration.minRank) ||
-          (registration.maxRank && member.registrationRank > registration.maxRank))
-      )
-        throw new AppError('A player does not meet the configured rank eligibility.');
-      if (
-        registration.countries.length &&
-        !registration.countries.includes(member.participant.country || '')
-      )
-        throw new AppError('A player does not meet the configured country eligibility.');
-    }
+  if (input.lobbyId) {
+    const blocking = rosterEligibility(
+      registration,
+      eligibilityPlayers(owned.members),
+      await activeExceptions(tx, tournamentId),
+      registration.countryTeams ? await takenCountries(tx, tournamentId, owned.id) : [],
+    )[0];
+    if (blocking) throw new AppError(blocking.message, 400, blocking.values);
+  }
   const source = await tx.qualifierLobby.findFirst({
     where: {
       tournamentId,

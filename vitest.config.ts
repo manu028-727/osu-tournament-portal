@@ -39,6 +39,7 @@ export default defineConfig({
       'tests/score-pipeline.test.ts',
       'tests/format-engine.test.ts',
       'tests/format-templates.test.ts',
+      'tests/eligibility.test.ts',
       'tests/container-proxy.test.ts',
       'tests/theme.test.ts',
     ],

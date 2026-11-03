@@ -24,6 +24,7 @@ const direct = new Set([
   'tournamentStage',
   'tournamentPhase',
   'phaseAdvancement',
+  'eligibilityException',
   'modCategory',
   'mappool',
   'mappoolRevision',
