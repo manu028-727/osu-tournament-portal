@@ -12,12 +12,7 @@ import {
   inheritedRules,
   tournamentScoring,
 } from './gameplay-scoring';
-import {
-  nextDraftStep,
-  replayDraft,
-  startingSide,
-  validateDraftAction,
-} from './match-engine';
+import { nextDraftStep, replayDraft, startingSide, validateDraftAction } from './match-engine';
 import { aggregateScores, effectiveWinCondition } from './score-pipeline';
 import { allocateMatchNumber, numericMatchIdentifier } from './match-numbering';
 import {

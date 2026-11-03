@@ -715,6 +715,9 @@ model QualifierScore {
   participant    Participant    @relation(fields: [osuId], references: [osuId], onDelete: Restrict)
   slotName       String
   raw            Float
+  accuracy       Float?
+  maxCombo       Int?
+  misses         Int?
   mods           Json
   adjusted       Float
   updatedAt      DateTime       @updatedAt

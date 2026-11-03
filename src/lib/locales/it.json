@@ -3666,5 +3666,15 @@
   "A required mod is missing.": "Manca una mod obbligatoria.",
   "Phase keys must be unique.": "Le chiavi delle fasi devono essere uniche.",
   "Qualifiers must come before other phases.": "Le qualifiche devono precedere le altre fasi.",
-  "Entrants must come from an earlier phase, not \"{0}\".": "I partecipanti devono provenire da una fase precedente, non da \"{0}\"."
+  "Entrants must come from an earlier phase, not \"{0}\".": "I partecipanti devono provenire da una fase precedente, non da \"{0}\".",
+  "Percent of map maximum (%MAX)": "Percentuale del massimo della mappa (%MAX)",
+  "Average map placement": "Piazzamento medio sulle mappe",
+  "Accuracy": "Accuratezza",
+  "Combo": "Combo",
+  "Seeded on": "Seeding basato su",
+  "Accuracy for {0} (%)": "Accuratezza di {0} (%)",
+  "Max combo for {0}": "Combo massima di {0}",
+  "Accuracy evidence is unavailable; review this score before counting it.": "L'accuratezza non è disponibile; controlla questo punteggio prima di conteggiarlo.",
+  "Combo evidence is unavailable; review this score before counting it.": "La combo non è disponibile; controlla questo punteggio prima di conteggiarlo.",
+  "%MAX requires a positive best score on every map.": "%MAX richiede un punteggio migliore positivo su ogni mappa."
 }

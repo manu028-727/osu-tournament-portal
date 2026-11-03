@@ -1486,7 +1486,7 @@ Keep this current so an interrupted session can continue from it.
 | Milestone | Delivers                                                                         | State    |
 | --------- | -------------------------------------------------------------------------------- | -------- |
 | M0        | Audit, rule contradictions, witness tests, `FormatPlan` contract                 | Verified |
-| M1        | Win condition, one score pipeline, RX, FM quotas, accuracy, %MAX, placements     | Planned  |
+| M1        | Win condition, one score pipeline, RX, FM quotas, accuracy, %MAX, placements     | Verified |
 | M2        | Pure graph, advancement, draw, rematch and tiebreak engine                       | Planned  |
 | M3        | Setup workspace replacing Overview, `setup.apply`, templates, readiness          | Planned  |
 | M4        | Lock format, placeholders, advancement persistence, guards, archive, projections | Planned  |
@@ -1540,6 +1540,9 @@ Recorded for human ruling. Simulations use the stated assumption and report it.
 | Italian Draft Cup 3 | Perk effects are unpublished; the sheet lists only prices (QF 4x500, SF 800, F 1000, GF 1500). Post uses $, sheet uses EUR. Team count (sheet shows 8), Losers structure and bid idle window unstated. "Random order from the seeding list" is ambiguous | Perks stay human-judged; lot order is an explicit setting |
 | OWC 2025            | One wiki line on Contender seeds appears to conflict with the bracket table                                                                                                                                                                              | Re-read at M2; the table is authoritative                 |
 
+**OIDC2026 run policy, from evidence.** The reference sheet reconciles under
+`BEST_PER_MAP`, so the forum's wording matches what was actually scored.
+
 ### Page Sweep List (M7)
 
 Organizer pages to audit for inline and bulk edits, fewer clicks and truthful settings:
@@ -1563,6 +1566,21 @@ reads a fixed tournament from the isolated test database. `FormatPlan` expresses
 variants, Italian Cup 9, OIDC2026, Italian Draft Cup 3, OWC 2025 and one novel format;
 negative cases reject malformed plans, and a test keeps application source from importing
 the compatibility fixtures. Results are in the checkpoint commit message.
+
+### M1 Checks
+
+Applied `20261103010000_match_player_metrics` and `20261103020000_qualifier_score_metrics`
+to the isolated test database only. Stored-row witnesses are unchanged with the new
+columns present. The private reference harness reconciles all 22 teams across 13 maps with
+a maximum Z-Sum difference of `7.105427357601002e-15` and no value drift from the previous
+run. Real-action integration tests cover: neutral rules on a new tournament; a ScoreV2
+Relax map won on stored decimal team accuracy, where raw score favours the loser and EZ's
+2x would flip the result; decimal aggregate entry; a scoring change keeping the win
+condition on an unplayed snapshot; and accuracy-seeded %MAX through real qualifier actions.
+
+Still unverified on real Bancho: `!mp mods` with RX, and the RX with NoFail restriction.
+Miss counts come from the API's `statistics.count_miss`, exercised only with synthetic
+evidence so far. Rule editor controls have no browser evidence until M3.
 
 ## Completion Rules
 

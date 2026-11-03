@@ -254,9 +254,7 @@ export function lobbyCommands(
     map: slot
       ? `!mp map ${slot.beatmapId} ${{ osu: 0, taiko: 1, fruits: 2, mania: 3 }[rules.gameMode]}`
       : '',
-    mods: slot
-      ? `!mp mods ${lobbyModTokens(rules, slot.category).join(' ') || 'None'}`
-      : '',
+    mods: slot ? `!mp mods ${lobbyModTokens(rules, slot.category).join(' ') || 'None'}` : '',
     start: '!mp start 5',
     timer: `!mp timer ${rules.readySeconds}`,
     inspect: '!mp settings',

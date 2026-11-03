@@ -501,6 +501,31 @@ matching every historical witness. Lazer accepts acknowledged standardized manua
 scores, not classic display or legacy Bancho/API capture. No numerical conversion
 between gameplay systems is fabricated.
 
+`score-pipeline.ts` is the one owner of how a performance becomes a map result, for
+live capture, manual entry, reviewed multiplayer imports and qualifier mod checks.
+`scoreMode` only describes the lobby: the `!mp set` argument and the API gate.
+`winCondition` decides what a map is won on (score, team average accuracy, combo or
+misses) and inheritance never rewrites it, so a ScoreV2 lobby can be decided on
+accuracy from the same evidence. Accuracy is averaged, keeps its decimals and is never
+multiplied; `mapWinner` treats floating-point noise as a draw to replay. Raw score stays
+stored as evidence beside the deciding metric. A metric saved through the old Bancho
+mode reads with its original behaviour through `effectiveWinCondition`. Match totals may
+therefore be decimal in `MatchMapResult`, while `Match.scoreA/B` remain maps won.
+
+`requiredMods` applies to every map, and a required mod is stripped before multiplier
+lookup so it cannot change the result. `categoryOptionalMods` and `categoryAllowedMods`
+refine single categories. `freeModQuotas` lists requirements in priority order, and each
+player fills the first one they satisfy; without it a snapshot keeps its original
+HDHR-as-HR and EZ-as-HD counting. Reviewed multiplayer imports deliberately skip lineup
+and mod enforcement so usable historical evidence is kept, but use the same team value
+and winner functions. Qualifiers also compare category mods, which matches do not, and
+keep their saved eligibility wording. Workbook imports stay provenance only.
+
+Parsing a saved snapshot must never start failing: `matchRulesSchema` only validates new
+fields, and every default in it stays as it was because old snapshots rely on it. New
+tournaments instead start from `neutralMatchRules`, which chooses neutral multipliers
+and policy text and only asks for FreeMod quotas a team of that size can meet.
+
 `qualifiers-service.ts` owns sessions/entries/staff/events/scores;
 `qualifiers-bulk.ts` and `qualifier-scheduling.ts` implement batches/transfers.
 Freeze full pool/roster/rules/policy/scoring snapshots. Unstarted transfers require
@@ -527,7 +552,20 @@ Team average    = sum_m T[i,m] / M after configured roster aggregation
 Z-Sum           = sum_m (T[i,m] - mean[m]) / sampleSD[m]
 sampleSD[m]     = sqrt(sum_i (T[i,m] - mean[m])^2 / (n - 1))
 Match Cost      = 2 / (p + 2) * sum_playedMaps(T[i,m] / mean[m])
+%MAX            = sum_m (T[i,m] / max_i(T[i,m]) * 100)
+Avg placement   = sum_m (1 + count(T[j,m] > T[i,m])) / M, lowest first
 ```
+
+`qualifier-seeding/4` covers `PERCENT_MAX`, `AVERAGE_PLACEMENT` and any `metric` other
+than score. A qualifier seeded on accuracy or combo stores that value as `adjusted`, and
+raw score stays as evidence. Missing metric evidence excludes the score with a reason
+instead of counting zero. Older versions never read the new columns or references.
+
+**Witness rule.** `loadQualifierCalculation` names every hashed score and game field
+explicitly, because a spread would let any new column change every saved source hash.
+Qualifier policy fields must be optional with no default for the same reason, since the
+parsed policy is hashed. `tests/format-witnesses.test.ts` and its integration counterpart
+pin these from before the format engine. Never update one to make a test pass.
 
 Match Cost is OSUPLUS_QUALIFIER_COHORT_V1, not every formula called match cost.
 References are complete eligible entrants across rooms without winner/TB bonuses.

@@ -7,6 +7,11 @@ const ids = z
   .refine((v) => new Set(v).size === v.length, 'Duplicate selection.');
 const notes = z.string().max(4000).default('');
 const base = z.object({ id, baseVersion: z.number().int().positive() });
+const metricEvidence = {
+  accuracy: z.number().min(0).max(100).nullable().optional(),
+  maxCombo: z.number().int().min(0).max(2147483647).nullable().optional(),
+  misses: z.number().int().min(0).max(2147483647).nullable().optional(),
+};
 const createFields = z.object({
   capacity: z.number().int().min(1).max(16).optional(),
   bookingOpen: z.boolean().optional(),
@@ -64,6 +69,7 @@ export const qualifierActionOptions = [
         z.object({
           osuId: z.number().int().positive().max(2147483647),
           raw: z.number().min(0).max(1_000_000_000_000),
+          ...metricEvidence,
           passed: z.boolean().nullable().optional(),
           mods: z.array(z.enum(MODS)).max(10),
         }),
@@ -159,6 +165,7 @@ export const qualifierActionOptions = [
     osuId: z.number().int().positive().max(2147483647),
     slotName: z.string().min(1).max(20),
     raw: z.number().min(0).max(1_000_000_000_000),
+    ...metricEvidence,
     passed: z.boolean().nullable().optional(),
     mods: z
       .array(z.enum(MODS))

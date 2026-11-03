@@ -18,6 +18,9 @@ const playerSchema = z.object({
   user_id: z.number().int().positive(),
   score: z.number().int().nonnegative().safe(),
   mods: z.array(mod),
+  accuracy: z.number().min(0).max(1).optional(),
+  max_combo: z.number().int().nonnegative().optional(),
+  statistics: z.object({ count_miss: z.number().int().nonnegative() }).partial().optional(),
   passed: z.boolean().optional(),
   match: z.object({ pass: z.boolean().optional() }).passthrough().optional(),
 });
@@ -31,6 +34,9 @@ export type QualifierCapture = {
     osuId: number;
     raw: number;
     passed?: boolean | null;
+    accuracy?: number;
+    maxCombo?: number;
+    misses?: number;
     mods: (typeof MODS)[number][];
     originalMods?: string[];
     violation?: string;
@@ -233,12 +239,18 @@ export function qualifierGameProposals(
             : null;
         const mods = [...new Set([...g.mods, ...s.mods])];
         const passed = s.passed ?? s.match?.pass ?? null;
+        const metrics = {
+          ...(s.accuracy !== undefined ? { accuracy: s.accuracy * 100 } : {}),
+          ...(s.max_combo !== undefined ? { maxCombo: s.max_combo } : {}),
+          ...(s.statistics?.count_miss !== undefined ? { misses: s.statistics.count_miss } : {}),
+        };
         const violation =
           gameViolation ||
           qualifierIndividualViolation(lobby.rules, lobby.policy || {}, slots[0].category, {
             mods,
             passed,
             actualScoring,
+            ...metrics,
           });
         if (reason) {
           issues.push({
@@ -251,6 +263,7 @@ export function qualifierGameProposals(
           {
             osuId: s.user_id,
             raw: s.score,
+            ...metrics,
             ...(passed !== null ? { passed } : {}),
             mods: mods.filter((m) => MODS.includes(m as never)) as (typeof MODS)[number][],
             ...(mods.some((m) => !MODS.includes(m as never))

@@ -529,14 +529,18 @@ export async function applyQualifierAction(
       throw new AppError('This player is not in the snapshotted qualifier roster.');
     const slot = lobby.poolRevision.slots.find((slot) => slot.name === a.slotName);
     if (!slot) throw new AppError('This map is not in the qualifier pool snapshot.');
-    if (rules.scoreMode === 'ACCURACY' ? a.raw > 100 : !Number.isSafeInteger(a.raw))
-      throw new AppError('Use a valid raw score for the configured scoring mode.');
+    const evidence = {
+      accuracy: a.accuracy ?? null,
+      maxCombo: a.maxCombo ?? null,
+      misses: a.misses ?? null,
+    };
     const violation =
       provenance?.eligibilityReason ||
       qualifierIndividualViolation(rules, policy, slot.category, {
         mods: provenance?.mods || a.mods,
         passed: provenance?.passed ?? a.passed,
         actualScoring: provenance?.actualScoring || scoring,
+        ...evidence,
       });
     const where = {
       lobbyId_osuId_slotName_run: {
@@ -560,6 +564,7 @@ export async function applyQualifierAction(
       eligibilityOverride: override,
       passed: provenance?.passed ?? a.passed ?? null,
       raw: a.raw,
+      ...evidence,
       mods: json(provenance?.mods || a.mods),
       adjusted: qualifierEffectiveScore(
         rules,
@@ -567,6 +572,7 @@ export async function applyQualifierAction(
         a.raw,
         provenance?.mods || a.mods,
         slot.name,
+        evidence,
       ),
       actualScoring: provenance?.actualScoring
         ? ['SCORE_V1', 'SCORE_V2', 'LAZER'].includes(provenance.actualScoring)

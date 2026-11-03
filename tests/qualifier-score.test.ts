@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { inheritedRules } from '../src/lib/gameplay-scoring';
+import { matchRulesSchema } from '../src/lib/match-rules';
 import { qualifierPolicySchema } from '../src/lib/qualifier-policy';
 import { qualifierEffectiveScore, qualifierIndividualViolation } from '../src/lib/qualifier-score';
 import { qualifierTeamModViolation } from '../src/lib/qualifier-eligibility';
@@ -143,5 +144,38 @@ describe('canonical qualifier score interpretation', () => {
     expect(
       qualifierIndividualViolation(rules, {}, 'NM', { mods: ['NF'], actualScoring: 'SCORE_V1' }),
     ).toContain('scoring differs');
+  });
+});
+
+describe('qualifier metric evidence', () => {
+  const accuracy = qualifierPolicySchema.parse({
+    metric: 'ACCURACY',
+    teamAggregation: 'AVERAGE',
+    normalization: 'REPORTED',
+    multiplierPolicy: 'RULES',
+    rounding: 'ROUND',
+  });
+  it('reports accuracy directly, ignoring multipliers and rounding', () => {
+    expect(
+      qualifierEffectiveScore(rules, accuracy, 1000, ['NF', 'EZ'], 'NM1', { accuracy: 98.7643 }),
+    ).toBe(98.7643);
+  });
+  it('excludes a score whose metric evidence is missing rather than scoring it zero', () => {
+    expect(qualifierEffectiveScore(rules, accuracy, 1000, ['NF'], 'NM1')).toBe(0);
+    expect(qualifierIndividualViolation(rules, accuracy, 'NM', { mods: ['NF'] })).toContain(
+      'Accuracy evidence is unavailable',
+    );
+    expect(
+      qualifierIndividualViolation(rules, accuracy, 'NM', { mods: ['NF'], accuracy: 90 }),
+    ).toBeNull();
+  });
+  it('accepts Relax in a tournament that requires it', () => {
+    const relax = matchRulesSchema.parse({ requiredMods: ['RX'], enforceNoFail: false });
+    expect(
+      qualifierIndividualViolation(relax, {}, 'NM', { mods: ['RX'], actualScoring: undefined }),
+    ).toBeNull();
+    expect(qualifierIndividualViolation(rules, {}, 'NM', { mods: ['NF', 'RX'] })).toContain(
+      'differ from',
+    );
   });
 });

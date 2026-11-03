@@ -1,7 +1,11 @@
 'use client';
 import { useT } from '../locale';
 import { Field } from './shared';
-import { QUALIFIER_METHOD_LABELS, type QualifierPolicy } from '@/lib/qualifier-policy';
+import {
+  QUALIFIER_METHOD_LABELS,
+  QUALIFIER_METRIC_LABELS,
+  type QualifierPolicy,
+} from '@/lib/qualifier-policy';
 
 export function QualifierPolicyFields({
   value,
@@ -27,6 +31,22 @@ export function QualifierPolicyFields({
             onChange={(e) => update({ method: e.target.value as QualifierPolicy['method'] })}
           >
             {Object.entries(QUALIFIER_METHOD_LABELS).map(([key, label]) => (
+              <option key={key} value={key}>
+                {tr(label)}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label={tr('Seeded on')}>
+          <select
+            value={value.metric || 'SCORE'}
+            onChange={(e) => {
+              const metric = e.target.value as NonNullable<QualifierPolicy['metric']>;
+              // Team accuracy is an average, so it cannot keep a summed aggregation.
+              update(metric === 'ACCURACY' ? { metric, teamAggregation: 'AVERAGE' } : { metric });
+            }}
+          >
+            {Object.entries(QUALIFIER_METRIC_LABELS).map(([key, label]) => (
               <option key={key} value={key}>
                 {tr(label)}
               </option>

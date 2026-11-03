@@ -130,7 +130,7 @@ export function StagesEditor({
     startsAt: null,
     bannerImageId: null,
     matchRules: null,
-    qualifierPolicy: qualifierPolicySchema.parse({}),
+    qualifierPolicy: qualifierPolicySchema.parse({ requiredPlayers: data?.defaults.teamSize ?? 1 }),
   });
   useEffect(() => {
     if (!data || opened.current) return;
@@ -667,7 +667,11 @@ export function StagesEditor({
                         kind: preset.kind,
                         matchRules: null,
                         qualifierPolicy:
-                          preset.kind === 'QUALIFIERS' ? qualifierPolicySchema.parse({}) : null,
+                          preset.kind === 'QUALIFIERS'
+                            ? qualifierPolicySchema.parse({
+                                requiredPlayers: data.defaults.teamSize,
+                              })
+                            : null,
                       });
                     }}
                   >

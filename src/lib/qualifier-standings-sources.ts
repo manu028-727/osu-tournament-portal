@@ -13,9 +13,11 @@ import { scopedDb } from './scoped-db';
 
 import {
   calculateQualifierStandings,
-  QUALIFIER_CALCULATION_VERSION,
+  METRIC_QUALIFIER_CALCULATION_VERSION,
   PREVIOUS_QUALIFIER_CALCULATION_VERSION,
   LEGACY_QUALIFIER_CALCULATION_VERSION,
+  currentQualifierCalculation,
+  qualifierCalculationVersionFor,
   canonicalQualifierJson,
   qualifierSourceHash,
   type QualifierIssue,
@@ -182,7 +184,7 @@ export async function loadQualifierCalculation(
   requestedVersion?: string,
 ) {
   tx = scopedDb(tx, tournamentId);
-  let calculationVersion = requestedVersion || QUALIFIER_CALCULATION_VERSION;
+  let historicalVersion: string | null = requestedVersion || null;
   if (!requestedVersion) {
     const latest = await tx.qualifierStanding.findFirst({
       where: { stageId, tournamentId },
@@ -196,7 +198,7 @@ export async function loadQualifierCalculation(
           saved.calculation.calculationVersion,
         )
       )
-        calculationVersion = saved.calculation.calculationVersion;
+        historicalVersion = saved.calculation.calculationVersion;
     }
   }
   const stage = await tx.tournamentStage.findFirst({
@@ -223,6 +225,8 @@ export async function loadQualifierCalculation(
   const policy = qualifierPolicySchema.parse(
     stage.qualifierPolicy ?? { requiredPlayers: firstRules.teamSize },
   );
+  const calculationVersion = historicalVersion || qualifierCalculationVersionFor(policy);
+  const currentFormula = currentQualifierCalculation(calculationVersion);
   const maps = (stage.mappool?.publishedRevision?.slots || [])
     .map((s) => ({ slotName: s.name, beatmapId: s.beatmapId }))
     .sort((a, b) => (a.slotName < b.slotName ? -1 : a.slotName > b.slotName ? 1 : 0));
@@ -260,20 +264,43 @@ export async function loadQualifierCalculation(
       maps: lobby.poolRevision.slots
         .map((s) => ({ slotName: s.name, beatmapId: s.beatmapId }))
         .sort((a, b) => (a.slotName < b.slotName ? -1 : a.slotName > b.slotName ? 1 : 0)),
-      originalScores: lobby.scores.map(
-        ({ eligible, eligibilityReason, passed, eligibilityOverride, ...s }) => ({
-          ...s,
-          ...(calculationVersion === QUALIFIER_CALCULATION_VERSION
-            ? { passed, eligibilityOverride }
-            : {}),
-          ...(eligible === false || eligibilityReason ? { eligible, eligibilityReason } : {}),
-          updatedAt: s.updatedAt.toISOString(),
-        }),
-      ),
+      // Named explicitly: a spread would let any new column change every saved hash.
+      originalScores: lobby.scores.map((s) => ({
+        id: s.id,
+        lobbyId: s.lobbyId,
+        osuId: s.osuId,
+        slotName: s.slotName,
+        run: s.run,
+        raw: s.raw,
+        adjusted: s.adjusted,
+        mods: s.mods,
+        actualScoring: s.actualScoring,
+        representation: s.representation,
+        source: s.source,
+        gameId: s.gameId,
+        verified: s.verified,
+        ...(currentFormula ? { passed: s.passed, eligibilityOverride: s.eligibilityOverride } : {}),
+        ...(calculationVersion === METRIC_QUALIFIER_CALCULATION_VERSION
+          ? { accuracy: s.accuracy, maxCombo: s.maxCombo, misses: s.misses }
+          : {}),
+        ...(s.eligible === false || s.eligibilityReason
+          ? { eligible: s.eligible, eligibilityReason: s.eligibilityReason }
+          : {}),
+        updatedAt: s.updatedAt.toISOString(),
+      })),
       ...(lobby.games.length
         ? {
             games: lobby.games.map((game) => ({
-              ...game,
+              id: game.id,
+              lobbyId: game.lobbyId,
+              multiplayerId: game.multiplayerId,
+              gameId: game.gameId,
+              run: game.run,
+              slotName: game.slotName,
+              evidence: game.evidence,
+              status: game.status,
+              reason: game.reason,
+              version: game.version,
               createdAt: game.createdAt.toISOString(),
               updatedAt: game.updatedAt.toISOString(),
               startedAt: game.startedAt?.toISOString() || null,
@@ -371,16 +398,16 @@ export async function loadQualifierCalculation(
               teamScores.map((s) => ({ ...s, mods: s.mods as string[] })),
             );
       try {
-        const expected =
-          calculationVersion === QUALIFIER_CALCULATION_VERSION
-            ? qualifierEffectiveScore(
-                rules,
-                lobbyPolicy.success ? lobbyPolicy.data : policy,
-                score.raw,
-                mods,
-                score.slotName,
-              )
-            : convertedScore(rules, score.raw, mods, score.slotName).adjusted;
+        const expected = currentFormula
+          ? qualifierEffectiveScore(
+              rules,
+              lobbyPolicy.success ? lobbyPolicy.data : policy,
+              score.raw,
+              mods,
+              score.slotName,
+              score,
+            )
+          : convertedScore(rules, score.raw, mods, score.slotName).adjusted;
         if (expected !== score.adjusted)
           add(
             'NORMALIZATION_MISMATCH',
@@ -399,8 +426,11 @@ export async function loadQualifierCalculation(
           'WARNING',
         );
       scores.push({
-        ...(calculationVersion === QUALIFIER_CALCULATION_VERSION
+        ...(currentFormula
           ? { passed: score.passed, eligibilityOverride: score.eligibilityOverride }
+          : {}),
+        ...(calculationVersion === METRIC_QUALIFIER_CALCULATION_VERSION
+          ? { accuracy: score.accuracy, maxCombo: score.maxCombo, misses: score.misses }
           : {}),
         id: score.id,
         lobbyId: lobby.id,

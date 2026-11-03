@@ -233,6 +233,27 @@ export const matchRulesSchema = z
   });
 export type MatchRules = z.infer<typeof matchRulesSchema>;
 export const DEFAULT_MATCH_RULES = matchRulesSchema.parse({});
+// What a new tournament starts from. The schema's own defaults must stay as they are,
+// because saved snapshots rely on them when they parse, so nothing event-specific is
+// removed there: this simply chooses neutral values and only asks for FreeMod quotas
+// a team of this size could actually meet.
+export function neutralMatchRules(
+  fields: Pick<MatchRules, 'gameMode' | 'teamSize' | 'teamMode'>,
+): MatchRules {
+  const required = fields.teamSize >= 2 ? 1 : 0;
+  return matchRulesSchema.parse({
+    ...fields,
+    multiplierMode: 'NONE',
+    modMultipliers: {},
+    freeModRequiredHD: required,
+    freeModRequiredHR: required,
+    latePolicy: '',
+    rollPolicy: '',
+    freeModPolicy: '',
+    tiebreakerPolicy: '',
+    disconnectPolicy: '',
+  });
+}
 export const firstTo = (rules: MatchRules) => (rules.bestOf + 1) / 2;
 export const otherSide = (side: Side): Side => (side === 'A' ? 'B' : 'A');
 export function canonicalMods(mods: readonly string[]) {

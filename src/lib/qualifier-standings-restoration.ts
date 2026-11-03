@@ -2,6 +2,7 @@ import { Prisma } from '@/generated/prisma/client';
 import { scopedDb } from './scoped-db';
 
 import {
+  METRIC_QUALIFIER_CALCULATION_VERSION,
   QUALIFIER_CALCULATION_VERSION,
   PREVIOUS_QUALIFIER_CALCULATION_VERSION,
   LEGACY_QUALIFIER_CALCULATION_VERSION,
@@ -82,6 +83,7 @@ export async function rebindImportedQualifierStandings(
       const stored = qualifierStandingSnapshot(record.snapshot);
       if (
         ![
+          METRIC_QUALIFIER_CALCULATION_VERSION,
           QUALIFIER_CALCULATION_VERSION,
           PREVIOUS_QUALIFIER_CALCULATION_VERSION,
           LEGACY_QUALIFIER_CALCULATION_VERSION,

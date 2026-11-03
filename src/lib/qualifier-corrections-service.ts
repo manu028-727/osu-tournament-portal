@@ -118,6 +118,8 @@ export async function reviewQualifierCorrections(
       const violation = qualifierIndividualViolation(rules, policy, slot.category, {
         mods,
         passed: next.passed,
+        accuracy: next.accuracy,
+        maxCombo: next.maxCombo,
         actualScoring: next.actualScoring,
         actualMode: (
           lobby.games.find((g) => `${g.multiplayerId}:${g.gameId}` === next.gameId)?.evidence as
@@ -132,7 +134,7 @@ export async function reviewQualifierCorrections(
           ? score.eligibilityReason
           : input.reason
         : violation || '';
-      next.adjusted = qualifierEffectiveScore(rules, policy, next.raw, mods, next.slotName);
+      next.adjusted = qualifierEffectiveScore(rules, policy, next.raw, mods, next.slotName, next);
       projected.set(next.id, next);
     }
     const keys = new Set<string>();

@@ -45,7 +45,12 @@ export function qualifierEffectiveScore(
   raw: number,
   mods: readonly string[],
   slot: string,
+  evidence?: { accuracy?: number | null; maxCombo?: number | null },
 ) {
+  // A metric is reported directly; missing evidence is excluded by the individual
+  // violation below, so this zero is never counted unless explicitly overridden.
+  if (policy.metric === 'ACCURACY') return evidence?.accuracy ?? 0;
+  if (policy.metric === 'COMBO') return evidence?.maxCombo ?? 0;
   const converted = convertedScore(rules, raw, mods, slot);
   if (
     policy.normalization === undefined &&
@@ -88,13 +93,15 @@ export function qualifierEffectiveScore(
 
 export function qualifierIndividualViolation(
   rules: MatchRules,
-  policy: Pick<QualifierPolicy, 'countFailed'>,
+  policy: Pick<QualifierPolicy, 'countFailed' | 'metric'>,
   category: string,
   score: {
     mods: string[];
     passed?: boolean | null;
     actualScoring?: string | null;
     actualMode?: string | null;
+    accuracy?: number | null;
+    maxCombo?: number | null;
   },
 ) {
   if (score.mods.some((mod) => !MODS.includes(mod as (typeof MODS)[number])))
@@ -108,6 +115,10 @@ export function qualifierIndividualViolation(
     return 'Gameplay scoring provenance is unavailable; review this score before counting it.';
   if (score.actualScoring && score.actualScoring !== expected)
     return 'Gameplay mode or scoring differs from the session snapshot.';
+  if (policy.metric === 'ACCURACY' && score.accuracy == null)
+    return 'Accuracy evidence is unavailable; review this score before counting it.';
+  if (policy.metric === 'COMBO' && score.maxCombo == null)
+    return 'Combo evidence is unavailable; review this score before counting it.';
   if (policy.countFailed === false && score.passed !== true)
     return score.passed === false
       ? 'Failed scores are excluded by the qualifier policy.'

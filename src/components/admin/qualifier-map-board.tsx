@@ -26,7 +26,9 @@ export function QualifierMapBoard({
   const current = qualifierProgress(lobby).find(
     (item) => item.run === selected.run && item.slot.name === selected.slotName,
   )!;
-  const [draft, setDraft] = useState<Record<string, { raw: string; mods: string[] }>>({});
+  const [draft, setDraft] = useState<
+    Record<string, { raw: string; mods: string[]; accuracy?: string; maxCombo?: string }>
+  >({});
   const [baseVersion, setBaseVersion] = useState<number | null>(null);
   const [reason, setReason] = useState('');
   const { run, busy } = useTask();
@@ -40,7 +42,10 @@ export function QualifierMapBoard({
     lobby.access.score &&
     !lobby.deletedAt &&
     (lobby.status === 'IN_PROGRESS' || (lobby.status === 'COMPLETED' && lobby.autoCompleted));
-  const edit = (osuId: number, value: Partial<{ raw: string; mods: string[] }>) => {
+  const edit = (
+    osuId: number,
+    value: Partial<{ raw: string; mods: string[]; accuracy: string; maxCombo: string }>,
+  ) => {
     if (baseVersion === null) setBaseVersion(lobby.version);
     const previous = lobby.scores.find(
       (score) =>
@@ -87,6 +92,8 @@ export function QualifierMapBoard({
               .map(([osuId, score]) => ({
                 osuId: Number(osuId),
                 raw: Number(score.raw),
+                ...(score.accuracy ? { accuracy: Number(score.accuracy) } : {}),
+                ...(score.maxCombo ? { maxCombo: Number(score.maxCombo) } : {}),
                 mods: score.mods,
               }));
             if (!scores.length) return;
@@ -159,7 +166,7 @@ export function QualifierMapBoard({
                           type="number"
                           min={0}
                           max={1000000000000}
-                          step={lobby.rules.scoreMode === 'ACCURACY' ? 'any' : 1}
+                          step={1}
                           inputMode="numeric"
                           value={value?.raw ?? (recorded ? String(recorded.raw) : '')}
                           placeholder={tr('Missing')}
@@ -167,6 +174,44 @@ export function QualifierMapBoard({
                         />
                       </Field>
                     </div>
+                    {(lobby.policy.metric === 'ACCURACY' || lobby.policy.metric === 'COMBO') && (
+                      <div className={styles.scoreInput}>
+                        <Field
+                          label={tr(
+                            lobby.policy.metric === 'ACCURACY'
+                              ? 'Accuracy for {0} (%)'
+                              : 'Max combo for {0}',
+                            player.username,
+                          )}
+                        >
+                          <input
+                            type="number"
+                            min={0}
+                            max={lobby.policy.metric === 'ACCURACY' ? 100 : 2147483647}
+                            step={lobby.policy.metric === 'ACCURACY' ? 'any' : 1}
+                            value={
+                              (lobby.policy.metric === 'ACCURACY'
+                                ? value?.accuracy
+                                : value?.maxCombo) ??
+                              String(
+                                (lobby.policy.metric === 'ACCURACY'
+                                  ? recorded?.accuracy
+                                  : recorded?.maxCombo) ?? '',
+                              )
+                            }
+                            placeholder={tr('Missing')}
+                            onChange={(event) =>
+                              edit(
+                                player.osuId,
+                                lobby.policy.metric === 'ACCURACY'
+                                  ? { accuracy: event.target.value }
+                                  : { maxCombo: event.target.value },
+                              )
+                            }
+                          />
+                        </Field>
+                      </div>
+                    )}
                     {(lobby.rules.freeModCategories.includes(current.slot.category) ||
                       recorded?.eligible === false) && (
                       <details className="col-span-2">

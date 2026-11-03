@@ -382,6 +382,8 @@ async function buildPreview(
                     mods: corrected.mods,
                     passed: corrected.passed,
                     actualScoring: proposal!.actualScoring,
+                    accuracy: corrected.accuracy,
+                    maxCombo: corrected.maxCombo,
                   }) ||
                   undefined,
               };
@@ -425,6 +427,7 @@ async function buildPreview(
                             player.raw,
                             player.mods,
                             proposal!.slotName,
+                            player,
                           ),
                         })),
                         lobby.policy,

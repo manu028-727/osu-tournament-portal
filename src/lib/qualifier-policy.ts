@@ -2,7 +2,18 @@ import { z } from 'zod';
 
 export const qualifierPolicySchema = z
   .strictObject({
-    method: z.enum(['RAW_SCORE', 'Z_SUM', 'TEAM_AVERAGE', 'MATCH_COST']).default('RAW_SCORE'),
+    method: z
+      .enum([
+        'RAW_SCORE',
+        'Z_SUM',
+        'TEAM_AVERAGE',
+        'MATCH_COST',
+        'PERCENT_MAX',
+        'AVERAGE_PLACEMENT',
+      ])
+      .default('RAW_SCORE'),
+    // Optional, with no default: a defaulted field would enter every saved source hash.
+    metric: z.enum(['SCORE', 'ACCURACY', 'COMBO']).optional(),
     runs: z.union([z.literal(1), z.literal(2)]).default(1),
     runSelection: z
       .enum(['BEST_PER_MAP', 'BEST_COMPLETE_RUN', 'FIRST_RUN', 'SECOND_RUN'])
@@ -16,6 +27,12 @@ export const qualifierPolicySchema = z
     countFailed: z.boolean().optional(),
   })
   .superRefine((policy, ctx) => {
+    if (policy.metric === 'ACCURACY' && policy.teamAggregation !== 'AVERAGE')
+      ctx.addIssue({
+        code: 'custom',
+        path: ['teamAggregation'],
+        message: 'Team accuracy is an average.',
+      });
     if (policy.runs === 1 && policy.runSelection === 'SECOND_RUN')
       ctx.addIssue({
         code: 'custom',
@@ -31,6 +48,13 @@ export const QUALIFIER_METHOD_LABELS: Record<QualifierPolicy['method'], string> 
   Z_SUM: 'Z-Sum',
   TEAM_AVERAGE: 'Team average',
   MATCH_COST: 'Match cost (osu!plus qualifier adaptation)',
+  PERCENT_MAX: 'Percent of map maximum (%MAX)',
+  AVERAGE_PLACEMENT: 'Average map placement',
+};
+export const QUALIFIER_METRIC_LABELS: Record<NonNullable<QualifierPolicy['metric']>, string> = {
+  SCORE: 'Score',
+  ACCURACY: 'Accuracy',
+  COMBO: 'Combo',
 };
 
 export function qualifierTeamAggregate<T extends { osuId: number; adjusted: number }>(

@@ -4,7 +4,7 @@ import { db } from './db';
 import { actorForTournament } from './auth';
 import { AppError, DEFAULT_ROLES, assertPermission, type Actor } from './permissions';
 import { scopedDb } from './scoped-db';
-import { matchRulesSchema } from './match-rules';
+import { neutralMatchRules } from './match-rules';
 import { DEFAULT_COPY } from './copy';
 import { safeUrl, color } from './validation';
 import { appUrl } from './security';
@@ -155,7 +155,7 @@ export async function tournamentAction(
                 ],
                 footer: input.name,
                 copy: DEFAULT_COPY,
-                matchRules: matchRulesSchema.parse({
+                matchRules: neutralMatchRules({
                   gameMode: input.gameMode,
                   teamSize: input.format === 'SOLO' ? 1 : 2,
                   teamMode: input.format === 'SOLO' ? 'HEAD_TO_HEAD' : 'TEAM_VS',

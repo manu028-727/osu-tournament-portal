@@ -210,7 +210,7 @@ export const ARCHIVE_TABLES = {
   }),
   qualifierScores: def(
     'qualifierScore',
-    'id:s lobbyId:s osuId:i slotName:s run:i actualScoring:s? representation:s source:s gameId:s? verified:b eligible:b eligibilityReason:s passed:b? eligibilityOverride:s? raw:n mods:j adjusted:n updatedAt:d',
+    'id:s lobbyId:s osuId:i slotName:s run:i actualScoring:s? representation:s source:s gameId:s? verified:b eligible:b eligibilityReason:s passed:b? eligibilityOverride:s? raw:n mods:j adjusted:n updatedAt:d accuracy:n? maxCombo:i? misses:i?',
     { lobbyId: 'qualifierLobbies', osuId: 'participants' },
     ['lobby'],
   ),

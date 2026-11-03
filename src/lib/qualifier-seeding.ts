@@ -7,6 +7,7 @@ import {
 } from './qualifier-policy';
 
 export const QUALIFIER_CALCULATION_VERSION = 'qualifier-seeding/3';
+export const METRIC_QUALIFIER_CALCULATION_VERSION = 'qualifier-seeding/4';
 export const PREVIOUS_QUALIFIER_CALCULATION_VERSION = 'qualifier-seeding/2';
 export const LEGACY_QUALIFIER_CALCULATION_VERSION = 'qualifier-seeding/1';
 export const MATCH_COST_REFERENCE = {
@@ -17,6 +18,18 @@ export const MATCH_COST_REFERENCE = {
   adaptation:
     'Stage-wide selected entrant map scores replace multiplayer-room averages. No match bonuses. Zero means block finalization.',
 } as const;
+
+// Methods and metrics added after version 3 use their own formula and witness, so every
+// existing standing keeps recalculating exactly as it was finalized.
+export function qualifierCalculationVersionFor(policy: QualifierPolicy) {
+  return policy.method === 'PERCENT_MAX' ||
+    policy.method === 'AVERAGE_PLACEMENT' ||
+    (policy.metric && policy.metric !== 'SCORE')
+    ? METRIC_QUALIFIER_CALCULATION_VERSION
+    : QUALIFIER_CALCULATION_VERSION;
+}
+export const currentQualifierCalculation = (version: string) =>
+  version === QUALIFIER_CALCULATION_VERSION || version === METRIC_QUALIFIER_CALCULATION_VERSION;
 
 export type QualifierIssue = {
   code: string;
@@ -45,6 +58,9 @@ export type QualifierSourceScore = {
   source: string;
   gameId: string | null;
   verified: boolean;
+  accuracy?: number | null;
+  maxCombo?: number | null;
+  misses?: number | null;
 };
 export type QualifierSeedingInput = {
   tournamentId: string;
@@ -70,6 +86,9 @@ export type QualifierMapReference = {
   mean: number | null;
   sampleDeviation: number | null;
   participantIds: string[];
+  // Only recorded by the methods that read them, so older references stay unchanged.
+  maximum?: number | null;
+  scores?: number[];
 };
 export type QualifierStandingRow = {
   participantId: string;
@@ -135,6 +154,7 @@ const mean = (values: number[]) => sum(values) / values.length;
 export function qualifierMapStatistics(
   slotName: string,
   values: { id: string; score: number }[],
+  cohortDetail = false,
 ): QualifierMapReference {
   const average = values.length ? mean(values.map((v) => v.score)) : null;
   return {
@@ -146,8 +166,17 @@ export function qualifierMapStatistics(
         ? null
         : Math.sqrt(sum(values.map((v) => (v.score - average) ** 2)) / (values.length - 1)),
     participantIds: values.map((v) => v.id),
+    ...(cohortDetail
+      ? {
+          maximum: values.length ? Math.max(...values.map((v) => v.score)) : null,
+          scores: values.map((v) => v.score),
+        }
+      : {}),
   };
 }
+const usesCohortDetail = (method: QualifierPolicy['method']) =>
+  method === 'PERCENT_MAX' || method === 'AVERAGE_PLACEMENT';
+const lowerIsBetter = (method: QualifierPolicy['method']) => method === 'AVERAGE_PLACEMENT';
 
 function mapContribution(
   score: number,
@@ -162,6 +191,11 @@ function mapContribution(
         : (score - reference.mean!) / reference.sampleDeviation;
   if (method === 'MATCH_COST')
     return reference.mean === null || reference.mean === 0 ? null : score / reference.mean;
+  if (method === 'PERCENT_MAX')
+    return !reference.maximum ? null : (score / reference.maximum) * 100;
+  // Tied scores share the better placement.
+  if (method === 'AVERAGE_PLACEMENT')
+    return 1 + (reference.scores || []).filter((other) => other > score).length;
   return score;
 }
 function evaluate(
@@ -182,6 +216,7 @@ function evaluate(
   if (policy.method === 'MATCH_COST') return (2 * total) / (maps.length + 2);
   if (
     policy.method === 'TEAM_AVERAGE' ||
+    policy.method === 'AVERAGE_PLACEMENT' ||
     (policy.method === 'RAW_SCORE' && policy.rawAggregation === 'AVERAGE')
   )
     return total / maps.length;
@@ -190,11 +225,12 @@ function evaluate(
 
 export function calculateQualifierStandings(
   input: QualifierSeedingInput,
-  calculationVersion = QUALIFIER_CALCULATION_VERSION,
+  requestedVersion?: string,
 ): QualifierCalculation {
-  const legacy = calculationVersion === LEGACY_QUALIFIER_CALCULATION_VERSION;
-  const playedCompletion = calculationVersion === QUALIFIER_CALCULATION_VERSION;
   const policy = qualifierPolicySchema.parse(input.policy);
+  const calculationVersion = requestedVersion ?? qualifierCalculationVersionFor(policy);
+  const legacy = calculationVersion === LEGACY_QUALIFIER_CALCULATION_VERSION;
+  const playedCompletion = currentQualifierCalculation(calculationVersion);
   const source: QualifierSeedingInput = {
     ...input,
     policy,
@@ -421,6 +457,7 @@ export function calculateQualifierStandings(
               },
             ];
       }),
+      usesCohortDetail(policy.method),
     ),
   );
   const selected = candidates.map(({ participant, runs }) => {
@@ -445,7 +482,12 @@ export function calculateQualifierStandings(
     } else {
       const choices = runs
         .filter((r) => r.complete && r.comparisonValue !== null)
-        .sort((a, b) => b.comparisonValue! - a.comparisonValue! || a.run - b.run);
+        .sort(
+          (a, b) =>
+            (lowerIsBetter(policy.method)
+              ? a.comparisonValue! - b.comparisonValue!
+              : b.comparisonValue! - a.comparisonValue!) || a.run - b.run,
+        );
       if (choices.length) {
         selectedRun = choices[0].run;
         maps = choices[0].maps;
@@ -484,6 +526,7 @@ export function calculateQualifierStandings(
         id: s.participant.id,
         score: s.maps.find((m) => m.slotName === slotName)!.score,
       })),
+      usesCohortDetail(policy.method),
     ),
   );
   for (const reference of references) {
@@ -503,6 +546,10 @@ export function calculateQualifierStandings(
     }
     if (policy.method === 'MATCH_COST' && (reference.mean === null || reference.mean === 0))
       issue('ZERO_REFERENCE', 'Match cost requires a positive cohort map average.', {
+        slotName: reference.slotName,
+      });
+    if (policy.method === 'PERCENT_MAX' && !reference.maximum)
+      issue('ZERO_REFERENCE', '%MAX requires a positive best score on every map.', {
         slotName: reference.slotName,
       });
   }
@@ -544,7 +591,9 @@ export function calculateQualifierStandings(
             : 1
           : b.value === null
             ? -1
-            : b.value - a.value) || compareId(a.participantId, b.participantId),
+            : lowerIsBetter(policy.method)
+              ? a.value - b.value
+              : b.value - a.value) || compareId(a.participantId, b.participantId),
     );
   const ranked = rows.filter((r) => r.complete && r.eligible && r.value !== null);
   for (let start = 0; start < ranked.length;) {
@@ -569,9 +618,13 @@ export function calculateQualifierStandings(
       ? 'sum((selectedMapScore - mean) / sampleDeviation)'
       : policy.method === 'MATCH_COST'
         ? MATCH_COST_REFERENCE.formula
-        : policy.method === 'TEAM_AVERAGE' || policy.rawAggregation === 'AVERAGE'
-          ? 'sum(selectedTeamMapScore) / mapCount'
-          : 'sum(selectedTeamMapScore)';
+        : policy.method === 'PERCENT_MAX'
+          ? 'sum(selectedMapScore / mapMaximum * 100)'
+          : policy.method === 'AVERAGE_PLACEMENT'
+            ? 'sum(mapPlacement) / mapCount'
+            : policy.method === 'TEAM_AVERAGE' || policy.rawAggregation === 'AVERAGE'
+              ? 'sum(selectedTeamMapScore) / mapCount'
+              : 'sum(selectedTeamMapScore)';
   return {
     calculationVersion,
     sourceHash: qualifierSourceHash({ calculationVersion, source }),

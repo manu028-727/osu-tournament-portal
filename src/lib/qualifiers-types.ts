@@ -57,6 +57,9 @@ export type QualifierView = {
     gameId: string | null;
     verified: boolean;
     raw: number;
+    accuracy?: number | null;
+    maxCombo?: number | null;
+    misses?: number | null;
     mods: string[];
     adjusted: number;
   }[];

@@ -37,6 +37,7 @@ export default defineConfig({
       'tests/stage-reconciliation.integration.test.ts',
       'tests/setup.integration.test.ts',
       'tests/format-witnesses.integration.test.ts',
+      'tests/format-scoring.integration.test.ts',
     ],
     env: { DATABASE_URL: process.env.TEST_DATABASE_URL },
     fileParallelism: false,

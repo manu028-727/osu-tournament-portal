@@ -517,3 +517,128 @@ describe('deterministic snapshots and explicit ties', () => {
     expect(canonicalQualifierJson({ b: 2, a: 1 })).toBe('{"a":1,"b":2}');
   });
 });
+
+describe('metric and cohort seeding methods', () => {
+  const maps = [
+    { slotName: 'NM1', beatmapId: 1 },
+    { slotName: 'NM2', beatmapId: 2 },
+  ];
+  const input = (
+    policy: Record<string, unknown>,
+    scores: Record<string, [number, number]>,
+    evidence: (value: number) => Record<string, number> = () => ({}),
+  ) => ({
+    tournamentId: 't',
+    stageId: 's',
+    gameplayScoring: 'SCORE_V2' as const,
+    policy: qualifierPolicySchema.parse(policy),
+    maps,
+    participants: Object.keys(scores).map((id, index) => ({
+      id,
+      name: id,
+      roster: [index + 1],
+    })),
+    scores: Object.entries(scores).flatMap(([id, values], index) =>
+      values.map((value, map) => ({
+        id: `${id}-${map}`,
+        lobbyId: 'l',
+        participantId: id,
+        osuId: index + 1,
+        slotName: maps[map].slotName,
+        run: 1,
+        raw: 1000,
+        adjusted: value,
+        mods: ['NF'],
+        actualScoring: 'SCORE_V2',
+        representation: 'LEGACY',
+        source: 'IMPORT',
+        gameId: null,
+        verified: true,
+        ...evidence(value),
+      })),
+    ),
+  });
+
+  it('sums each map as a percentage of its best score', () => {
+    const result = calculateQualifierStandings(
+      input({ method: 'PERCENT_MAX' }, { a: [1000, 500], b: [500, 1000], c: [250, 250] }),
+    );
+    expect(result.calculationVersion).toBe('qualifier-seeding/4');
+    expect(result.rows.map((row) => [row.participantId, row.value, row.seed])).toEqual([
+      ['a', 150, null],
+      ['b', 150, null],
+      ['c', 50, 3],
+    ]);
+    expect(result.rows[0].tied).toBe(true);
+    expect(result.rows[2].breakdown[0].contribution).toBe(25);
+    expect(result.formula).toContain('mapMaximum');
+  });
+
+  it('blocks %MAX when a map has no positive best score', () => {
+    const result = calculateQualifierStandings(
+      input({ method: 'PERCENT_MAX' }, { a: [0, 500], b: [0, 1000] }),
+    );
+    expect(result.issues.some((issue) => issue.code === 'ZERO_REFERENCE')).toBe(true);
+    expect(result.canFinalize).toBe(false);
+  });
+
+  it('ranks average placement lowest first and shares tied placements', () => {
+    const result = calculateQualifierStandings(
+      input(
+        { method: 'AVERAGE_PLACEMENT' },
+        { a: [300, 100], b: [200, 300], c: [100, 300], d: [50, 50] },
+      ),
+    );
+    expect(result.rows.map((row) => [row.participantId, row.value])).toEqual([
+      ['b', 1.5],
+      ['a', 2],
+      ['c', 2],
+      ['d', 4],
+    ]);
+    expect(result.rows[0].seed).toBe(1);
+    expect(result.rows[1].tied).toBe(true);
+  });
+
+  it('chooses the run with the better placement, not the larger number', () => {
+    const base = input(
+      { method: 'AVERAGE_PLACEMENT', runs: 2, runSelection: 'BEST_COMPLETE_RUN' },
+      { a: [300, 300], b: [200, 200] },
+    );
+    const second = base.scores
+      .filter((score) => score.participantId === 'b')
+      .map((score) => ({ ...score, id: `${score.id}-2`, run: 2, adjusted: 400 }));
+    const result = calculateQualifierStandings({ ...base, scores: [...base.scores, ...second] });
+    expect(result.rows.find((row) => row.participantId === 'b')?.selectedRun).toBe(2);
+  });
+
+  it('seeds Z-Sum on accuracy under its own calculation version', () => {
+    const result = calculateQualifierStandings(
+      input(
+        { method: 'Z_SUM', metric: 'ACCURACY', teamAggregation: 'AVERAGE' },
+        { a: [98.5, 97.25], b: [95.5, 96.75], c: [91.5, 90.25] },
+        (value) => ({ accuracy: value }),
+      ),
+    );
+    expect(result.calculationVersion).toBe('qualifier-seeding/4');
+    expect(result.rows.map((row) => row.participantId)).toEqual(['a', 'b', 'c']);
+    expect(result.rows[0].selected[0].score).toBe(98.5);
+  });
+
+  it('keeps every existing method on its own version and references', () => {
+    for (const method of ['RAW_SCORE', 'Z_SUM', 'TEAM_AVERAGE', 'MATCH_COST'] as const) {
+      const result = calculateQualifierStandings(
+        input({ method }, { a: [300, 100], b: [200, 300] }),
+      );
+      expect(result.calculationVersion).toBe('qualifier-seeding/3');
+      expect(result.references[0]).not.toHaveProperty('maximum');
+      expect(result.references[0]).not.toHaveProperty('scores');
+    }
+  });
+
+  it('rejects summed team accuracy', () => {
+    expect(qualifierPolicySchema.safeParse({ metric: 'ACCURACY' }).success).toBe(false);
+    expect(
+      qualifierPolicySchema.safeParse({ metric: 'ACCURACY', teamAggregation: 'AVERAGE' }).success,
+    ).toBe(true);
+  });
+});

@@ -329,6 +329,12 @@ events and result revisions. Best-of completion, submission, confirmation, forfe
 disputes, reopening, undo/corrections and permanent deletion use permission-checked,
 audited workflows with conflict checks. Refresh/restart must retain history.
 
+Bancho's scoring mode and the tournament's win condition are separate. Maps can be
+decided on score, team average accuracy, combo or misses, read from the same lobby
+evidence: a ScoreV2 lobby can decide on accuracy, which keeps its decimals and is never
+multiplied. Mods can be required on every map, including Relax, optional or restricted
+per category, and FreeMod requirements define which mods count toward each.
+
 FreeMod conversion uses explicit universal/custom/slot or legacy multiplier policy,
 not a hidden score-system conversion. Dedicated Discord formatting reproduces
 supported Stat Lord `Template!AB3` spacing/Markdown/forfeits and custom flags; golden
@@ -417,8 +423,9 @@ the complete cohort's totals and seeds before applying, compare reviewed version
 and sources inside the transaction, and retain raw receipts and before/after audits.
 Remapping persists across re-imports; conflicting destinations are rejected.
 
-Calculate Raw Score, sample-deviation Z-Sum, Team Average or the explicitly named
-osu!plus qualifier-cohort Match Cost adaptation. Preserve raw/provenance data,
+Calculate Raw Score, sample-deviation Z-Sum, Team Average, %MAX, average map placement
+or the explicitly named osu!plus qualifier-cohort Match Cost adaptation, seeded on score,
+accuracy or combo. Preserve raw/provenance data,
 missing versus zero, complete cohorts, full precision and explicit tie decisions.
 Provisional, finalized and published standings are separate immutable versions.
 Calculation version 3 separates played-run completion from counted-score selection;
@@ -428,7 +435,8 @@ calculations retain their original formulas and hashes until reviewed reopening.
 Finalization requires complete confirmed sources and resolved ties; cutoff seeds
 can generate brackets. Reviewed reopening preserves old witnesses and freezes
 downstream assignments, hides superseded publication and blocks after downstream
-gameplay starts. No silent reseeding.
+gameplay starts. No silent reseeding. Version 4 covers %MAX, average placement and
+metric seeding; adding it recalculates no existing standing.
 
 **Partial.** Native lazer Rooms API capture is not implemented.
 Lazer cannot use legacy Bancho setup/capture. Qualifier workbook
