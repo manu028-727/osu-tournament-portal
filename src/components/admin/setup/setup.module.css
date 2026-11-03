@@ -237,6 +237,7 @@
   border-top: 1px solid var(--separator);
 }
 .phase {
+  min-width: 0;
   display: grid;
   gap: 12px;
   padding: 12px;
@@ -366,6 +367,12 @@
     flex-basis: 100%;
   }
 }
+/* A plain grid column grows to fit its widest child, which defeats scrolling tables inside. */
+.stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
 .reviewList {
   display: grid;
   gap: 12px;
@@ -405,4 +412,98 @@
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   align-items: end;
   gap: 12px;
+}
+.captainGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px 16px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.formedTeams {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.formedTeam {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.formedTeam input {
+  width: 100%;
+  min-width: 0;
+  font-weight: 600;
+}
+.decision {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  align-items: end;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.decisionLead {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pasteError {
+  color: var(--state-danger);
+}
+.formationTable {
+  width: 100%;
+  font-size: 14px;
+  border-collapse: collapse;
+}
+.formationTable th {
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+.formationTable td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--separator);
+}
+.rateRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)) auto;
+  align-items: end;
+  gap: 8px;
+}
+.itemRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  align-items: end;
+  gap: 12px;
+  padding-block: 12px;
+  border-bottom: 1px solid var(--separator);
+}
+.itemWide {
+  grid-column: 1 / -1;
+}
+.ledgerTeam {
+  padding-block: 8px;
+  border-bottom: 1px solid var(--separator);
+}
+.ledgerTeam summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+  cursor: pointer;
+}
+.overdrawn {
+  font-weight: 600;
+  color: var(--state-danger);
 }

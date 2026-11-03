@@ -40,6 +40,8 @@ export default defineConfig({
       'tests/format-engine.test.ts',
       'tests/format-templates.test.ts',
       'tests/eligibility.test.ts',
+      'tests/team-formation.test.ts',
+      'tests/resources.test.ts',
       'tests/container-proxy.test.ts',
       'tests/theme.test.ts',
     ],

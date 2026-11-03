@@ -17,6 +17,7 @@ import { matchesSchedulingActionOptions } from './matches-bulk-validation';
 import { staffBulkActionSchema } from './staff-bulk-validation';
 import { ELIGIBILITY_EXCEPTIONS } from './eligibility';
 import { registrationPolicySchema } from './registration-policy';
+import { resourcePolicySchema } from './resources';
 import { qualifierBookingPolicySchema } from './qualifier-booking-policy';
 export const id = z.string().min(1).max(100);
 export const label = z.string().trim().min(1).max(120);
@@ -64,6 +65,7 @@ const base = z.object({ type: z.string() });
 export const settingsFieldsSchema = z.object({
   registrationPolicy: registrationPolicySchema.nullable().optional(),
   qualifierBookingPolicy: qualifierBookingPolicySchema.nullable().optional(),
+  resourcePolicy: resourcePolicySchema.nullable().optional(),
   gameplayScoring: gameplayScoringSchema.nullable().optional(),
   name: label,
   acronym: z.string().trim().min(1).max(20),
@@ -108,6 +110,7 @@ const advancementFields = {
   overrides: z.record(z.string(), id.nullable()).optional(),
   reason: z.string().trim().max(1000).optional(),
 };
+const formationFields = { sessionId: id, baseVersion: z.number().int().positive() };
 export const actionSchema = z.discriminatedUnion('type', [
   base.extend({
     type: z.literal('format.plan.save'),
@@ -124,6 +127,94 @@ export const actionSchema = z.discriminatedUnion('type', [
     reviewHash: z.string().regex(/^[a-f0-9]{64}$/),
   }),
   base.extend({ type: z.literal('format.reseed'), phaseKey: z.string().min(1).max(40) }),
+  base.extend({
+    type: z.literal('formation.start'),
+    phaseKey: z.string().min(1).max(40),
+    captainTeamIds: z.array(id).max(128).optional(),
+    randomSeed: z.string().min(1).max(64).optional(),
+  }),
+  base.extend({
+    type: z.literal('formation.assign'),
+    ...formationFields,
+    lotId: id,
+    formationTeamId: id,
+    price: z.number().int().min(0).max(100_000_000).nullable().optional(),
+    reason: z.string().trim().max(1000).optional(),
+  }),
+  base.extend({
+    type: z.literal('formation.unassign'),
+    ...formationFields,
+    lotId: id,
+    reason: z.string().trim().min(3).max(1000),
+  }),
+  base.extend({ type: z.literal('formation.reserve'), ...formationFields, lotId: id }),
+  base.extend({ type: z.literal('formation.fill'), ...formationFields }),
+  base.extend({
+    type: z.literal('formation.paste'),
+    ...formationFields,
+    text: z.string().min(1).max(50_000),
+    apply: z.boolean(),
+  }),
+  base.extend({
+    type: z.literal('formation.rename'),
+    ...formationFields,
+    formationTeamId: id,
+    name: z.string().trim().min(1).max(120),
+  }),
+  base.extend({
+    type: z.literal('formation.confirm'),
+    ...formationFields,
+    incompleteReason: z.string().trim().max(1000).optional(),
+  }),
+  base.extend({
+    type: z.literal('formation.reopen'),
+    ...formationFields,
+    reason: z.string().trim().min(3).max(1000),
+  }),
+  base.extend({
+    type: z.literal('formation.restart'),
+    ...formationFields,
+    reason: z.string().trim().min(3).max(1000),
+  }),
+  base.extend({
+    type: z.literal('resource.item.save'),
+    id: id.optional(),
+    baseVersion: z.number().int().positive().optional(),
+    name: z.string().trim().min(1).max(120),
+    description: z.string().trim().max(2000).default(''),
+    price: z.number().int().min(0).max(100_000_000),
+    unlockStageId: id.nullable().default(null),
+    published: z.boolean().default(false),
+  }),
+  base.extend({
+    type: z.literal('resource.item.archive'),
+    id,
+    baseVersion: z.number().int().positive(),
+  }),
+  base.extend({
+    type: z.literal('resource.purchase'),
+    teamId: id,
+    itemId: id,
+    stageId: id.nullable().default(null),
+    expectedPrice: z.number().int().min(0),
+    note: z.string().trim().max(1000).default(''),
+  }),
+  base.extend({
+    type: z.literal('resource.purchase.reverse'),
+    id,
+    reason: z.string().trim().min(3).max(1000),
+  }),
+  base.extend({
+    type: z.literal('resource.adjust'),
+    teamId: id,
+    amount: z
+      .number()
+      .int()
+      .min(-100_000_000)
+      .max(100_000_000)
+      .refine((value) => value !== 0, 'Enter an amount other than zero.'),
+    reason: z.string().trim().min(3).max(1000),
+  }),
   base.extend({
     type: z.literal('eligibility.exception.grant'),
     osuId: z.number().int().positive().max(2147483647),

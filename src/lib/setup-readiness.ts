@@ -6,6 +6,7 @@ export const SETUP_SECTIONS = [
   'scoring',
   'stages',
   'format',
+  'resources',
   'schedule',
   'staff',
   'publication',
@@ -27,6 +28,7 @@ export type SetupSummary = {
   staff: number;
   homePublished: boolean;
   rulesPublished: boolean;
+  eligibilityPending: number;
   dismissed: readonly string[];
 };
 export type ReadinessItem = {
@@ -93,6 +95,16 @@ export function setupReadiness(summary: SetupSummary): ReadinessItem[] {
       label: 'Publish the tournament',
       required: true,
       done: summary.published,
+    },
+    {
+      id: 'eligibility',
+      section: 'registration',
+      label: summary.eligibilityPending
+        ? 'Decide on {0} registrations outside the limits'
+        : 'Review eligibility',
+      values: summary.eligibilityPending ? [summary.eligibilityPending] : [],
+      required: false,
+      done: !summary.eligibilityPending,
     },
     {
       id: 'registration-window',

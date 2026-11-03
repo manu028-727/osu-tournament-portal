@@ -137,6 +137,7 @@ describe('setup readiness', () => {
     gameplayScoringSet: true,
     teamSize: 2,
     maxPlayers: 3,
+    eligibilityPending: 0,
     stages: [{ name: 'Finals', kind: 'ELIMINATION', poolSlots: 10, poolPublished: true }],
     plan: { exists: true, valid: true, locked: true },
     approvedEntrants: 4,

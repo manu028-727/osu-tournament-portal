@@ -33,6 +33,7 @@ export type TournamentView = {
   settings: {
     registrationPolicy?: import('./registration-policy').RegistrationPolicy | null;
     qualifierBookingPolicy?: import('./qualifier-booking-policy').QualifierBookingPolicy | null;
+    resourcePolicy?: import('./resources').ResourcePolicy | null;
     gameplayScoring?: import('./gameplay-scoring').GameplayScoring | null;
     logo: string;
     banner: string;

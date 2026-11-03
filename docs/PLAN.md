@@ -1491,7 +1491,7 @@ Keep this current so an interrupted session can continue from it.
 | M3        | Setup workspace replacing Overview, `setup.apply`, templates, readiness          | Verified |
 | M4        | Lock format, placeholders, advancement persistence, guards, archive, projections | Verified |
 | M5        | Referee rule enforcement: lineups, timers, attempts, forfeits, sanctions         | Verified |
-| M6        | Eligibility, team formation, auction board, derived resources                    | Planned  |
+| M6        | Eligibility, team formation, auction board, derived resources                    | Verified |
 | M7        | Every-page editing sweep and obsolete-setting cleanup                            | Planned  |
 | M8        | All formats simulated through the normal UI, full gates, final report            | Planned  |
 
@@ -1620,7 +1620,7 @@ Integration tests caught a stale-token bug where the stage witness included join
 relations. Composite saves are covered for atomic rollback, stale plans, wrong-kind and
 foreign stages, per-operation permissions and protection of stages in a format.
 
-Not yet possible: locking a plan or running its phases (M4), and rank-sum eligibility and
+At M3, not yet possible: locking a plan or running its phases (M4), and rank-sum eligibility and
 team formation execution (M6). Qualifier sessions and matches are linked rather than embedded
 in the schedule section; reassess at M7.
 
@@ -1658,6 +1658,33 @@ individual entry and live capture, with reviewed imports intentionally lenient. 
 turn is recorded while the turn's owner stays the same in the draft sequence, because the
 order itself must not change; the opponent's choice is entered on that turn. Unverified on
 real Bancho: `!roll` behaviour with the suggested count.
+
+### M6 Checks
+
+Applied `20261103060000_eligibility_exceptions`, `20261103070000_team_formation` and
+`20261103080000_tournament_resources` to the isolated test database only, with no drift against
+the Prisma schema. Unit tests pin exact rule boundaries from real rulebooks: OIDC rank and rank
+sum limits, Draft Cup earnings, hand-written snake order and reserve fill, and pasted bot lines
+in seven shapes. Integration tests run real registration, booking, approval, standings, archive
+and permission paths: rank locks, exceptions in and out of force, approval through single and
+bulk, an auction to confirmed teams, stale forms, undo, fill, paste all-or-nothing, reopening,
+reproducible draws, free agents with no qualifier, formed teams into real bracket slots, frozen
+standings, budgets moving with corrected and voided results, private fields kept off public
+reads, tenant isolation and archive round trips. Browser: eligibility review, a full auction with
+a live public page, budgets, at all five widths, both appearances and Italian.
+
+This caught and fixed: a group witness hashing nodes in stored row order, a real M4 bug that made
+formats randomly report changed results, now pinned by a test that moves rows; refused sales
+clearing the form; and a section stack overflowing at 320px around a scrolling table.
+
+Free agents are covered: a formation phase can read registration directly, with organizers
+assigning by hand. Remaining for organizers to judge, because the rules are silent or the effect
+is human: which team fills first from reserves (one seat per team in turn is a stated choice),
+what happens to a team a fill overdraws, whether a forfeit earns more than the match rate, every
+perk effect, and interview outcomes. A referee sees bought items in the match but nothing applies
+them. Formation's bid history is not recorded: the board stores final sales, since bidding happens
+in the room or a bot. Unverified on the real provider: `users/:id/:mode` rank reads were exercised
+only through a mocked `osuGet`.
 
 ## Completion Rules
 

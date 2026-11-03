@@ -175,6 +175,14 @@ URL hash. An empty tournament opens on the format choice, then on the next unfin
 section. Readiness separates required from optional, optional items can be dismissed, and
 neither ever blocks publication. Sections show only what the viewer may act on.
 
+Team formation is a board inside its phase: team cards with names editable in place, one
+compact form for the next decision, and every other action folded away. Refused sales keep what
+the operator typed. Decisions that discard work ask for a reason beside the button. The public
+page is the same board read-only, led by who is on offer, with no controls and no draw order.
+Budgets follow the same pattern, one row per item and one folded ledger per team. Workspace
+stacks use `minmax(0, 1fr)` columns, because a plain grid column grows to fit a wide table and
+defeats its scroll container on narrow screens.
+
 Stages use one grid mirroring a rules document (Best of, bans, map counts, star targets),
 scrolling inside its own container on narrow screens, with a stage's qualifier scoring and
 mappool editor opening below it. Team size has one control. The phase flow is a row of

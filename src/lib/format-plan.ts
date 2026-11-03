@@ -79,6 +79,7 @@ export const formatPhaseSchema = z.discriminatedUnion('kind', [
     teamCount: z.number().int().min(2).max(128),
     rosterSize: z.number().int().min(1).max(16),
     captains: z.enum(['MANUAL', 'TOP_SEEDS']),
+    teamSeeding: z.enum(['AVERAGE_PLAYER_SEED', 'CAPTAIN_SEED']).default('AVERAGE_PLAYER_SEED'),
     auction: z
       .strictObject({
         budget: z.number().int().min(1).max(100_000_000),
@@ -202,6 +203,12 @@ export const formatPlanSchema = z
           fail(at, 'Individual qualifier players must form teams before they can compete.');
         if (phase.kind === 'TEAM_FORMATION' && origin.kind !== 'QUALIFIER')
           fail(at, 'Team formation draws its players from an individual qualifier.');
+        if (
+          phase.kind !== 'TEAM_FORMATION' &&
+          origin.kind === 'TEAM_FORMATION' &&
+          from.kind === 'RANK_RANGE'
+        )
+          fail(at, 'Formed teams enter in their seeded order, or as chosen by hand.');
         if (from.kind === 'RANK_RANGE') {
           if (from.from > from.to) fail(at, 'A rank range must run from best to worst.');
           if (origin.kind === 'QUALIFIER' && origin.advance && from.to > origin.advance)

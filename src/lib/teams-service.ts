@@ -183,6 +183,8 @@ export async function writeTeam(
 async function currentTeam(tx: Prisma.TransactionClient, id: string, version: number) {
   const team = await tx.team.findFirst({ where: { id } });
   if (!team) throw new AppError('Team not found.', 404);
+  if (team.supersededAt)
+    throw new AppError('This player has moved to a formed team, which holds their roster.', 409);
   if (team.version !== version)
     throw new AppError('This team changed in another session. Reload before saving.', 409);
   return team;
@@ -275,6 +277,16 @@ export async function applyTeamAction(
   }
   const existing = await currentTeam(tx, a.id, a.baseVersion);
   if (a.type === 'team.delete') {
+    if (
+      (await tx.formationLot.count({ where: { sourceTeamId: a.id } })) ||
+      (await tx.formationTeam.count({ where: { teamId: a.id } }))
+    )
+      throw new AppError('This entrant is part of team formation. Restart it first.', 409);
+    if (
+      (await tx.resourcePurchase.count({ where: { teamId: a.id } })) ||
+      (await tx.resourceAdjustment.count({ where: { teamId: a.id } }))
+    )
+      throw new AppError('This team has a budget history. Hide it instead of deleting it.', 409);
     if (await tx.bracketEntry.count({ where: { teamId: a.id } }))
       throw new AppError(
         'This entrant belongs to a competition bracket. Withdraw or hide it instead of deleting its history.',

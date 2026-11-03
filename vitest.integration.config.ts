@@ -41,6 +41,7 @@ export default defineConfig({
       'tests/setup-workspace.integration.test.ts',
       'tests/format-lifecycle.integration.test.ts',
       'tests/eligibility.integration.test.ts',
+      'tests/team-formation.integration.test.ts',
     ],
     env: { DATABASE_URL: process.env.TEST_DATABASE_URL },
     fileParallelism: false,

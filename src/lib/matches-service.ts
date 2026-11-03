@@ -233,7 +233,12 @@ export async function applyMatchAction(
         });
     }
     const teams = await tx.team.findMany({
-      where: { id: { in: [a.teamAId, a.teamBId] }, tournamentId, status: 'APPROVED' },
+      where: {
+        id: { in: [a.teamAId, a.teamBId] },
+        tournamentId,
+        status: 'APPROVED',
+        supersededAt: null,
+      },
       include: teamInclude,
     });
     const settings = await tx.tournamentSettings.findUniqueOrThrow({
@@ -598,7 +603,7 @@ export async function applyMatchAction(
       if (!teamId || teamId === (a.side === 'A' ? match.teamBId : match.teamAId))
         throw new AppError('The dependency does not resolve to a distinct registered opponent.');
       const team = await tx.team.findFirst({
-        where: { id: teamId, tournamentId, status: 'APPROVED' },
+        where: { id: teamId, tournamentId, status: 'APPROVED', supersededAt: null },
         include: teamInclude,
       });
       if (!team || team.members.filter((p) => !p.substitute).length < rules.teamSize)
@@ -713,6 +718,7 @@ export async function applyMatchAction(
           where: {
             id: { in: [teamAId, teamBId].filter((id): id is string => !!id) },
             status: 'APPROVED',
+            supersededAt: null,
             tournamentId,
           },
           include: teamInclude,

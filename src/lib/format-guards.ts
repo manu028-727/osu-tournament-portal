@@ -83,6 +83,30 @@ async function qualifierEntrants(
   };
 }
 
+// Teams exist once a formation is confirmed. Reopening it changes the witness.
+async function formedEntrants(
+  tx: Prisma.TransactionClient,
+  tournamentId: string,
+  phaseKey: string,
+) {
+  const session = await scopedDb(tx, tournamentId).formationSession.findFirst({
+    where: { tournamentId, state: 'CONFIRMED', phase: { key: phaseKey } },
+    include: { teams: { include: { team: { select: { id: true, seed: true, status: true } } } } },
+  });
+  if (!session) return null;
+  const teams = session.teams
+    .flatMap((row) => (row.team ? [row.team] : []))
+    .sort((a, b) => (a.seed ?? Infinity) - (b.seed ?? Infinity));
+  return {
+    entrants: teams.map((team, index): SourceEntrant => ({
+      teamId: team.id,
+      seed: index + 1,
+      status: team.status === 'APPROVED' ? 'ACTIVE' : 'INACTIVE',
+    })),
+    witness: [session.id, session.version, teams.map((team) => team.id)],
+  };
+}
+
 // Reads what a phase's entries come from, with a witness of exactly those sources. The
 // witness uses each source's own hash, so correcting a result makes an advancement stale.
 export async function phaseSources(
@@ -109,7 +133,7 @@ export async function phaseSources(
       const teams = await tx.team.findMany({
         where: { tournamentId, status: 'APPROVED', supersededAt: null },
         select: { id: true, seed: true, name: true },
-        orderBy: [{ seed: 'asc' }, { name: 'asc' }],
+        orderBy: [{ seed: 'asc' }, { name: 'asc' }, { id: 'asc' }],
       });
       // Unseeded entrants follow seeded ones, in the order organizers see them.
       const ordered = [
@@ -133,6 +157,13 @@ export async function phaseSources(
         witness[`qualifier:${origin.key}`] = [loaded.standing.id, loaded.standing.sourceHash];
       }
     }
+    if (origin?.kind === 'TEAM_FORMATION' && !sources.qualifiers![origin.key]) {
+      const formed = await formedEntrants(transaction, tournamentId, origin.key);
+      if (formed) {
+        sources.qualifiers![origin.key] = formed.entrants;
+        witness[`formation:${origin.key}`] = formed.witness;
+      }
+    }
     if (origin?.kind === 'GROUPS' && !sources.groups![origin.key]) {
       const row = await tx.tournamentPhase.findFirst({
         where: { tournamentId, key: origin.key },
@@ -141,7 +172,10 @@ export async function phaseSources(
       if (!row?.bracket) continue;
       const advancement = await latestEntries(transaction, tournamentId, row.id);
       const assignment = advancement?.assignment as EntriesAssignment | undefined;
-      const path = nodes.filter((node) => node.bracketId === row.bracket!.id);
+      // Sorted because this witness must not depend on the order rows come back in.
+      const path = nodes
+        .filter((node) => node.bracketId === row.bracket!.id)
+        .sort((a, b) => a.id.localeCompare(b.id));
       const reviewed = [...reviewedGroupOrder(row.bracket, path), ...(input.reviewedOrder || [])];
       const ranked = rankGroups(
         origin as GroupsPhase,

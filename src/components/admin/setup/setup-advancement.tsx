@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import type { AdvancementIssue, DrawnGroup } from '@/lib/format-advancement';
 import type { SetupWorkspaceData } from '@/lib/setup-queries';
 import { action, ConfirmButton, Field, SaveButton, useTask, useUnsaved } from '../shared';
+import { FormationPanel } from './setup-formation';
 import styles from './setup.module.css';
 
 type PhaseStatus = NonNullable<SetupWorkspaceData['format']>['phases'][number];
@@ -293,11 +294,13 @@ export function FormatLifecycle({
   data,
   reload,
   canEdit,
+  canForm,
   dirty,
 }: {
   data: SetupWorkspaceData;
   reload: () => Promise<unknown>;
   canEdit: boolean;
+  canForm: boolean;
   dirty: boolean;
 }) {
   const tr = useT();
@@ -327,7 +330,7 @@ export function FormatLifecycle({
   const phases = data.format?.phases ?? [];
   const anyStarted = phases.some((phase) => phase.started);
   return (
-    <section className="grid gap-3" aria-label={tr('Phases')}>
+    <section className={styles.stack} aria-label={tr('Phases')}>
       {phases.map((phase) => (
         <div key={phase.key} className={styles.phase}>
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -354,6 +357,17 @@ export function FormatLifecycle({
             </p>
           )}
           {phase.bracketId && <PhaseAdvancer phase={phase} reload={reload} canEdit={canEdit} />}
+          {phase.kind === 'TEAM_FORMATION' &&
+            data.formation
+              .filter((board) => board.phaseKey === phase.key)
+              .map((board) => (
+                <FormationPanel
+                  key={board.phaseKey}
+                  board={board}
+                  reload={reload}
+                  canEdit={canForm}
+                />
+              ))}
         </div>
       ))}
       {canEdit && !anyStarted && (

@@ -53,7 +53,7 @@ export async function playerRanks(gameMode: string, osuIds: readonly number[]) {
   return ranks;
 }
 
-function registrationOpen(
+export function registrationOpen(
   policy: z.infer<typeof registrationPolicySchema>,
   status: string,
   editing: boolean,
@@ -177,6 +177,14 @@ export async function applyRegistration(
     include: teamInclude,
   });
   if (input.type === 'registration.booking') return applyQualifierBooking(tx, actor, input);
+  // Once a board has claimed this roster, only organizers change it.
+  if (
+    owned &&
+    (await scopedDb(tx, tournamentId).formationLot.count({
+      where: { OR: [{ sourceTeamId: owned.id }, { formationTeam: { teamId: owned.id } }] },
+    }))
+  )
+    throw new AppError('Team formation holds this roster. Contact an organizer.', 409);
   if (!registrationOpen(policy, tournament.status, !!owned))
     throw new AppError('Registration or roster editing is closed.', 409);
   if (input.baseVersion !== (owned?.version || 0))

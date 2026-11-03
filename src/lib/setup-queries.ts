@@ -8,7 +8,9 @@ import { AppError, can, type Actor } from './permissions';
 import { qualifierBookingPolicy } from './qualifier-booking-policy';
 import { registrationPolicySchema } from './registration-policy';
 import { scopedDb } from './scoped-db';
+import { resourceBoard } from './resource-service';
 import { setupReadiness, type SetupSummary } from './setup-readiness';
+import { formationBoards } from './team-formation-service';
 import { stageConfigurationToken } from './stage-workflows';
 
 // The token covers a stage's own columns, as the save path reads them without relations.
@@ -59,6 +61,10 @@ export async function setupWorkspaceData(actor: Actor) {
       ? (settings.setupState as { dismissed?: string[] })
       : {};
   const page = (slug: string) => pages.find((item) => item.slug === slug);
+  // Exception reasons can record interviews, so they follow the roster permission.
+  const eligibility = can(actor, 'teams.view')
+    ? await eligibilityReview(rootDb, tournamentId)
+    : null;
   const summary: SetupSummary = {
     description: tournament.description,
     hasBanner: !!settings.banner && settings.banner !== '/artwork.svg',
@@ -80,6 +86,7 @@ export async function setupWorkspaceData(actor: Actor) {
     staff,
     homePublished: !!page('home')?.publishedRevisionId,
     rulesPublished: !!page('rules')?.publishedRevisionId,
+    eligibilityPending: eligibility?.rows.filter((row) => row.issues.length).length ?? 0,
     dismissed: setupState.dismissed || [],
   };
   return {
@@ -134,8 +141,9 @@ export async function setupWorkspaceData(actor: Actor) {
     planInvalid: plan.invalid,
     counts: { entrants, approvedEntrants, staff, sessions, brackets, matches },
     format: await formatStatus(rootDb, tournamentId),
-    // Exception reasons can record interviews, so they follow the roster permission.
-    eligibility: can(actor, 'teams.view') ? await eligibilityReview(rootDb, tournamentId) : null,
+    eligibility,
+    formation: can(actor, 'teams.view') ? await formationBoards(rootDb, tournamentId) : [],
+    resources: can(actor, 'teams.view') ? await resourceBoard(rootDb, tournamentId) : null,
     readiness: setupReadiness(summary),
     setupState,
   };

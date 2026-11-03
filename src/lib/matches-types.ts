@@ -74,6 +74,7 @@ export type MatchResultView = {
   }[];
 };
 export type MatchView = MatchSummary & {
+  purchases?: { id: string; side: string; name: string; description: string; note: string }[];
   attempts?: {
     id: string;
     actionId: string | null;

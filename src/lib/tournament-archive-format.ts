@@ -7,6 +7,7 @@ import { AppError } from './permissions';
 import { poolPlanSchema } from './pooling-validation';
 import { registrationPolicySchema } from './registration-policy';
 import { qualifierBookingPolicySchema } from './qualifier-booking-policy';
+import { resourcePolicySchema } from './resources';
 
 export const ARCHIVE_FORMAT = 'osu-tournament-portal';
 export const ARCHIVE_VERSION = 1;
@@ -36,7 +37,7 @@ export const ARCHIVE_TABLES = {
   ),
   settings: def(
     'tournamentSettings',
-    'tournamentId:s gameplayScoring:s? setupState:j? registrationPolicy:j? qualifierBookingPolicy:j? logo:s favicon:s banner:s primaryColor:s accentColor:s registrationUrl:s socialLinks:j importantDates:j navigation:j footer:s copy:j matchRules:j updatedAt:d',
+    'tournamentId:s gameplayScoring:s? setupState:j? registrationPolicy:j? qualifierBookingPolicy:j? resourcePolicy:j? logo:s favicon:s banner:s primaryColor:s accentColor:s registrationUrl:s socialLinks:j importantDates:j navigation:j footer:s copy:j matchRules:j updatedAt:d',
     { tournamentId: 'tournament' },
   ),
   media: def(
@@ -242,6 +243,53 @@ export const ARCHIVE_TABLES = {
     'id:s tournamentId:s phaseId:s revision:i kind:s sourceHash:s assignment:j reason:s actorId:s? createdAt:d',
     { tournamentId: 'tournament', phaseId: 'tournamentPhases', actorId: 'identities' },
   ),
+  formationSessions: def(
+    'formationSession',
+    'id:s tournamentId:s phaseId:s method:s state:s rosterSize:i teamSeeding:s settings:j randomSeed:s? version:i confirmedAt:d? createdAt:d updatedAt:d',
+    { tournamentId: 'tournament', phaseId: 'tournamentPhases' },
+  ),
+  formationTeams: def(
+    'formationTeam',
+    'id:s tournamentId:s sessionId:s position:i name:s budget:i? teamId:s?',
+    { tournamentId: 'tournament', sessionId: 'formationSessions', teamId: 'teams' },
+  ),
+  formationLots: def(
+    'formationLot',
+    'id:s tournamentId:s sessionId:s sourceTeamId:s sourcePublished:b osuId:i username:s seed:i? position:i captain:b state:s formationTeamId:s? price:i? filled:b',
+    {
+      tournamentId: 'tournament',
+      sessionId: 'formationSessions',
+      sourceTeamId: 'teams',
+      formationTeamId: 'formationTeams',
+    },
+  ),
+  formationEvents: def(
+    'formationEvent',
+    'id:s tournamentId:s sessionId:s sequence:i kind:s data:j reason:s actorId:s? createdAt:d',
+    { tournamentId: 'tournament', sessionId: 'formationSessions', actorId: 'identities' },
+  ),
+  resourceItems: def(
+    'resourceItem',
+    'id:s tournamentId:s name:s description:s price:i unlockStageId:s? published:b position:i archivedAt:d? version:i createdAt:d updatedAt:d',
+    { tournamentId: 'tournament', unlockStageId: 'stages' },
+  ),
+  resourcePurchases: def(
+    'resourcePurchase',
+    'id:s tournamentId:s itemId:s teamId:s stageId:s? price:i note:s actorId:s? createdAt:d reversedAt:d? reversedById:s? reversedReason:s',
+    {
+      tournamentId: 'tournament',
+      itemId: 'resourceItems',
+      teamId: 'teams',
+      stageId: 'stages',
+      actorId: 'identities',
+      reversedById: 'identities',
+    },
+  ),
+  resourceAdjustments: def(
+    'resourceAdjustment',
+    'id:s tournamentId:s teamId:s amount:i reason:s actorId:s? createdAt:d',
+    { tournamentId: 'tournament', teamId: 'teams', actorId: 'identities' },
+  ),
   eligibilityExceptions: def(
     'eligibilityException',
     'id:s tournamentId:s osuId:i username:s kind:s reason:s actorId:s? createdAt:d revokedAt:d? revokedById:s? revokedReason:s',
@@ -382,6 +430,13 @@ export const archiveInsertionOrder: ArchiveTable[] = [
   'bracketEntries',
   'tournamentPhases',
   'phaseAdvancements',
+  'formationSessions',
+  'formationTeams',
+  'formationLots',
+  'formationEvents',
+  'resourceItems',
+  'resourcePurchases',
+  'resourceAdjustments',
   'eligibilityExceptions',
   'audits',
 ];
@@ -612,6 +667,7 @@ export function validateArchiveData(input: unknown): ArchiveData {
     throw new AppError('Archive must contain one tournament and its settings.');
   if (data.settings[0].qualifierBookingPolicy)
     qualifierBookingPolicySchema.parse(data.settings[0].qualifierBookingPolicy);
+  if (data.settings[0].resourcePolicy) resourcePolicySchema.parse(data.settings[0].resourcePolicy);
   if (data.settings[0].registrationPolicy)
     registrationPolicySchema.parse(data.settings[0].registrationPolicy);
   for (const plan of data.poolPlans)
@@ -711,6 +767,13 @@ export function validateArchiveData(input: unknown): ArchiveData {
     tournamentPhases: [['key']],
     phaseAdvancements: [['phaseId', 'revision']],
     eligibilityExceptions: [['osuId', 'kind']],
+    formationSessions: [['phaseId']],
+    formationTeams: [['sessionId', 'position'], ['teamId']],
+    formationLots: [
+      ['sessionId', 'osuId'],
+      ['sessionId', 'position'],
+    ],
+    formationEvents: [['sessionId', 'sequence']],
     categories: [['acronym']],
     pools: [['stageId']],
     slots: [

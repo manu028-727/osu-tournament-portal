@@ -407,7 +407,7 @@ export function buildTemplate(input: TemplateChoices): {
     case 'DRAFT': {
       const main = elimination(bracketSize, null, [
         {
-          source: { kind: 'EXPLICIT', phase: 'formation', count: bracketSize },
+          source: { kind: 'ALL', phase: 'formation' },
           lane: 'WINNERS',
           seedFrom: 1,
         },
@@ -424,6 +424,7 @@ export function buildTemplate(input: TemplateChoices): {
           teamCount: bracketSize,
           rosterSize: choices.rosterSize,
           captains: 'MANUAL',
+          teamSeeding: 'AVERAGE_PLAYER_SEED',
           ...(choices.formation === 'AUCTION'
             ? {
                 auction: {

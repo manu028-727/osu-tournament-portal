@@ -10,6 +10,7 @@ import { sectionStatus, type SetupSection } from '@/lib/setup-readiness';
 import type { TournamentView } from '@/lib/types';
 import { action, LoadingState, SectionTitle, useResource, useTask } from '../shared';
 import { FormatSection, PhaseFlow } from './setup-format';
+import { ResourcesSection } from './setup-resources';
 import { StagesSection } from './setup-stages';
 import {
   PublicationSection,
@@ -39,6 +40,7 @@ const TITLES: Record<SectionKey, string> = {
   scoring: 'Scoring and mods',
   stages: 'Stages and mappools',
   format: 'Phases and progression',
+  resources: 'Budgets and items',
   schedule: 'Schedule',
   staff: 'Staff and access',
   publication: 'Publication',
@@ -137,7 +139,17 @@ export function SetupWorkspace({
       rosters: can(actor, 'settings.manage') && can(actor, 'matches.manage'),
       scoring: can(actor, 'matches.manage'),
       stages: can(actor, 'mappools.edit') || can(actor, 'mappools.create'),
-      format: can(actor, 'matches.manage'),
+      // An auction operator may only hold roster rights, and still needs the board.
+      format:
+        can(actor, 'matches.manage') ||
+        (can(actor, 'teams.edit') &&
+          !!data?.plan?.phases.some((phase) => phase.kind === 'TEAM_FORMATION')),
+      // Only worth showing when formation can spend money, or organizers already turned it on.
+      resources:
+        can(actor, 'teams.view') &&
+        (!!data?.resources?.policy.enabled ||
+          !!data?.plan?.phases.some((phase) => phase.kind === 'TEAM_FORMATION') ||
+          can(actor, 'settings.manage')),
       schedule: can(actor, 'settings.manage'),
       staff: can(actor, 'staff.edit') || can(actor, 'users.manage') || can(actor, 'roles.manage'),
       publication:
@@ -165,7 +177,11 @@ export function SetupWorkspace({
     );
   };
   const dismissed = data.setupState.dismissed ?? [];
-  const status = (key: SectionKey) => (key === 'template' ? 'OPTIONAL' : sectionStatus(items, key));
+  // Budgets are a choice rather than a step, so they only read as done once turned on.
+  const status = (key: SectionKey) =>
+    key === 'template' || (key === 'resources' && !data.resources?.policy.enabled)
+      ? 'OPTIONAL'
+      : sectionStatus(items, key);
 
   const body = (key: SectionKey) => {
     switch (key) {
@@ -226,7 +242,22 @@ export function SetupWorkspace({
           />
         );
       case 'format':
-        return <FormatSection data={data} reload={reload} canEdit={can(actor, 'matches.manage')} />;
+        return (
+          <FormatSection
+            data={data}
+            reload={reload}
+            canEdit={can(actor, 'matches.manage')}
+            canForm={can(actor, 'teams.edit')}
+          />
+        );
+      case 'resources':
+        return (
+          <ResourcesSection
+            data={data}
+            reload={reload}
+            canEdit={can(actor, 'settings.manage') && can(actor, 'teams.edit')}
+          />
+        );
       case 'schedule':
         return <ScheduleSection data={data} reload={reload} actor={actor} />;
       case 'staff':

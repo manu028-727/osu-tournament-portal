@@ -24,7 +24,7 @@ standings publication. Archived/private tournaments must not become guest-visibl
 
 **Current.** One guided workspace at the tournament admin home configures identity,
 registration and eligibility, rosters, scoring and mods, stages and mappool plans, phases
-and progression, key dates, staff, pages and publication without visiting separate
+and progression including team formation, budgets, key dates, staff, pages and publication without visiting separate
 editors. Generic templates create real stages and a phase plan to edit further, none
 naming any event. Unpublished records are the resumable draft. Readiness is derived from
 real records, and required items never block publication. Applying a template or a stage
@@ -188,6 +188,37 @@ recorded reason, before or after that player registers, and removing it applies 
 again. Approval requires a known problem to have been decided this way; organizer-entered
 rosters skip that step and appear in the same review. Registration, booking, approval and
 the review all give the same answer because they read one set of rules.
+Individual players can become teams after qualifying, or straight from registration with no
+qualifier at all. A format's team formation phase runs as an auction, a snake draft or plain
+assignment by organizers, on a board an operator runs inside the workspace. Captains are the
+best seeds or chosen by hand, and need not have qualified. An auction offers players one at a
+time, in seed order or a reproducible random draw, and holds each sale to the minimum raise,
+the buyer's remaining money and open seats; a player with no bids joins the reserves, and any
+seats left once everyone was offered fill from the reserves, best seed first, at the set
+price. Bot results can be pasted, checked line by line and applied all together or not at
+all. A snake draft holds picks to its order, with out-of-turn picks needing a reason.
+
+Nothing moves until the teams are confirmed: every decision can be undone with a reason, and
+the board can be discarded. Confirming moves players onto their teams and retires the solo
+entries they came from, whose qualifier history stands unchanged. Short teams need a reason.
+Formed teams are seeded by their players' average seed or their captain's, and enter the next
+phase in that order or as chosen by hand. A confirmed board can reopen until its teams enter
+a later phase or gain a budget history. Starting a board needs closed registration and
+finalized standings, locks captain roster edits, and freezes those standings until it is
+discarded. Viewers follow a read-only public page that refreshes itself, which never shows
+the draw order or anyone's reasons. Captains do not bid through the platform.
+
+Teams can have a budget, independent of how they formed. A balance is always worked out from
+the auction, confirmed results, purchases and adjustments rather than stored, so correcting a
+result corrects the money with nothing else to do. Earnings are set per map and per match won,
+with different rates from a given round of a bracket. A forfeit plays no maps, so it earns only
+the match rate. Items have a price, may unlock at a stage and stay hidden from the public until
+revealed, and a team may be limited per stage. Purchases are checked against price, unlock,
+limit and balance, can be reversed with a reason, and adjustments need one. An item's effect is
+a description for staff, who apply it by hand: the referee sees what each team bought for the
+match, and nothing changes a score by itself. A balance can go negative through a correction or
+a reserve fill, which is shown for organizers to settle.
+
 Captains reserve, move or cancel their entry in existing qualifier sessions. Show
 times in the chosen display timezone, capacity, deadlines and current reservations.
 Validate ownership, eligibility, stage uniqueness, schedule conflicts, capacity and

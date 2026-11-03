@@ -1,4 +1,5 @@
 import { Prisma } from '@/generated/prisma/client';
+import { assertNoFormationFrom } from './team-formation-guard';
 import { AppError, assertPermission, type Actor } from './permissions';
 import { canonicalQualifierJson, resolveQualifierTies } from './qualifier-seeding';
 import type { QualifierStandingSnapshot } from './qualifier-standings-contract';
@@ -66,6 +67,7 @@ export async function applyQualifierStandingsAction(
   if (action.type === 'qualifier.standings.reopen') {
     if (!latest || !locked)
       throw new AppError('Only the current finalized standings can be reopened.', 409);
+    await assertNoFormationFrom(tx, tournamentId, action.stageId);
     const impact = await qualifierCorrectionImpact(tx, tournamentId, action.stageId);
     if (
       impact.impactHash !== action.impactHash ||

@@ -142,6 +142,8 @@ export async function applySettingsAction(
               : settings.qualifierBookingPolicy,
           registrationPolicy:
             settings.registrationPolicy === null ? Prisma.DbNull : settings.registrationPolicy,
+          resourcePolicy:
+            settings.resourcePolicy === null ? Prisma.DbNull : settings.resourcePolicy,
         },
       },
     },

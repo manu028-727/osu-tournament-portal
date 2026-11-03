@@ -14,6 +14,10 @@ enum PublicationState {
 }
 
 model User {
+  resourcePurchases ResourcePurchase[] @relation("ResourceBuyer")
+  resourceReversals ResourcePurchase[] @relation("ResourceReverser")
+  resourceAdjustments ResourceAdjustment[]
+  formationEvents FormationEvent[]
   eligibilityGranted EligibilityException[] @relation("EligibilityGranted")
   eligibilityRevoked EligibilityException[] @relation("EligibilityRevoked")
   poolSuggestions      PoolCandidate[]       @relation("PoolSuggestions")
@@ -116,6 +120,8 @@ model RolePermission {
 }
 
 model Tournament {
+  resourceItems ResourceItem[]
+  formationSessions FormationSession[]
   eligibilityExceptions EligibilityException[]
   poolCandidates      PoolCandidate[]
   poolPlans           PoolPlan[]
@@ -167,6 +173,7 @@ model TournamentPhase {
   bracketId    String?
   bracket      Bracket?         @relation(fields: [bracketId, tournamentId], references: [id, tournamentId], onDelete: Restrict, map: "TournamentPhase_bracket_fkey")
   advancements PhaseAdvancement[]
+  formation    FormationSession?
   config       Json
   state        String           @default("PLANNED")
   version      Int              @default(1)
@@ -201,6 +208,7 @@ model TournamentSettings {
   setupState         Json?
   registrationPolicy Json?
   qualifierBookingPolicy Json?
+  resourcePolicy     Json?
   gameplayScoring    String?
   tournamentId       String     @id
   tournament         Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
@@ -270,6 +278,8 @@ model ContentBlock {
 }
 
 model TournamentStage {
+  unlockedItems ResourceItem[]
+  resourcePurchases ResourcePurchase[]
   poolPlan           PoolPlan?
   poolCandidates     PoolCandidate[]
   kind               String              @default("CUSTOM")
@@ -606,10 +616,152 @@ model Team {
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
   supersededAt DateTime?
+  formedFrom   FormationTeam?
+  resourcePurchases ResourcePurchase[]
+  resourceAdjustments ResourceAdjustment[]
+  formationLots FormationLot[]
 
   @@unique([tournamentId, slug])
   @@unique([id, tournamentId])
   @@index([published, status, position])
+}
+
+model FormationSession {
+  id           String          @id @default(cuid())
+  tournamentId String
+  tournament   Tournament      @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  phaseId      String          @unique
+  phase        TournamentPhase @relation(fields: [phaseId, tournamentId], references: [id, tournamentId], onDelete: Restrict)
+  method       String
+  state        String          @default("OPEN")
+  rosterSize   Int
+  teamSeeding  String
+  settings     Json
+  randomSeed   String?
+  version      Int             @default(1)
+  confirmedAt  DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  teams        FormationTeam[]
+  lots         FormationLot[]
+  events       FormationEvent[]
+
+  @@unique([id, tournamentId])
+  @@unique([phaseId, tournamentId])
+}
+
+model FormationTeam {
+  id           String           @id @default(cuid())
+  tournamentId String
+  sessionId    String
+  session      FormationSession @relation(fields: [sessionId, tournamentId], references: [id, tournamentId], onDelete: Cascade)
+  position     Int
+  name         String
+  budget       Int?
+  teamId       String?          @unique
+  team         Team?            @relation(fields: [teamId, tournamentId], references: [id, tournamentId], onDelete: Restrict)
+  lots         FormationLot[]
+
+  @@unique([id, tournamentId])
+  @@unique([teamId, tournamentId])
+  @@unique([sessionId, position])
+}
+
+model FormationLot {
+  id              String           @id @default(cuid())
+  tournamentId    String
+  sessionId       String
+  session         FormationSession @relation(fields: [sessionId, tournamentId], references: [id, tournamentId], onDelete: Cascade)
+  sourceTeamId    String
+  sourceTeam      Team             @relation(fields: [sourceTeamId, tournamentId], references: [id, tournamentId], onDelete: Restrict)
+  sourcePublished Boolean
+  osuId           Int
+  username        String
+  seed            Int?
+  position        Int
+  captain         Boolean          @default(false)
+  state           String           @default("WAITING")
+  formationTeamId String?
+  formationTeam   FormationTeam?   @relation(fields: [formationTeamId, tournamentId], references: [id, tournamentId], onDelete: Restrict)
+  price           Int?
+  filled          Boolean          @default(false)
+
+  @@unique([sessionId, osuId])
+  @@unique([sessionId, position])
+  @@index([sourceTeamId])
+}
+
+model FormationEvent {
+  id           String           @id @default(cuid())
+  tournamentId String
+  sessionId    String
+  session      FormationSession @relation(fields: [sessionId, tournamentId], references: [id, tournamentId], onDelete: Cascade)
+  sequence     Int
+  kind         String
+  data         Json
+  reason       String           @default("")
+  actorId      String?
+  actor        User?            @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt    DateTime         @default(now())
+
+  @@unique([sessionId, sequence])
+}
+
+model ResourceItem {
+  id            String           @id @default(cuid())
+  tournamentId  String
+  tournament    Tournament       @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  name          String
+  description   String           @default("")
+  price         Int
+  unlockStageId String?
+  unlockStage   TournamentStage? @relation(fields: [unlockStageId, tournamentId], references: [id, tournamentId], onDelete: Restrict)
+  published     Boolean          @default(false)
+  position      Int              @default(0)
+  archivedAt    DateTime?
+  version       Int              @default(1)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  purchases     ResourcePurchase[]
+
+  @@unique([id, tournamentId])
+  @@index([tournamentId, position])
+}
+
+model ResourcePurchase {
+  id             String           @id @default(cuid())
+  tournamentId   String
+  itemId         String
+  item           ResourceItem     @relation(fields: [itemId, tournamentId], references: [id, tournamentId], onDelete: Restrict)
+  teamId         String
+  team           Team             @relation(fields: [teamId, tournamentId], references: [id, tournamentId], onDelete: Restrict)
+  stageId        String?
+  stage          TournamentStage? @relation(fields: [stageId, tournamentId], references: [id, tournamentId], onDelete: Restrict)
+  price          Int
+  note           String           @default("")
+  actorId        String?
+  actor          User?            @relation("ResourceBuyer", fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt      DateTime         @default(now())
+  reversedAt     DateTime?
+  reversedById   String?
+  reversedBy     User?            @relation("ResourceReverser", fields: [reversedById], references: [id], onDelete: SetNull)
+  reversedReason String           @default("")
+
+  @@index([tournamentId, teamId])
+}
+
+model ResourceAdjustment {
+  id           String   @id @default(cuid())
+  tournamentId String
+  teamId       String
+  team         Team     @relation(fields: [teamId, tournamentId], references: [id, tournamentId], onDelete: Restrict)
+  amount       Int
+  reason       String
+  actorId      String?
+  actor        User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+
+  @@index([tournamentId, teamId])
 }
 
 model EligibilityException {

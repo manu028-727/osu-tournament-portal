@@ -104,6 +104,7 @@ function database() {
   const api = {
     $executeRaw: vi.fn(async () => 0),
     bracket: { findMany: vi.fn(async () => brackets) },
+    formationSession: { findMany: vi.fn(async () => []) },
     tournament: { findFirst: vi.fn(async () => ({ id: 'tournament' }) as { id: string } | null) },
     $queryRaw: vi.fn(async (_sql: unknown, id: string, tenant: string) =>
       id === stage.id && tenant === stage.tournamentId ? [{ id }] : [],

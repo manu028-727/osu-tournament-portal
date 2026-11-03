@@ -129,7 +129,7 @@ export async function competitionOptions(actor: Actor): Promise<CompetitionOptio
       include: { mappool: { select: { state: true, publishedRevisionId: true } } },
     }),
     db.team.findMany({
-      where: { tournamentId, status: 'APPROVED' },
+      where: { tournamentId, status: 'APPROVED', supersededAt: null },
       orderBy: [{ seed: { sort: 'asc', nulls: 'last' } }, { name: 'asc' }],
       select: { id: true, name: true, seed: true },
     }),
@@ -317,7 +317,10 @@ export async function competitionEligibilityOptions(actor: Actor): Promise<
       include: { entries: true, rounds: true },
       orderBy: { createdAt: 'asc' },
     }),
-    db.team.findMany({ where: { tournamentId, status: 'APPROVED' }, select: { id: true } }),
+    db.team.findMany({
+      where: { tournamentId, status: 'APPROVED', supersededAt: null },
+      select: { id: true },
+    }),
     allNodes(db, tournamentId),
   ]);
   const computed = recalculateCompetition(nodes);

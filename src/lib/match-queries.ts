@@ -27,7 +27,7 @@ export async function matchOptions(actor: Actor) {
       include: { mappool: { select: { state: true, publishedRevisionId: true } } },
     }),
     db.team.findMany({
-      where: { tournamentId, status: 'APPROVED' },
+      where: { tournamentId, status: 'APPROVED', supersededAt: null },
       orderBy: { name: 'asc' },
       include: teamInclude,
     }),
@@ -210,6 +210,21 @@ export async function matchData(actor: Actor, url: URL, section: string) {
       },
       select: { discordId: true },
     });
+    // Staff apply what teams bought by hand, so the referee needs to see it before the roll.
+    const purchases = await db.resourcePurchase.findMany({
+      where: {
+        teamId: { in: [match.teamAId, match.teamBId].filter((id): id is string => !!id) },
+        reversedAt: null,
+        OR: [{ stageId: match.stageId }, { stageId: null }],
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        teamId: true,
+        note: true,
+        item: { select: { name: true, description: true } },
+      },
+    });
     const rules = matchRulesSchema.parse(match.rules);
     const pending = match.actions.find(
       (a) =>
@@ -233,6 +248,13 @@ export async function matchData(actor: Actor, url: URL, section: string) {
           (g) => g.multiplayerId === match.multiplayerId,
         ),
         rules,
+        purchases: purchases.map((row) => ({
+          id: row.id,
+          side: row.teamId === match.teamAId ? 'A' : 'B',
+          name: row.item.name,
+          description: row.item.description,
+          note: row.note,
+        })),
         workflow: matchWorkflow(
           rules,
           draftState(match),

@@ -1,0 +1,67 @@
+.session {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 40px;
+}
+.heading {
+  font-size: 20px;
+  font-weight: 600;
+}
+.current {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  background: var(--accent-subtle);
+  overflow-wrap: anywhere;
+}
+.teams {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+.team {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--surface);
+}
+.roster {
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+}
+.roster li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 12px;
+  overflow-wrap: anywhere;
+}
+.list {
+  display: grid;
+  gap: 4px;
+}
+.table {
+  width: 100%;
+  font-size: 14px;
+  border-collapse: collapse;
+}
+.table th {
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--muted);
+  border-bottom: 1px solid var(--separator);
+}
+.table td {
+  padding: 8px;
+  border-bottom: 1px solid var(--separator);
+}

@@ -131,7 +131,7 @@ async function checkedPlan(
   const usedIds = new Set([a.stageId, ...plan.rounds.map((round) => round.stageId)]);
   const stages = availableStages.filter((stage) => usedIds.has(stage.id));
   const teams = await tx.team.findMany({
-    where: { tournamentId, id: { in: a.teamIds }, status: 'APPROVED' },
+    where: { tournamentId, id: { in: a.teamIds }, status: 'APPROVED', supersededAt: null },
     include: { members: { select: { substitute: true } } },
   });
   if (teams.length !== a.teamIds.length)
@@ -432,7 +432,9 @@ export async function persistRecalculation(
         if (
           !snapshot ||
           snapshot.members.filter((member) => !member.substitute).length < rules.teamSize ||
-          !(await tx.team.count({ where: { id: teamId, tournamentId, status: 'APPROVED' } }))
+          !(await tx.team.count({
+            where: { id: teamId, tournamentId, status: 'APPROVED', supersededAt: null },
+          }))
         )
           throw new AppError(
             'Bracket participants must have approved registrations and sufficient starting players.',
@@ -1255,7 +1257,7 @@ export async function applyCompetitionAction(
       } else {
         if (a.mode !== 'AUTO' && a.teamId) {
           const team = await tx.team.findFirst({
-            where: { id: a.teamId, tournamentId, status: 'APPROVED' },
+            where: { id: a.teamId, tournamentId, status: 'APPROVED', supersededAt: null },
           });
           if (!team) throw new AppError('Choose an approved participant from this tournament.');
           await assertCompetitionEligibility(tx, actor, {

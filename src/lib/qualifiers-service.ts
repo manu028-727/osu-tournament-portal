@@ -127,7 +127,7 @@ export async function qualifierData(actor: Actor, url: URL) {
         select: { id: true, qualifierPolicy: true, matchRules: true },
       }),
       db.team.findMany({
-        where: { status: 'APPROVED' },
+        where: { status: 'APPROVED', supersededAt: null },
         select: { id: true, members: { select: { substitute: true } } },
       }),
     ]);
@@ -157,7 +157,7 @@ export async function qualifierData(actor: Actor, url: URL) {
       ((can(actor, 'matches.manage_assigned') || can(actor, 'matches.manage_all')) &&
         records.some((record) => matchAccess(actor, record).operate))
         ? await db.team.findMany({
-            where: { status: 'APPROVED' },
+            where: { status: 'APPROVED', supersededAt: null },
             select: { id: true, name: true, format: true },
             orderBy: { name: 'asc' },
           })
@@ -339,7 +339,7 @@ export async function applyQualifierAction(
     )
       throw new AppError('Select a stage with a published qualifier mappool.');
     const teams = await tx.team.findMany({
-      where: { id: { in: a.teamIds }, tournamentId, status: 'APPROVED' },
+      where: { id: { in: a.teamIds }, tournamentId, status: 'APPROVED', supersededAt: null },
       include: teamInclude,
     });
     if (teams.length !== a.teamIds.length) throw new AppError('Select approved entrants.');

@@ -194,6 +194,9 @@ a second boundary, not an optional UI check.
 | MatchMapAction, MatchMapResult, MatchPlayerScore                                                                      | Unique match/sequence, result/action, result/player; void/correction and score provenance                                                                |
 | MatchEvent, MatchResultRevision, MultiplayerGame                                                                      | Unique match/version history and unique match/MP/game evidence                                                                                           |
 | QualifierLobby, QualifierEntry, QualifierAssignment, QualifierScore, QualifierGame, QualifierEvent, QualifierStanding | Sessions/snapshots/booking capacity, ordered entrants/staff, unique lobby/player/slot/run and source games, versioned events and stage/version standings |
+| EligibilityException                                                                                                  | Tenant per-player decisions, keyed by numeric osu! identity with no player foreign key                                                                   |
+| FormationSession, FormationTeam, FormationLot, FormationEvent                                                         | One session per phase; lots restrict their source entrant, events are append-only                                                                        |
+| ResourceItem, ResourcePurchase, ResourceAdjustment                                                                    | Tenant budget history; restricts team and stage deletion, balances are derived                                                                           |
 | Bracket, BracketRound, BracketNode, BracketSlot, BracketEntry                                                         | Native paths, ordered stage-mapped rounds, unique node keys/match bindings/numbers, source routes and path-specific seed/eligibility                     |
 | RefereeImport, IrcLobbyRequest, TournamentTransfer                                                                    | Expiring parsed previews, durable uncertain room creation, archive upload/cleanup journal                                                                |
 
@@ -528,6 +531,40 @@ lossesAllowed` carries the one-life rule. Whole-bracket deletion refuses format 
 `format.unlock` removes them all, and resets numbering only under the existing empty-counter
 exception. Rounds gain no columns, because their projection is spread publicly: group labels
 live in the round name, and public slots expose only `entryLabel`.
+
+`eligibility.ts` is the one owner of who may enter. Registration refuses or holds on its
+answer, booking refuses, `assertApprovable` blocks approval on a known problem, and
+`eligibilityReview` lists problems for decision; a rank nobody has recorded is reported but
+never blocks approval, because organizer-entered rosters have none. `EligibilityException` has
+one row per player and limit, revoking keeps the row, and the audit log holds every change. It
+has no foreign key to a player, as an interview can precede registration. `rankCapturedAt`
+tells a reading taken before the lock from one after: `applyRegistration` keeps a locked
+reading for players already on the roster, and `eligibility.ranks.capture` skips readings
+taken after the lock, so repeating it cannot drift. Capture runs in browser-paced batches of
+25 because `osuGet` shares one rate limit.
+
+`team-formation.ts` holds the board's pure rules. `FormationSession`, `FormationTeam`,
+`FormationLot` and append-only `FormationEvent` only record decisions while a session is OPEN,
+each guarded by the session version under the admin advisory lock. `formation.confirm` is the
+single step that moves `TeamMember` rows, using a dedicated update rather than `writeTeam`, which
+deletes and recreates rosters. Moving rows keeps the one-roster-per-player constraint, ranks and
+Discord IDs. The source entrant gets `supersededAt` and `published:false` with its `status`
+unchanged, which keeps qualifier witnesses valid, since standings read lobby roster snapshots
+and entrant status. Every picker and write path filters `supersededAt`; `currentTeam` refuses
+one outright. Lots keep each player's source entrant and its prior visibility so
+`formation.reopen` restores both exactly, and refuses if a formed roster was edited or anything
+references the team. `assertNoFormationFrom` lives in its own module because the standings
+service would otherwise import itself through `format-guards.ts`. Downstream phases read formed
+teams through `formedEntrants`, witnessing session version and team order, and a formation can
+never feed `sourceStandingId`. Event data names players by osu! ID and teams by name, so
+archives need no JSON remapping. Restarting deletes the session and copies its events into the
+audit entry; an existing session also blocks `format.unlock`.
+
+`resources.ts` derives balances; nothing stores one. `resource-service.ts` reads auction prices
+from lots, earnings from `COMPLETED` matches and their non-voided results, and rounds from each
+node's key, so `g2-r3` is round 3 of its lane. `resourcePolicy` is configuration saved through
+`settings.save`. Purchases snapshot their price and compare the price the operator saw.
+Purchases and adjustments restrict team deletion and block reopening a board.
 
 `setup.apply` runs several pure configuration operations in one transaction, resolving
 `ref:<name>` so later operations can read a stage created earlier. It has no authority of

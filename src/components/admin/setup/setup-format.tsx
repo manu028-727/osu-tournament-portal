@@ -117,6 +117,7 @@ function newPhase(kind: Phase['kind'], phases: readonly Phase[], stages: readonl
       teamCount: 8,
       rosterSize: 4,
       captains: 'MANUAL',
+      teamSeeding: 'AVERAGE_PLAYER_SEED',
     };
   if (kind === 'GROUPS')
     return {
@@ -486,6 +487,19 @@ function PhaseEditor({
               <option value="AUCTION">{tr('Auction')}</option>
               <option value="SNAKE_DRAFT">{tr('Snake draft')}</option>
               <option value="MANUAL">{tr('Assigned by organizers')}</option>
+            </select>
+          </Field>
+          <Field label={tr('Formed teams are seeded by')}>
+            <select
+              value={phase.teamSeeding}
+              onChange={(event) =>
+                patch({
+                  teamSeeding: event.target.value as typeof phase.teamSeeding,
+                } as Partial<Phase>)
+              }
+            >
+              <option value="AVERAGE_PLAYER_SEED">{tr('The average seed of their players')}</option>
+              <option value="CAPTAIN_SEED">{tr("Their captain's seed")}</option>
             </select>
           </Field>
           <NumberField
@@ -965,10 +979,12 @@ export function FormatSection({
   data,
   reload,
   canEdit,
+  canForm,
 }: {
   data: SetupWorkspaceData;
   reload: () => Promise<unknown>;
   canEdit: boolean;
+  canForm: boolean;
 }) {
   const tr = useT();
   const { busy, run } = useTask();
@@ -1041,7 +1057,7 @@ export function FormatSection({
   const replace = (index: number, phase: Phase) =>
     setPhases(phases.map((item, position) => (position === index ? phase : item)));
   return (
-    <div className="grid gap-4">
+    <div className={styles.stack}>
       {phases.length > 0 ? (
         <PhaseFlow plan={{ phases }} />
       ) : (
@@ -1050,7 +1066,13 @@ export function FormatSection({
         </p>
       )}
       {data.planLocked && (
-        <FormatLifecycle data={data} reload={reload} canEdit={canEdit} dirty={dirty} />
+        <FormatLifecycle
+          data={data}
+          reload={reload}
+          canEdit={canEdit}
+          canForm={canForm}
+          dirty={dirty}
+        />
       )}
       {data.planLocked ? (
         <details>
@@ -1104,7 +1126,13 @@ export function FormatSection({
       )}
       {preview && <PlanPreview plan={preview} stages={data.stages} />}
       {!data.planLocked && (
-        <FormatLifecycle data={data} reload={reload} canEdit={canEdit} dirty={dirty} />
+        <FormatLifecycle
+          data={data}
+          reload={reload}
+          canEdit={canEdit}
+          canForm={canForm}
+          dirty={dirty}
+        />
       )}
     </div>
   );

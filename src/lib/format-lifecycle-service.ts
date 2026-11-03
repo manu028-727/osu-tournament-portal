@@ -224,6 +224,8 @@ export async function unlockFormat(
       'Matches in this format have started, so it can no longer be unlocked.',
       409,
     );
+  if (await tx.formationSession.count({ where: { tournamentId } }))
+    throw new AppError('Restart team formation before unlocking this format.', 409);
   const consumers = await tx.bracket.findMany({ where: { tournamentId } });
   if (
     consumers.some(

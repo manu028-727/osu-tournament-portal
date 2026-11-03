@@ -9,6 +9,8 @@ import { cleanHtml } from './rich-text';
 import { applyEligibilityAction, type EligibilityPrepared } from './eligibility-service';
 import { beatmaps, osuProfile } from './osu';
 import { playerRanks } from './registration-service';
+import { applyResourceAction } from './resource-service';
+import { applyFormationAction } from './team-formation-service';
 import { Prisma } from '@/generated/prisma/client';
 import { teamPermission, prepareTeamAction, applyTeamAction } from './teams-service';
 import type { TeamAction } from './teams-validation';
@@ -58,6 +60,7 @@ export function actionPermission(a: AdminAction): PermissionKey {
   if (a.type === 'format.unlock') return 'matches.delete';
   if (a.type.startsWith('format.')) return 'matches.manage';
   if (a.type === 'setup.state') return 'settings.manage';
+  if (a.type.startsWith('formation.') || a.type.startsWith('resource.')) return 'teams.edit';
   // Allowing a player is the same decision as approving them; a rank reading only edits rosters.
   if (a.type === 'eligibility.ranks.capture') return 'teams.edit';
   if (a.type.startsWith('eligibility.')) return 'teams.publish';
@@ -230,6 +233,25 @@ async function applyAdminOperation(
       break;
     case 'format.reseed':
       result = await reseedPhaseRound(tx, actor, tournamentId, a);
+      break;
+    case 'formation.start':
+    case 'formation.assign':
+    case 'formation.unassign':
+    case 'formation.reserve':
+    case 'formation.fill':
+    case 'formation.paste':
+    case 'formation.rename':
+    case 'formation.confirm':
+    case 'formation.reopen':
+    case 'formation.restart':
+      result = await applyFormationAction(tx, actor, tournamentId, a);
+      break;
+    case 'resource.item.save':
+    case 'resource.item.archive':
+    case 'resource.purchase':
+    case 'resource.purchase.reverse':
+    case 'resource.adjust':
+      result = await applyResourceAction(tx, actor, tournamentId, a);
       break;
     case 'eligibility.exception.grant':
     case 'eligibility.exception.revoke':
@@ -860,6 +882,8 @@ async function applyAdminOperation(
               : a.type.startsWith('pooling.') ||
                   a.type.startsWith('format.') ||
                   a.type.startsWith('eligibility.') ||
+                  a.type.startsWith('formation.') ||
+                  a.type.startsWith('resource.') ||
                   a.type.startsWith('matches.') ||
                   a.type === 'staff.bulk'
                 ? JSON.parse(JSON.stringify(a))

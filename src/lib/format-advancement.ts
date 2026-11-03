@@ -51,7 +51,7 @@ export type AdvancementIssue = {
 
 // A reproducible draw: the stored seed and entrants always give the same groups, so a
 // draw can be audited without trusting whoever pressed the button.
-function seededShuffle<T>(items: readonly T[], seed: string, scope: string) {
+export function seededShuffle<T>(items: readonly T[], seed: string, scope: string) {
   const shuffled = [...items];
   for (let i = shuffled.length - 1; i > 0; i--) {
     const digest = createHash('sha256').update(`${seed}:${scope}:${i}`).digest();
@@ -421,6 +421,15 @@ export function resolveEntries(
         });
         continue;
       }
+      // Choices can only come from the source that finished producing them.
+      const offered = sources.qualifiers?.[from.phase];
+      if (offered && chosen.some((teamId) => !offered.some((row) => row.teamId === teamId)))
+        issues.push({
+          code: 'NOT_IN_SOURCE',
+          severity: 'ERROR',
+          message: 'Every entrant must come from {0}.',
+          values: [from.phase],
+        });
       chosen.forEach((teamId, index) => seat(item, index, teamId, `Choice ${index + 1}`));
     } else {
       const source = sources.groups?.[from.phase];
