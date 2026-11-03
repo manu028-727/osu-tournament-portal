@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Check, Circle, Send, Undo2, X } from 'lucide-react';
 import { useT } from '@/components/locale';
 import { Button } from '@/components/ui/button';
-import { can, type Actor } from '@/lib/permissions';
 import type { MatchRules } from '@/lib/match-rules';
 import {
   gameplayScoringSchema,
@@ -397,7 +396,7 @@ export function ScoringSection({ data, reload }: SectionProps) {
   );
 }
 
-export function ScheduleSection({ data, reload, actor }: SectionProps & { actor: Actor }) {
+export function ScheduleSection({ data, reload }: SectionProps) {
   const tr = useT();
   const { busy, run } = useTask();
   const saved = useMemo(() => data.importantDates, [data.importantDates]);
@@ -495,22 +494,6 @@ export function ScheduleSection({ data, reload, actor }: SectionProps & { actor:
           {tr('Save key dates')}
         </SaveButton>
       </div>
-      {can(actor, 'matches.manage') && (
-        <p className="text-sm text-muted">
-          {tr(
-            '{0} qualifier sessions and {1} matches are scheduled so far.',
-            data.counts.sessions,
-            data.counts.matches,
-          )}{' '}
-          <a className="text-primary" href={`/t/${data.tournament.slug}/admin/referee/qualifiers`}>
-            {tr('Manage qualifier sessions')}
-          </a>{' '}
-          ·{' '}
-          <a className="text-primary" href={`/t/${data.tournament.slug}/admin/matches`}>
-            {tr('Manage matches')}
-          </a>
-        </p>
-      )}
     </form>
   );
 }

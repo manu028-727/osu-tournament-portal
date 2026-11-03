@@ -416,15 +416,6 @@ export function SettingsEditor({
                     ],
                   },
                   { label: 'Footer tagline', keys: ['footerTagline'] },
-                  {
-                    label: 'Legacy text values',
-                    keys: [
-                      'artworkCaption',
-                      'announcementLabel',
-                      'announcementAside',
-                      'artworkTagline',
-                    ],
-                  },
                 ].map((group) => (
                   <details key={group.label} className="border-b pb-3">
                     <summary className="min-h-11 cursor-pointer py-2">{tr(group.label)}</summary>
@@ -534,16 +525,6 @@ export function SettingsEditor({
                   </details>
                 )}
                 {text('timezone', tr('Timezone'))}
-                <Field label={tr('Format')}>
-                  <select
-                    value={form.format || 'CUSTOM'}
-                    onChange={(e) => update('format', e.target.value)}
-                  >
-                    <option value="SOLO">{tr('1v1')}</option>
-                    <option value="TEAMS">{tr('Teams')}</option>
-                    <option value="CUSTOM">{tr('Custom')}</option>
-                  </select>
-                </Field>
               </div>
               {can(actor, 'matches.manage') && (
                 <Link

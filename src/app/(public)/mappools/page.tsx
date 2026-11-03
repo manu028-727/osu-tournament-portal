@@ -1,4 +1,5 @@
-import { getServerT } from '@/lib/server-locale';
+import { localeTag } from '@/lib/i18n';
+import { getLocale, getServerT } from '@/lib/server-locale';
 import Link from '@/components/tournament-scope';
 import { ArrowUpRight } from 'lucide-react';
 import { PageHeading, EmptyState } from '@/components/content';
@@ -10,6 +11,7 @@ export async function generateMetadata() {
 }
 export default async function Mappools() {
   const tr = await getServerT();
+  const language = await getLocale();
   const [stages, t] = await Promise.all([publicPools(), getTournament()]);
   const copy = siteCopy(t.settings?.copy);
   return (
@@ -45,6 +47,11 @@ export default async function Mappools() {
                 )}
                 <p className="mt-1 text-sm text-muted">
                   {s.mappool?.publishedRevision?.slots.length || 0} {tr('mappe')}
+                  {s.startsAt &&
+                    ` · ${tr(
+                      'Starts {0}',
+                      s.startsAt.toLocaleDateString(localeTag(language), { timeZone: t.timezone }),
+                    )}`}
                 </p>
               </div>
               <ArrowUpRight size={20} className="shrink-0 text-muted group-hover:text-primary" />

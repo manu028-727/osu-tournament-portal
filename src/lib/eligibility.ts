@@ -44,6 +44,19 @@ export const rankReadingIsLocked = (
   !!capturedAt &&
   new Date(capturedAt).getTime() >= new Date(policy.rankLockAt).getTime();
 
+// A team's rank sum, or null until every counted rank is known.
+export function rosterRankSum(
+  policy: Pick<RegistrationPolicy, 'rankSumScope'>,
+  players: readonly Pick<EligibilityPlayer, 'rank' | 'substitute'>[],
+) {
+  const counted = players.filter(
+    (player) => policy.rankSumScope === 'ROSTER' || !player.substitute,
+  );
+  return counted.length && counted.every((player) => player.rank !== null)
+    ? counted.reduce((total, player) => total + player.rank!, 0)
+    : null;
+}
+
 export function rosterEligibility(
   policy: Limits,
   players: readonly EligibilityPlayer[],
@@ -119,13 +132,10 @@ export function rosterEligibility(
       values: [captain.country],
     });
   if (sumLimited && captain) {
-    const counted = players.filter(
-      (player) => policy.rankSumScope === 'ROSTER' || !player.substitute,
-    );
-    const sum = counted.reduce((total, player) => total + (player.rank ?? 0), 0);
+    const sum = rosterRankSum(policy, players);
     if (
-      counted.every((player) => player.rank !== null) &&
-      !counted.some((player) => allowed(player.osuId, 'RANK_SUM')) &&
+      sum !== null &&
+      !players.some((player) => allowed(player.osuId, 'RANK_SUM')) &&
       ((policy.rankSumMin && sum < policy.rankSumMin) ||
         (policy.rankSumMax && sum > policy.rankSumMax))
     )

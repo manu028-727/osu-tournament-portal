@@ -19,7 +19,7 @@ export function RegistrationSettings({
       <h2 className="text-lg font-semibold">{tr('Tournament registration')}</h2>
       <p className="text-sm text-muted">
         {tr(
-          'Website entries and new organizer imports are automatically approved. Public rejection reasons and private notes remain separate.',
+          'Website entries within the limits and new organizer imports are approved automatically. Public rejection reasons and private notes remain separate.',
         )}
       </p>
       <div className="grid gap-4 sm:grid-cols-2">

@@ -1492,7 +1492,7 @@ Keep this current so an interrupted session can continue from it.
 | M4        | Lock format, placeholders, advancement persistence, guards, archive, projections | Verified |
 | M5        | Referee rule enforcement: lineups, timers, attempts, forfeits, sanctions         | Verified |
 | M6        | Eligibility, team formation, auction board, derived resources                    | Verified |
-| M7        | Every-page editing sweep and obsolete-setting cleanup                            | Planned  |
+| M7        | Every-page editing sweep and obsolete-setting cleanup                            | Verified |
 | M8        | All formats simulated through the normal UI, full gates, final report            | Planned  |
 
 Maintainer decisions: auctions use an operator-run board with read-only captains, and
@@ -1551,11 +1551,7 @@ media); Stages; Mappools; Pooling; Teams; Registration and booking settings; Mat
 Bracket; Qualifier sessions and results; Referee; Staff listing, access and roles;
 Settings, audit and sheet tools.
 
-Candidates to remove or wire up, each to be verified before removal: `Tournament.endsAt`
-and copy fields `artworkCaption`, `announcementLabel`, `announcementAside` and
-`artworkTagline` (no reader); stage `startsAt` (selected, never rendered); `Team.rankSum`
-(no writer outside archive restore); `Tournament.format` changes that leave `teamSize`
-behind; `thirdPlace`, `grandFinalReset` and `groupCount` saved where the format ignores them.
+The candidates this list named were each checked at M7 and are recorded in M7 Checks.
 
 ### M0 Checks
 
@@ -1685,6 +1681,30 @@ perk effect, and interview outcomes. A referee sees bought items in the match bu
 them. Formation's bid history is not recorded: the board stores final sales, since bidding happens
 in the room or a bot. Unverified on the real provider: `users/:id/:mode` rank reads were exercised
 only through a mocked `osuGet`.
+
+### M7 Checks
+
+`tests/e2e/page-sweep.spec.ts` visits 22 organizer views and 11 public pages, populated and empty,
+at 1920, 1366, 768, 390 and 320 wide plus dark at 1366 and 390, failing on horizontal overflow,
+script errors, error pages or a bad status. Existing bulk and inline editing held up: teams,
+stages, matches, qualifier tools, staff and access all have them already, so they were left alone
+rather than rebuilt. What changed is where the sweep and audit found real friction:
+
+| Found                                                                                         | Done                                                                   |
+| --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Match rules were one 6,500px form on every screen using them                                  | Essentials first, specialist rules folded under six headings           |
+| A stale `Tournament.format` of `SOLO` forced qualifier imports to team size 1 under 2v2 rules | Format now follows the team size control; its duplicate select removed |
+| Creating a tournament needed eight fields, then a separate trip to open it                    | Name and mode, offered acronym and address, opens the guided home      |
+| Scheduling meant leaving the workspace for two other pages                                    | Key dates, sessions and matches share the Schedule section             |
+| Teams linked to a registration anchor that moved at M3                                        | Link fixed                                                             |
+| `artworkCaption`, `announcementLabel`, `announcementAside`, `artworkTagline` had no reader    | Removed from the editor; saved text kept in the record and archives    |
+| `Tournament.endsAt` and stage `startsAt` were saved but never shown                           | Shown in the directory and on public mappools                          |
+| `Team.rankSum` had no writer                                                                  | Worked out from recorded ranks where rules limit it; old values read   |
+| `thirdPlace`, `grandFinalReset`, `groupCount` kept values a new format ignores                | Reset when the format changes in the form                              |
+
+No column was dropped: those removals would be destructive migrations, and the copy fields and
+`rankSum` must still read from old archives. `Team.qualifierPlayed` and `Team.sourceKey` are written
+only by archive restore and stay for compatibility; public team pages still read the former.
 
 ## Completion Rules
 

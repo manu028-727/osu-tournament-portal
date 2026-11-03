@@ -136,6 +136,10 @@ export async function applySettingsAction(
       settings: {
         update: {
           ...settings,
+          // Saved text for fields no longer offered is left alone rather than erased by a save.
+          ...(settings.copy
+            ? { copy: { ...(currentSettings.copy as object | null), ...settings.copy } }
+            : {}),
           qualifierBookingPolicy:
             settings.qualifierBookingPolicy === null
               ? Prisma.DbNull

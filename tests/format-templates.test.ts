@@ -13,6 +13,8 @@ import {
 } from '../src/lib/format-templates';
 import { COMPATIBILITY_PLANS } from './fixtures/format-plans';
 import { formatPlanSchema } from '../src/lib/format-plan';
+import { siteCopy } from '../src/lib/copy';
+import { rosterOperations } from '../src/lib/setup-operations';
 import { sectionStatus, setupReadiness, type SetupSummary } from '../src/lib/setup-readiness';
 
 const choices = (fields: Partial<TemplateChoices>): TemplateChoices => ({
@@ -217,5 +219,41 @@ describe('setup readiness', () => {
         registrationWindowSet: false,
       }),
     ).toEqual([]);
+  });
+});
+
+describe('the saved tournament format follows team size', () => {
+  const data = {
+    tournament: { version: 1 },
+    registration: {},
+    rules: {},
+    stages: [],
+    defaultsHash: 'a'.repeat(64),
+  } as never;
+  const formatFor = (teamSize: number, format: 'AUTO' | 'TEAM' | 'INDIVIDUAL') =>
+    rosterOperations(
+      { teamSize, format, minPlayers: 0, maxPlayers: 8, maxSubstitutes: 2 },
+      data,
+    ).find((operation) => operation.type === 'settings.save') as unknown as { format: string };
+  it('is solo at one player per side, and teams above that', () => {
+    expect(formatFor(1, 'AUTO').format).toBe('SOLO');
+    expect(formatFor(1, 'INDIVIDUAL').format).toBe('SOLO');
+    expect(formatFor(2, 'TEAM').format).toBe('TEAMS');
+    expect(formatFor(4, 'AUTO').format).toBe('TEAMS');
+  });
+  it('is custom when individuals register for team play', () => {
+    expect(formatFor(3, 'INDIVIDUAL').format).toBe('CUSTOM');
+  });
+});
+
+describe('saved text for removed copy fields', () => {
+  it('stays out of what organizers can edit and what pages read', () => {
+    for (const key of [
+      'artworkCaption',
+      'announcementLabel',
+      'announcementAside',
+      'artworkTagline',
+    ])
+      expect(siteCopy({ [key]: 'old text' })).not.toHaveProperty(key);
   });
 });

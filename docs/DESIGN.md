@@ -175,6 +175,11 @@ URL hash. An empty tournament opens on the format choice, then on the next unfin
 section. Readiness separates required from optional, optional items can be dismissed, and
 neither ever blocks publication. Sections show only what the viewer may act on.
 
+Match rules show what most events change first: team mode, how maps are won, required mods,
+players per side, Best of, bans and the common switches. Turn order and timers, FreeMod, score
+multipliers, referee procedures, lobby commands and written policies each fold under their own
+heading, on every screen using that form.
+
 Team formation is a board inside its phase: team cards with names editable in place, one
 compact form for the next decision, and every other action folded away. Refused sales keep what
 the operator typed. Decisions that discard work ask for a reason beside the button. The public

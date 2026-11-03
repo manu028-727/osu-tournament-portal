@@ -123,14 +123,16 @@ test('creates private tournaments, switches scoped CMS contexts and publishes in
       sameSite: 'Lax',
     },
   ]);
-  await page.goto('/admin/tournaments');
   for (const suffix of ['a', 'b']) {
+    await page.goto('/admin/tournaments');
     await page.getByRole('button', { name: 'Create tournament', exact: true }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('Name', { exact: true }).fill(`${prefix}-${suffix}`);
+    // The acronym and address are offered from the name, and can still be overridden.
+    await expect(dialog.getByLabel('URL slug')).toHaveValue(`${prefix}-${suffix}`);
     await dialog.getByLabel('Acronym').fill(suffix.toUpperCase());
-    await dialog.getByLabel('URL slug').fill(`${prefix}-${suffix}`);
     await dialog.getByRole('button', { name: 'Create tournament', exact: true }).click();
+    await expect(page).toHaveURL(`http://localhost:3001/t/${prefix}-${suffix}/admin`);
     await expect(
       page.getByRole('heading', { name: `${prefix}-${suffix}`, exact: true }),
     ).toBeVisible();

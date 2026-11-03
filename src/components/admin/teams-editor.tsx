@@ -127,7 +127,7 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
         <div className="flex flex-wrap gap-2">
           {can(actor, 'settings.manage') && (
             <Button asChild variant="outline" size="sm">
-              <Link href="/admin/settings#registration">{tr('Registration settings')}</Link>
+              <Link href="/admin#registration">{tr('Registration settings')}</Link>
             </Button>
           )}
           {(can(actor, 'teams.view') || can(actor, 'teams.import')) && (

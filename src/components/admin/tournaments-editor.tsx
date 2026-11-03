@@ -19,6 +19,22 @@ import {
 import { PlatformSettingsEditor, type PlatformConfig } from './platform-settings';
 import { TournamentImporter } from './tournament-transfer';
 import { SCORING_LABELS } from '@/lib/gameplay-scoring';
+const suggestedSlug = (name: string) =>
+  name
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80)
+    .replace(/-+$/, '');
+const suggestedAcronym = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => (/^\d+$/.test(word) ? word : word[0]))
+    .join('')
+    .toUpperCase()
+    .slice(0, 20);
 type Item = {
   canPublish: boolean;
   matchCount: number;
@@ -44,6 +60,15 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
     [error, setError] = useState(''),
     [open, setOpen] = useState(false);
   const { busy, run } = useTask();
+  const [identity, setIdentity] = useState({ name: '', acronym: '', slug: '' });
+  const [edited, setEdited] = useState({ acronym: false, slug: false });
+  // Offers an acronym and address from the name, until the organizer types their own.
+  const changeName = (name: string) =>
+    setIdentity({
+      name,
+      acronym: edited.acronym ? identity.acronym : suggestedAcronym(name),
+      slug: edited.slug ? identity.slug : suggestedSlug(name),
+    });
   const reload = useCallback(async () => {
     try {
       setData(await api('/api/tournaments'));
@@ -237,17 +262,44 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
             void run(async () => {
               await send({ type: 'create', ...values });
               setOpen(false);
+              // Everything else about the tournament is set up on its own home page.
+              window.location.assign(`/t/${String(values.slug)}/admin`);
             }, tr('Tournament created privately.'));
           }}
         >
           <Field label={tr('Name')}>
-            <input name="name" required maxLength={120} />
+            <input
+              name="name"
+              required
+              maxLength={120}
+              value={identity.name}
+              onChange={(e) => changeName(e.target.value)}
+            />
           </Field>
           <Field label={tr('Acronym')}>
-            <input name="acronym" required maxLength={20} />
+            <input
+              name="acronym"
+              required
+              maxLength={20}
+              value={identity.acronym}
+              onChange={(e) => {
+                setEdited({ ...edited, acronym: true });
+                setIdentity({ ...identity, acronym: e.target.value });
+              }}
+            />
           </Field>
           <Field label={tr('URL slug')}>
-            <input name="slug" required pattern="[a-z0-9]+(-[a-z0-9]+)*" maxLength={80} />
+            <input
+              name="slug"
+              required
+              pattern="[a-z0-9]+(-[a-z0-9]+)*"
+              maxLength={80}
+              value={identity.slug}
+              onChange={(e) => {
+                setEdited({ ...edited, slug: true });
+                setIdentity({ ...identity, slug: e.target.value });
+              }}
+            />
           </Field>
           <Field label={tr('Game mode')}>
             <select name="gameMode">
@@ -256,28 +308,26 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
               ))}
             </select>
           </Field>
-          <Field label={tr('Format')}>
-            <select name="format">
-              <option value="TEAMS">{tr('Teams')}</option>
-              <option value="SOLO">{tr('1v1')}</option>
-              <option value="CUSTOM">{tr('Custom')}</option>
-            </select>
-          </Field>
-          <Field label={tr('Scoring System')}>
-            <select name="gameplayScoring" defaultValue="SCORE_V2">
-              {Object.entries(SCORING_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {tr(label)}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label={tr('Timezone')}>
-            <input name="timezone" defaultValue={data.platform?.timezone || 'UTC'} required />
-          </Field>
-          <Field label={tr('Description')}>
-            <textarea name="description" maxLength={2000} />
-          </Field>
+          <details>
+            <summary className="min-h-11 cursor-pointer py-2 text-sm">{tr('More options')}</summary>
+            <div className="space-y-5 pt-2">
+              <Field label={tr('Scoring System')}>
+                <select name="gameplayScoring" defaultValue="SCORE_V2">
+                  {Object.entries(SCORING_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {tr(label)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={tr('Timezone')}>
+                <input name="timezone" defaultValue={data.platform?.timezone || 'UTC'} required />
+              </Field>
+              <Field label={tr('Description')}>
+                <textarea name="description" maxLength={2000} />
+              </Field>
+            </div>
+          </details>
           <Button disabled={busy}>{tr('Create tournament')}</Button>
         </form>
       </EditorPanel>

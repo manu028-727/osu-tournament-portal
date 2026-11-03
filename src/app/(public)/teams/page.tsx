@@ -3,6 +3,9 @@ import { getLocale, getServerT } from '@/lib/server-locale';
 import Link from '@/components/tournament-scope';
 import { ArrowUpRight } from 'lucide-react';
 import { PageHeading, EmptyState } from '@/components/content';
+import { rosterRankSum } from '@/lib/eligibility';
+import { getTournament } from '@/lib/queries';
+import { registrationPolicySchema } from '@/lib/registration-policy';
 import { publicTeamsPage } from '@/lib/teams-service';
 import { listPageSchema } from '@/lib/list-pagination';
 import { ListPagination } from '@/components/list-pagination';
@@ -20,6 +23,20 @@ export default async function Teams({
   const page = listPageSchema.safeParse((await searchParams).page);
   const result = await publicTeamsPage(page.success ? page.data : 1);
   const teams = result.items;
+  // Only where the rules care about it, and worked out from the ranks on record.
+  const settings = (await getTournament()).settings;
+  const policy = registrationPolicySchema.parse(settings?.registrationPolicy || {});
+  const rankSumOf = (team: (typeof teams)[number]) =>
+    team.rankSum ??
+    (policy.rankSumMin || policy.rankSumMax
+      ? rosterRankSum(
+          policy,
+          team.members.map((member) => ({
+            rank: member.registrationRank,
+            substitute: member.substitute,
+          })),
+        )
+      : null);
   return (
     <div className="wrap pb-20">
       <PageHeading
@@ -98,10 +115,10 @@ export default async function Teams({
                 {team.members.length}{' '}
                 {team.members.length === 1 ? tr('giocatore') : tr('giocatori')}
               </p>
-              {team.rankSum && (
+              {rankSumOf(team) !== null && (
                 <p className="mt-1 text-xs text-muted">
                   {tr('Rank sum all’iscrizione:')}{' '}
-                  {team.rankSum.toLocaleString(localeTag(language))}
+                  {rankSumOf(team)!.toLocaleString(localeTag(language))}
                 </p>
               )}
               <div className="mt-3 flex flex-wrap gap-2 border-t pt-3">

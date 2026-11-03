@@ -560,6 +560,11 @@ never feed `sourceStandingId`. Event data names players by osu! ID and teams by 
 archives need no JSON remapping. Restarting deletes the session and copies its events into the
 audit entry; an existing session also blocks `format.unlock`.
 
+`rosterOperations` and `templateOperations` write `Tournament.format` alongside team size,
+because `qualifier-import-service.ts` forces team size 1 for `SOLO` and automatic registration
+reads it too. `settings.save` merges `copy` onto what is stored, so text for retired fields stays
+in the record and in archives while `siteCopy` no longer offers it.
+
 `resources.ts` derives balances; nothing stores one. `resource-service.ts` reads auction prices
 from lots, earnings from `COMPLETED` matches and their non-voided results, and rounds from each
 node's key, so `g2-r3` is round 3 of its lane. `resourcePolicy` is configuration saved through

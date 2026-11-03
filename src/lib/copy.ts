@@ -11,11 +11,7 @@ export const DEFAULT_COPY = {
   competitionLabel: '',
   formatLabel: '',
   finalsLabel: '',
-  artworkCaption: '',
   timelineNote: '',
-  announcementLabel: '',
-  announcementAside: '',
-  artworkTagline: '',
   footerTagline: '',
 };
 export type SiteCopy = typeof DEFAULT_COPY;

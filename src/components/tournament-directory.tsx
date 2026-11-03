@@ -110,6 +110,8 @@ export async function TournamentDirectory({
               {t.startsAt && (
                 <p className="mt-3 text-sm text-muted">
                   {t.startsAt.toLocaleDateString(localeTag(language), { timeZone: t.timezone })}
+                  {t.endsAt &&
+                    ` – ${t.endsAt.toLocaleDateString(localeTag(language), { timeZone: t.timezone })}`}
                 </p>
               )}
             </div>

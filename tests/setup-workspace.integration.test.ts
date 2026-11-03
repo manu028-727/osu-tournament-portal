@@ -8,6 +8,7 @@ import {
   poolPlanSlots,
 } from '../src/lib/format-templates';
 import { loadFormatPlan } from '../src/lib/format-plan-service';
+import { siteCopy } from '../src/lib/copy';
 import { rulesHash } from '../src/lib/match-record';
 import { matchRulesSchema } from '../src/lib/match-rules';
 import type { Actor } from '../src/lib/permissions';
@@ -299,5 +300,24 @@ describe.sequential('one composite setup save', () => {
     const data = await setupWorkspaceData(actor);
     expect(data.readiness.find((item) => item.id === 'staff')?.done).toBe(true);
     expect(rulesHash(null)).toHaveLength(64);
+  });
+
+  it('keeps saved text for copy fields no longer offered when settings are saved', async () => {
+    const actor = await createTournament('copy');
+    const tournamentId = actor.tournamentId!;
+    await db.tournamentSettings.update({
+      where: { tournamentId },
+      data: { copy: { artworkCaption: 'Written years ago', staffTitle: 'Crew' } },
+    });
+    const { version } = await db.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
+    const settings = await db.tournamentSettings.findUniqueOrThrow({ where: { tournamentId } });
+    await act(actor, {
+      type: 'settings.save',
+      baseVersion: version,
+      copy: { ...siteCopy(settings.copy), staffTitle: 'Team' },
+    });
+    const after = await db.tournamentSettings.findUniqueOrThrow({ where: { tournamentId } });
+    expect(after.copy).toMatchObject({ artworkCaption: 'Written years ago', staffTitle: 'Team' });
+    expect(siteCopy(after.copy)).not.toHaveProperty('artworkCaption');
   });
 });

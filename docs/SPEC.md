@@ -30,6 +30,11 @@ naming any event. Unpublished records are the resumable draft. Readiness is deri
 real records, and required items never block publication. Applying a template or a stage
 grid saves atomically with each operation's usual permission.
 
+Creating a tournament asks only for a name, game mode and optional details, offers an acronym
+and address from the name, and opens the new tournament's guided home. The saved tournament
+format follows the single team size control. Key dates, qualifier sessions and matches share
+the Schedule section.
+
 `/admin/tournaments` selects a tournament. Editing uses `/t/<slug>/admin/...` and
 works while unpublished. Unscoped editors lead to the chooser, not an arbitrary
 tournament. Missing context, authentication, permission, resource and stale-write

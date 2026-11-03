@@ -187,6 +187,11 @@ export function defaultRulesOperations(
   ];
 }
 
+// The saved format follows the single team size control, so qualifier imports and automatic
+// registration cannot keep reading an old value. Mixed entry stays custom.
+const tournamentFormat = (teamSize: number, entrants: 'AUTO' | 'TEAM' | 'INDIVIDUAL') =>
+  entrants === 'INDIVIDUAL' && teamSize > 1 ? 'CUSTOM' : teamSize === 1 ? 'SOLO' : 'TEAMS';
+
 // Team size has one control, which keeps rules, roster limits and qualifiers in agreement.
 export function rosterOperations(
   roster: {
@@ -205,6 +210,7 @@ export function rosterOperations(
       type: 'settings.save',
       baseVersion: data.tournament.version,
       registrationPolicy: { ...data.registration, ...registration },
+      format: tournamentFormat(teamSize, roster.format),
     },
     ...defaultRulesOperations(rules, data),
     ...data.stages
@@ -258,6 +264,7 @@ export function templateOperations(choices: TemplateChoices, data: SetupWorkspac
         minPlayers: choices.template === 'DRAFT' ? 1 : choices.teamSize,
         maxPlayers: choices.template === 'DRAFT' ? 1 : choices.rosterSize,
       },
+      format: tournamentFormat(choices.teamSize, entrantFormat),
     },
     { type: 'match.rules.save', stageId: null, rules, baseHash: data.defaultsHash },
     ...stages.flatMap((draft, position) => [

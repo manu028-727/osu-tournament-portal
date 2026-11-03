@@ -7,6 +7,7 @@ import { confirmDiscardUnsaved } from '@/components/unsaved-navigation';
 import { can, type Actor } from '@/lib/permissions';
 import type { SetupWorkspaceData } from '@/lib/setup-queries';
 import { sectionStatus, type SetupSection } from '@/lib/setup-readiness';
+import { canAccessSection } from '@/lib/workspace';
 import type { TournamentView } from '@/lib/types';
 import { action, LoadingState, SectionTitle, useResource, useTask } from '../shared';
 import { FormatSection, PhaseFlow } from './setup-format';
@@ -29,6 +30,12 @@ const StaffEditor = dynamic(() => import('../staff-editor').then((m) => m.StaffE
 const UsersEditor = dynamic(() => import('../access').then((m) => m.UsersEditor));
 const RolesEditor = dynamic(() => import('../access').then((m) => m.RolesEditor));
 const TeamsEditor = dynamic(() => import('../teams-editor').then((m) => m.TeamsEditor));
+const QualifiersWorkspace = dynamic(() =>
+  import('../qualifiers-workspace').then((m) => m.QualifiersWorkspace),
+);
+const MatchesDashboard = dynamic(() =>
+  import('../matches-dashboard').then((m) => m.MatchesDashboard),
+);
 const PageEditor = dynamic(() => import('../page-editor').then((m) => m.PageEditor));
 
 type SectionKey = SetupSection | 'template';
@@ -259,7 +266,38 @@ export function SetupWorkspace({
           />
         );
       case 'schedule':
-        return <ScheduleSection data={data} reload={reload} actor={actor} />;
+        return (
+          <SubTabs
+            label={tr('Schedule sections')}
+            tabs={[
+              {
+                key: 'dates',
+                label: tr('Key dates'),
+                render: () => <ScheduleSection data={data} reload={reload} />,
+              },
+              ...(canAccessSection(actor, 'referee')
+                ? [
+                    {
+                      key: 'sessions',
+                      label: tr('Qualifier sessions'),
+                      render: () => (
+                        <QualifiersWorkspace actor={actor} acronym={data.tournament.acronym} />
+                      ),
+                    },
+                  ]
+                : []),
+              ...(canAccessSection(actor, 'matches')
+                ? [
+                    {
+                      key: 'matches',
+                      label: tr('Matches'),
+                      render: () => <MatchesDashboard actor={actor} />,
+                    },
+                  ]
+                : []),
+            ]}
+          />
+        );
       case 'staff':
         return (
           <SubTabs

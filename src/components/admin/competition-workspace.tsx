@@ -837,7 +837,16 @@ function CreateCompetition({
             <Field label={tr('Format')}>
               <select
                 value={form.format}
-                onChange={(e) => change({ format: e.target.value as CompetitionCreate['format'] })}
+                onChange={(e) =>
+                  // Options the new format has no use for go back to their defaults, so nothing
+                  // is saved that the bracket silently ignores.
+                  change({
+                    format: e.target.value as CompetitionCreate['format'],
+                    thirdPlace: false,
+                    grandFinalReset: true,
+                    groupCount: 1,
+                  })
+                }
               >
                 <option value="SINGLE_ELIMINATION">{tr('Single elimination')}</option>
                 <option value="DOUBLE_ELIMINATION">{tr('Double elimination')}</option>
