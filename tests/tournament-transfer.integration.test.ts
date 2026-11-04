@@ -20,6 +20,7 @@ import {
 import { ALL_PERMISSIONS, type Actor } from '../src/lib/permissions';
 import { matchRulesSchema } from '../src/lib/match-rules';
 import * as storage from '../src/lib/storage';
+import { tournamentRows } from './helpers/tournament-rows';
 const prefix = `transfer-${Date.now()}`;
 const ids: string[] = [],
   objects: string[] = [];
@@ -367,6 +368,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   for (const id of ids.reverse()) {
+    if (!(await db.tournament.count({ where: { id } }))) continue;
     for (const media of await db.mediaAsset.findMany({ where: { tournamentId: id } }))
       objects.push(media.key);
     await db.match.deleteMany({ where: { tournamentId: id } });
@@ -420,6 +422,38 @@ describe('portable tournament archives', () => {
     expect(result.preview.slugConflict).toBe(true);
     expect(result.preview.counts.actions).toBe(3);
     expect(await db.tournament.count()).toBe(before);
+  });
+  it('brings a deleted tournament back from its copy, at the same address', async () => {
+    const { archive } = await inspectArchive(bytes);
+    const slug = `${prefix}-deleted`;
+    const source = async () =>
+      archiveHash(Buffer.from(JSON.stringify((await collectTournament(db, sourceId)).data)));
+    const before = await source();
+    const { tournamentId } = await importTournament(owner, archive, slug);
+    ids.push(tournamentId);
+    const t = await db.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
+    const files = await db.mediaAsset.findMany({ where: { tournamentId } });
+    expect(files.length).toBeGreaterThan(0);
+    expect(Object.keys(await tournamentRows(db, tournamentId)).length).toBeGreaterThan(10);
+
+    await tournamentAction(owner, {
+      type: 'delete',
+      id: tournamentId,
+      baseVersion: t.version,
+      confirmation: t.acronym,
+    });
+
+    expect(await tournamentRows(db, tournamentId)).toEqual({});
+    for (const file of files) expect(await storage.objectExists(file.key)).toBe(false);
+    expect(await db.tournamentTransfer.count({ where: { tournamentId } })).toBe(0);
+    // The tournament it was imported from is a different one, and did not move.
+    expect(await source()).toBe(before);
+    const again = await importTournament(owner, await readArchive(bytes), slug);
+    ids.push(again.tournamentId);
+    expect(again.tournamentId).not.toBe(tournamentId);
+    expect((await tournamentRows(db, again.tournamentId)).Team).toBe(
+      (await tournamentRows(db, sourceId)).Team,
+    );
   });
   it('round-trips complete relational histories into a separate unpublished tournament', async () => {
     const { archive } = await inspectArchive(bytes);

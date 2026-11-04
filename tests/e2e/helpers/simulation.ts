@@ -19,6 +19,7 @@ const created = {
   beatmaps: [] as number[],
   matches: [] as number[],
 };
+export const simulatedTournaments = () => [...created.tournaments];
 let token = '';
 let ownerId = '';
 let nextPlayer = randomInt(1_500_000_000, 1_600_000_000);

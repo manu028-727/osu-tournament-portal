@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { drawGroups } from '../../src/lib/format-advancement';
 import { COMPATIBILITY_PLANS } from '../fixtures/format-plans';
+import { tournamentRows } from '../helpers/tournament-rows';
 import {
   action,
   advancePhase,
@@ -24,6 +25,7 @@ import {
   read,
   runQualifier,
   setupSimulation,
+  simulatedTournaments,
   stagesOf,
   type Tour,
   unique,
@@ -1413,4 +1415,63 @@ test('A format nobody has run: accuracy qualifiers, a snake draft, a league and 
   });
   expect(thirdPlace).toBe(1);
   await bracketEvidence(page, t, 'novel-bracket');
+});
+
+// These tournaments hold real play: formed teams, budgets, pools, standings and match histories.
+test('a tournament that has been played can be deleted, leaving nothing behind', async ({
+  page,
+  context,
+}) => {
+  await login(context);
+  await page.goto('/admin/tournaments');
+  // A worker keeps this list across spec files, and earlier ones have removed theirs.
+  const played = await db.tournament.findMany({ where: { id: { in: simulatedTournaments() } } });
+  expect(played.length).toBeGreaterThan(5);
+  const ids = played.map((t) => t.id);
+  expect(await db.match.count({ where: { tournamentId: { in: ids } } })).toBeGreaterThan(0);
+  const remove = (t: (typeof played)[number]) =>
+    context.request.post('/api/tournaments', {
+      headers: { Origin: 'http://localhost:3001' },
+      data: { type: 'delete', id: t.id, baseVersion: t.version, confirmation: t.acronym },
+    });
+  const reason = 'Clearing this tournament to start again';
+  const active: ('IN_PROGRESS' | 'AWAITING_CONFIRMATION' | 'DISPUTED')[] = [
+    'IN_PROGRESS',
+    'AWAITING_CONFIRMATION',
+    'DISPUTED',
+  ];
+  let unfinished = 0;
+  for (const t of played) {
+    const where = { tournamentId: t.id, deletedAt: null, status: { in: active } };
+    const matches = await db.match.findMany({ where });
+    const lobbies = await db.qualifierLobby.findMany({ where });
+    // A tournament left mid-match says what is in the way, and the ordinary cancel clears it.
+    if (matches.length + lobbies.length) {
+      unfinished += matches.length + lobbies.length;
+      expect((await remove(t)).status(), t.name).toBe(409);
+      expect(await db.tournament.count({ where: { id: t.id } })).toBe(1);
+      for (const match of matches)
+        await action(page, t, {
+          type: 'match.cancel',
+          id: match.id,
+          baseVersion: match.version,
+          reason,
+        });
+      for (const lobby of lobbies)
+        await action(page, t, {
+          type: 'qualifier.status',
+          id: lobby.id,
+          baseVersion: lobby.version,
+          command: 'CANCEL',
+          reason,
+        });
+    }
+    const response = await remove(t);
+    expect(response.status(), `${t.name}: ${await response.text()}`).toBe(200);
+    expect(await tournamentRows(db, t.id), t.name).toEqual({});
+  }
+  expect(
+    unfinished,
+    'the simulations leave a match unfinished to prove the refusal',
+  ).toBeGreaterThan(0);
 });

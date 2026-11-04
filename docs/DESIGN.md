@@ -398,7 +398,9 @@ Routine collection forms use shared EditorPanel within EditingWorkspace: a visib
 adjacent pane on wide screens, placed above the collection on narrow screens. It
 does not trap focus or obscure the source collection; Escape/close restore focus
 through existing dirty-form guards. Radix Modal remains for private previews and
-operational referee flows, and ConfirmButton for destructive decisions. Teams expose
+operational referee flows, and ConfirmButton for destructive decisions. Deleting a tournament asks
+for more: platform administrators get a Modal from the tournament card with its counts, an export
+and a typed acronym that enables the button. Teams expose
 direct name/seed editing plus selected-row status/visibility/deletion. CMS exposes
 revision history/unpublish directly and provides selected-section show/hide/duplicate/
 remove actions within the independent draft. Website access supports selected-user

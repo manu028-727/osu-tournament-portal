@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { Prisma } from '@/generated/prisma/client';
 import { z } from 'zod';
 import { db } from './db';
 import { actorForTournament } from './auth';
@@ -10,6 +11,7 @@ import { safeUrl, color } from './validation';
 import { appUrl } from './security';
 import { gameplayScoringSchema } from './gameplay-scoring';
 import { publicTournamentWhere } from './public-visibility';
+import { deleteTournamentRecords, removeDeletedFiles } from './tournament-deletion';
 
 export const tournamentActionSchema = z.discriminatedUnion('type', [
   z.object({
@@ -32,6 +34,12 @@ export const tournamentActionSchema = z.discriminatedUnion('type', [
     baseVersion: z.number().int().positive(),
     published: z.boolean(),
     archived: z.boolean(),
+  }),
+  z.object({
+    type: z.literal('delete'),
+    id: z.string().max(100),
+    baseVersion: z.number().int().positive(),
+    confirmation: z.string().trim().max(120),
   }),
   z.object({
     type: z.literal('platform'),
@@ -108,7 +116,8 @@ export async function tournamentAction(
   rawInput: z.input<typeof tournamentActionSchema>,
 ) {
   const input = tournamentActionSchema.parse(rawInput);
-  return db.$transaction(
+  let deletedFiles: string[] = [];
+  const result = await db.$transaction(
     async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(78214321)`;
       const user = await tx.user.findUniqueOrThrow({
@@ -117,6 +126,7 @@ export async function tournamentAction(
       });
       const actor = actorForTournament(user, 'id' in input ? input.id : 'main');
       let id = 'main';
+      let details: Prisma.InputJsonObject = {};
       if (input.type === 'create') {
         assertPermission(actor, 'tournaments.create');
         try {
@@ -202,6 +212,25 @@ export async function tournamentAction(
           },
         });
         if (!changed.count) throw new AppError('Tournament changed. Reload before saving.', 409);
+      } else if (input.type === 'delete') {
+        id = input.id;
+        // Tournament roles can never hold this permission, so an Owner cannot delete their own.
+        assertPermission(actor, 'platform.manage');
+        const tournament = await tx.tournament.findUnique({ where: { id } });
+        if (!tournament) throw new AppError('Tournament not found.', 404);
+        if (tournament.version !== input.baseVersion)
+          throw new AppError('Tournament changed. Reload before saving.', 409);
+        if (input.confirmation !== tournament.acronym)
+          throw new AppError('Type the exact tournament acronym to confirm deletion.');
+        const { keys, counts } = await deleteTournamentRecords(tx, id);
+        deletedFiles = keys;
+        // Kept outside the tournament, this is the one record left of who deleted what.
+        details = {
+          name: tournament.name,
+          acronym: tournament.acronym,
+          slug: tournament.slug,
+          ...counts,
+        };
       } else if (input.type === 'platform') {
         assertPermission(actor, 'platform.manage');
         if (
@@ -261,11 +290,14 @@ export async function tournamentAction(
           action: `tournament.${input.type}`,
           entityType: 'Tournament',
           entityId: id,
-          details: {},
+          details,
         },
       });
       return { id };
     },
-    { timeout: 15000 },
+    { timeout: input.type === 'delete' ? 120000 : 15000 },
   );
+  return input.type === 'delete'
+    ? { ...result, filesPendingCleanup: await removeDeletedFiles(deletedFiles) }
+    : result;
 }

@@ -1891,6 +1891,44 @@ verified against the deployed tournament, real osu! accounts or Discord.
 Next: maintainer review and pushing this commit, then `git pull --ff-only` and `./portal install`
 on the server, then one real ping in the tournament's Discord server.
 
+### Tournament Deletion
+
+The maintainer asked for a way to remove a tournament completely and start again, confirmed by its
+acronym. Before this only Archive existed, which keeps everything and keeps the address, because
+addresses cannot be edited. Delivered: a Delete button on the tournament card for platform
+administrators, a dialog with the tournament's counts, its export button and a typed acronym, and a
+`delete` action in `tournamentAction` that repeats every check on the server. Active matches, active
+qualifier lobbies and uncertain lobby creation refuse it, naming what is in the way. Files leave
+through the MediaCleanup outbox, a featured tournament returns the site to the directory, and an
+empty list now tells a platform administrator there are no tournaments rather than no memberships.
+No migration, no new permission key and no new table.
+
+A tournament with the old `main` id is treated like any other: a fresh platform needs no such anchor
+and login already tolerates its system roles being absent. That path is read from source and was not
+run, because the shared test database needs its `main` tournament.
+
+Checks on this revision, run sequentially on `tournament_platform_test`: format, lint, types and
+`git diff --check` clean; 613 unit tests in 41 files; 354 integration tests in 36 files; production
+build; `prisma migrate diff` empty. The production browser suite passed 104 of 105. The failure was in
+the new test that deletes played tournaments, which read a helper list that also held tournaments
+earlier spec files had removed. After test-only fixes, `simulations.spec.ts` passed 8 of 8 alone: it
+deletes every format it played, first confirming that a tournament left mid-match refuses and that
+the ordinary match cancel clears the way, then scans every `tournamentId` column for leftovers. The
+dev browser suite was not run. `tournament-transfer.integration.test.ts` covers export, delete and
+reimport at the same address.
+
+Rendered evidence is in `.data/tournament-deletion-20261104`: the dialog and card at 1920, 1366, 768,
+390 and 320 in both appearances, with no sideways overflow asserted at each, a refusal over the open
+dialog and the empty list. Inspected on the final wording: the dialog at 320 light and 768 dark and the
+refusal at 390 light. Inspected on earlier wording with the same layout: the dialog at 320 dark, 390
+light and 1366 light. Also inspected: the card at 320 light and 1920 dark and the empty list at 320
+dark. Italian is asserted through labels and messages, not inspected. File removal ran on the
+filesystem driver and the browser suite on mock providers. Not verified on S3 or the deployed
+instance.
+
+Next: maintainer review and pushing this commit, then `git pull --ff-only` and `./portal install`
+on the server. This commit needs no migration; the Discord username commit before it does.
+
 ## Completion Rules
 
 For each change: establish source behavior, implement within existing ownership

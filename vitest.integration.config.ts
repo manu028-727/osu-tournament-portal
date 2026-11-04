@@ -20,6 +20,7 @@ export default defineConfig({
       'tests/matches.integration.test.ts',
       'tests/match-results-route.integration.test.ts',
       'tests/tournaments.integration.test.ts',
+      'tests/tournament-deletion.integration.test.ts',
       'tests/referee-import.integration.test.ts',
       'tests/irc.integration.test.ts',
       'tests/gameplay-scoring.integration.test.ts',

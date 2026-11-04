@@ -4291,5 +4291,18 @@
   "Registration saved. An organizer will review it.": "Iscrizione salvata. Un organizzatore la esaminerà.",
   "Qualifier reservation updated.": "Prenotazione alle qualifiche aggiornata.",
   "Use a Discord username, not a display name or numeric ID.": "Usa un nome utente Discord, non un nome visualizzato o un ID numerico.",
-  "Use the number from the osu! profile address, not a username.": "Usa il numero nell'indirizzo del profilo osu!, non un nome utente."
+  "Use the number from the osu! profile address, not a username.": "Usa il numero nell'indirizzo del profilo osu!, non un nome utente.",
+  "Delete": "Elimina",
+  "Delete tournament": "Elimina torneo",
+  "Tournament deleted.": "Torneo eliminato.",
+  "Tournament deleted. {0} uploaded files are waiting to be removed from storage.": "Torneo eliminato. {0} file caricati sono in attesa di essere rimossi dallo spazio di archiviazione.",
+  "Type {0} to confirm": "Digita {0} per confermare",
+  "Permanently delete {0}. This cannot be undone.": "Elimina definitivamente {0}. L'operazione non puo' essere annullata.",
+  "Stages: {0}. Entrants: {1}. Matches: {2}.": "Fasi: {0}. Partecipanti: {1}. Incontri: {2}.",
+  "Its pages, mappools, staff, match histories and uploaded images go with it. Player and staff accounts stay.": "Con il torneo se ne vanno pagine, mappool, staff, storico degli incontri e immagini caricate. Gli account di giocatori e staff restano.",
+  "Download a copy first if you might want it back. It can be imported later as a new tournament.": "Scarica prima una copia se pensi di volerlo recuperare. Potrai importarla in seguito come nuovo torneo.",
+  "Type the exact tournament acronym to confirm deletion.": "Digita esattamente l'acronimo del torneo per confermare l'eliminazione.",
+  "Finish or cancel active matches and qualifier lobbies before deleting this tournament: {0}.": "Termina o annulla gli incontri e le lobby di qualifica attivi prima di eliminare questo torneo: {0}.",
+  "Resolve pending or uncertain lobby creation before deleting this tournament.": "Risolvi le creazioni di lobby in sospeso o incerte prima di eliminare questo torneo.",
+  "No tournaments yet.": "Ancora nessun torneo."
 }

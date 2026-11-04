@@ -4,7 +4,7 @@ import { humanizeCode } from '@/lib/i18n';
 
 import Link from '@/components/tournament-scope';
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, ArrowUpRight, Archive, Eye, EyeOff, Settings } from 'lucide-react';
+import { Plus, ArrowUpRight, Archive, Eye, EyeOff, Settings, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { Actor } from '@/lib/permissions';
 import {
@@ -18,6 +18,7 @@ import {
 } from './shared';
 import { PlatformSettingsEditor, type PlatformConfig } from './platform-settings';
 import { TournamentImporter } from './tournament-transfer';
+import { DeleteTournamentDialog } from './delete-tournament-dialog';
 import { SCORING_LABELS } from '@/lib/gameplay-scoring';
 const suggestedSlug = (name: string) =>
   name
@@ -58,7 +59,8 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
       platform: PlatformConfig | null;
     } | null>(null),
     [error, setError] = useState(''),
-    [open, setOpen] = useState(false);
+    [open, setOpen] = useState(false),
+    [deleting, setDeleting] = useState<Item | null>(null);
   const { busy, run } = useTask();
   const [identity, setIdentity] = useState({ name: '', acronym: '', slug: '' });
   const [edited, setEdited] = useState({ acronym: false, slug: false });
@@ -188,13 +190,37 @@ export function TournamentsEditor({ actor }: { actor: Actor }) {
                     </ConfirmButton>
                   </>
                 )}
+                {actor.platformAdmin && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => setDeleting(t)}
+                  >
+                    <Trash2 size={16} />
+                    {tr('Delete')}
+                  </Button>
+                )}
               </div>
             </div>
           </article>
         ))}
       </div>
       {!data.tournaments.length && (
-        <p className="py-12 text-muted">{tr('No tournament staff memberships assigned.')}</p>
+        <p className="py-12 text-muted">
+          {tr(
+            actor.platformAdmin
+              ? 'No tournaments yet.'
+              : 'No tournament staff memberships assigned.',
+          )}
+        </p>
+      )}
+      {deleting && (
+        <DeleteTournamentDialog
+          tournament={deleting}
+          close={() => setDeleting(null)}
+          deleted={reload}
+        />
       )}
       {data.platform && actor.platformAdmin && (
         <PlatformSettingsEditor

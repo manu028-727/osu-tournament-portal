@@ -22,6 +22,14 @@ matches or CMS revisions. Editors provide safe empty defaults until actual saves
 Tournament publication is independent from page, pool, roster, bracket and
 standings publication. Archived/private tournaments must not become guest-visible.
 
+Archiving is the reversible way to retire a tournament. A platform administrator can also delete
+one permanently by typing its exact acronym; a tournament Owner cannot. This is the deliberate
+exception to preserved history: its content, rosters, match histories, audit entries and uploaded
+files go at once and its address becomes free. Only a platform record of who deleted what remains,
+along with the accounts, players and beatmaps other tournaments share. Deletion waits for active
+matches, active qualifier lobbies and uncertain lobby creation to be settled, and the confirmation
+offers a downloadable copy that imports as a new tournament.
+
 **Current.** One guided workspace at the tournament admin home configures identity,
 registration and eligibility, rosters, scoring and mods, stages and mappool plans, phases
 and progression including team formation, budgets, key dates, staff, pages and publication without visiting separate

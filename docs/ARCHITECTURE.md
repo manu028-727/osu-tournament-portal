@@ -101,6 +101,18 @@ replace the document to reset tenant state. Every guest reader uses the shared
 published-and-not-archived predicate. Archiving preserves saved publication flags
 and content while withholding the tournament from guests.
 
+`tournament-deletion.ts` owns permanent deletion, reached only through `tournamentAction` under the
+root advisory lock, with refreshed authorization, `platform.manage` (which tournament roles cannot
+hold), the reviewed version and the exact acronym. It deletes in the order the restricting foreign
+keys require and leaves the rest to cascades. A new table that refuses a delete fails
+`tournament-deletion.integration.test.ts` and the simulation that deletes played tournaments, and
+both scan every `tournamentId` column for leftovers. The active statuses match bracket deletion.
+Media keys enter the MediaCleanup outbox in the same transaction and are removed after commit; a key
+storage refuses stays journaled for `scripts/recover-media.ts` and is reported as
+`filesPendingCleanup`. A featured tournament returns the site to `DIRECTORY` mode. The tournament's
+audit rows go with it, and one row with a null `tournamentId` records the actor, name, acronym, slug
+and counts. Users, participants and beatmaps are global and stay.
+
 ## API And Mutation Contracts
 
 Team/match public readers and team/media admin reads support explicit pagination
