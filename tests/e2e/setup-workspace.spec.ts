@@ -233,6 +233,7 @@ test('configures a whole tournament from one screen', async ({ page, context }) 
   // An impossible plan explains itself and cannot be saved.
   await open(page, 'Phases and progression').click();
   const save = page.getByRole('button', { name: 'Save format' });
+  await page.locator('details[aria-label="Qualifiers"] summary').click();
   const entrants = page.getByRole('spinbutton', { name: 'Entrants advancing' });
   await expect(entrants).toHaveValue('20');
   await entrants.fill('10');
@@ -243,10 +244,11 @@ test('configures a whole tournament from one screen', async ({ page, context }) 
   ).toBeVisible();
   await expect(save).toBeDisabled();
   await entrants.fill('20');
-  await page.getByRole('button', { name: 'Preview matches' }).click();
+  // The preview follows the plan, with nothing to press.
   await expect(page.getByText('47 matches would be created')).toBeVisible();
   await page.getByText('Main bracket · 23 matches').click();
   await expect(page.getByText('Qualifiers #1 vs Group stage: place 1 (4)')).toBeVisible();
+  await page.locator('details[aria-label="Main bracket"] summary').click();
   await page.getByRole('textbox', { name: 'Double elimination name' }).fill('Playoffs');
   await save.click();
   await expect(page.getByText('Tournament format saved.')).toBeVisible();
@@ -284,6 +286,7 @@ test('resumes where the organizer left off', async ({ page, context }) => {
   await login(context, ownerToken);
   await page.goto(`${root}#format`);
   await expect(page.getByRole('button', { name: 'Save format' })).toBeVisible();
+  await page.locator('details[aria-label="Playoffs"] summary').click();
   await page.getByRole('textbox', { name: 'Double elimination name' }).fill('Unsaved name');
   // Leaving the section with unsaved edits asks first, and declining keeps them.
   page.once('dialog', (dialog) => void dialog.dismiss());
@@ -301,6 +304,7 @@ test('resumes where the organizer left off', async ({ page, context }) => {
 test('rejects a stale format and keeps the organizer’s work visible', async ({ page, context }) => {
   await login(context, ownerToken);
   await page.goto(`${root}#format`);
+  await page.locator('details[aria-label="Playoffs"] summary').click();
   const name = page.getByRole('textbox', { name: 'Double elimination name' });
   await name.fill('Stale edit');
   await db.tournamentPhase.updateMany({

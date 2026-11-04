@@ -218,6 +218,14 @@
 .nameColumn {
   min-width: 170px;
 }
+/* The counts scroll sideways on a small screen, so each row keeps saying which stage it is. */
+.grid th:nth-child(2),
+.grid td:nth-child(2) {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+}
 .typeColumn {
   min-width: 120px;
 }
@@ -255,7 +263,7 @@
 }
 .entry {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
   gap: 8px;
   align-items: end;
   padding-block: 8px;
@@ -506,4 +514,83 @@
 .overdrawn {
   font-weight: 600;
   color: var(--state-danger);
+}
+.phaseSummary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  min-height: 28px;
+  cursor: pointer;
+}
+.roundStages {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: 8px;
+}
+.roundLanes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 16px 24px;
+}
+.roundRow {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.roundRow select {
+  width: 100%;
+  min-width: 0;
+}
+.notApplicable {
+  display: block;
+  text-align: center;
+  color: var(--muted);
+}
+.total {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.short {
+  text-align: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--state-danger);
+}
+.poolLink {
+  color: var(--brand);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.newType {
+  width: 120px;
+}
+.nextStep {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--separator);
+}
+@media (max-width: 600px) {
+  /* Only as wide as its columns need, or the stage names fill the screen and hide the counts. */
+  .grid {
+    width: max-content;
+    min-width: 0;
+  }
+  .nameColumn {
+    width: 124px;
+    min-width: 124px;
+  }
+  .typeColumn {
+    min-width: 90px;
+  }
+  /* Stage names need the full width here, or the Best of beside them gets cut off. */
+  .roundRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
 }

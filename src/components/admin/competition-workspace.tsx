@@ -47,7 +47,7 @@ import { DeleteMatchDialog } from './delete-match-dialog';
 import { MatchInlineSchedule, type InlineMatchEdit } from './match-inline-schedule';
 import { localDateTimeInput } from '@/lib/utils';
 import type { MatchView, RefereeProfile } from '@/lib/matches-types';
-import { useUnsaved } from './shared';
+import { NumberInput, useUnsaved } from './shared';
 
 export function CompetitionWorkspace({ actor }: { actor: Actor }) {
   const tr = useT();
@@ -901,13 +901,12 @@ function CreateCompetition({
             </Field>
             {seededSource && (
               <Field label={tr('Advancing participants')}>
-                <input
-                  type="number"
+                <NumberInput
                   min={2}
                   max={128}
                   value={cutoff}
-                  onChange={(e) => {
-                    const value = Number(e.target.value);
+                  onChange={(number) => {
+                    const value = number ?? cutoff;
                     setCutoff(value);
                     if (form.sourceBracketId) chooseGroups(form.sourceBracketId, value);
                     else chooseStanding(form.sourceStandingId!, value);
@@ -918,21 +917,21 @@ function CreateCompetition({
             {form.format === 'GROUPS' && (
               <>
                 <Field label={tr('Groups')}>
-                  <input
-                    type="number"
+                  <NumberInput
                     min={1}
                     max={32}
                     value={form.groupCount}
-                    onChange={(e) => change({ groupCount: Number(e.target.value) })}
+                    onChange={(groupCount) => change({ groupCount: groupCount ?? form.groupCount })}
                   />
                 </Field>
                 <Field label={tr('Advance per group')}>
-                  <input
-                    type="number"
+                  <NumberInput
                     min={1}
                     max={32}
                     value={form.advancePerGroup}
-                    onChange={(e) => change({ advancePerGroup: Number(e.target.value) })}
+                    onChange={(advancePerGroup) =>
+                      change({ advancePerGroup: advancePerGroup ?? form.advancePerGroup })
+                    }
                   />
                 </Field>
               </>

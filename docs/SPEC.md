@@ -30,6 +30,12 @@ naming any event. Unpublished records are the resumable draft. Readiness is deri
 real records, and required items never block publication. Applying a template or a stage
 grid saves atomically with each operation's usual permission.
 
+Setup asks for each value once: players per side under Rosters, Best of and bans in the stage
+list, and scoring system at the top of Scoring. Every number can be cleared and retyped without
+turning into 0 or leaving a stray digit; a field left empty returns to its last valid value, and
+a Best of must be odd, so an even one moves up. Every mod choice is a set of checkboxes rather
+than typed codes. Each open section ends with a button to the next thing to do.
+
 Creating a tournament asks only for a name, game mode and optional details, offers an acronym
 and address from the name, and opens the new tournament's guided home. The saved tournament
 format follows the single team size control. Key dates, qualifier sessions and matches share
@@ -120,6 +126,10 @@ references. Upload/library interactions provide clear failure and completion sta
 qualifier policy and lifecycle remain editable. Stage identity is distinct from
 bracket round/lane labels. Bulk rule patches preserve omitted/mixed values, reuse
 defaults or source-stage overrides and reject stale configuration tokens.
+In the setup stage list, map types are columns: the usual six and any the tournament adds, which
+then reach pool plans and match rules together. A pool still on its suggested counts follows its
+Best of, one row can fill in the stages below it, and a pool too small for its Best of and bans
+says how many maps it needs.
 Duplication independently selects rules, appearance, empty pool, structure or
 contents; it never duplicates publication, gameplay history or staff assignments.
 
@@ -332,6 +342,17 @@ pairs, tiebreak chains and rematch limits. Locking creates every phase's bracket
 reserving match numbers in phase order before anyone has qualified, and can be undone until
 a match starts. Slots wait under a label such as Qualifiers #1 or Group D #2.
 
+A bracket phase shows every round beside the stage it plays in, and each round takes that stage's
+Best of, bans and mappool, so one bracket uses as many stages as it has rounds. The stages are
+matched automatically and any round can be changed or returned to automatic. Stage names decide
+the match where they say a round, so an 8-entrant bracket starts at Quarterfinals, and stage order
+decides it where they do not; a later round never lands on an earlier stage, and Losers rounds
+share the stage of the Winners round played alongside. A name only suggests: the organizer sees
+every assignment before locking, locking stores it on the round, and a name never decides who
+advances or which stage follows another. Changing the bracket size moves its rounds and qualifier
+cut together and names any stage left unused. Deleting a stage moves unlocked brackets to the next
+one, and is refused for a locked, qualifier or group phase that depends on it.
+
 Advancing entrants is a reviewed step recording what it read, with a preview that shows who
 goes where. Draws from pots are reproducible from a stored value, or entered by hand.
 Entrants placed directly into Losers are eliminated on their first loss. Rematch limits move
@@ -350,7 +371,7 @@ advance together. Later rounds repeat that pattern. Winners/Losers Finals share
 the final path stage; Grand Finals uses the next stage when available, and its reset
 shares that stage. When stages run out, remaining rounds use the last available
 stage. Single-elimination third place shares its final stage; group rounds stay
-in their selected stage. Authored names are never parsed to infer progression.
+in their selected stage. This creation flow never parses authored names.
 Organizers may override suggestions; a round cannot precede a feeder's stage.
 The preview shows every proposed stage and actual numeric range in generation
 order, updating after edits. Generation checks the reviewed stage/configuration

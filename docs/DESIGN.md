@@ -178,7 +178,16 @@ neither ever blocks publication. Sections show only what the viewer may act on.
 Match rules show what most events change first: team mode, how maps are won, required mods,
 players per side, Best of, bans and the common switches. Turn order and timers, FreeMod, score
 multipliers, referee procedures, lobby commands and written policies each fold under their own
-heading, on every screen using that form.
+heading, on every screen using that form. In setup, Scoring leaves out what other sections own:
+players per side, Best of and bans.
+
+The stage list is one table with a column per map type, a running map total, and a link into each
+stage's maps. Its name column stays in place when the table scrolls sideways on a narrow screen.
+Phases fold to one line saying which stages they use, opening when new or when something needs
+fixing. An open bracket lists its rounds by lane with one stage select each, labelled with the
+stage's Best of, stacking under 600px so names stay readable. There is no separate preview button
+or single-stage control, and the match count updates as the plan changes. Mods are always
+checkboxes, in one fixed order.
 
 Named groups read in letter order in the bracket and its standings, which use one name, even when
 letters follow strength rather than the draw.

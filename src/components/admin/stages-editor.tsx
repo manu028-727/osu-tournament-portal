@@ -27,6 +27,7 @@ import {
   LoadingState,
   SaveButton,
   useUnsaved,
+  NumberInput,
 } from './shared';
 import {
   StageOverviewRow,
@@ -836,11 +837,10 @@ export function StagesEditor({
               </summary>
               <div className="grid-fields mt-4">
                 <Field label={tr('Order')}>
-                  <input
-                    type="number"
+                  <NumberInput
                     min={0}
                     value={draft.position}
-                    onChange={(e) => update({ position: Number(e.target.value) })}
+                    onChange={(position) => update({ position: position ?? 0 })}
                   />
                 </Field>
                 <Field label={tr('Next stage')}>

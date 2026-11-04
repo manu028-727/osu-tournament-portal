@@ -295,13 +295,17 @@ export function FormatLifecycle({
   reload,
   canEdit,
   canForm,
+  savePlan,
   dirty,
+  valid,
 }: {
   data: SetupWorkspaceData;
   reload: () => Promise<unknown>;
   canEdit: boolean;
   canForm: boolean;
+  savePlan: () => Promise<string>;
   dirty: boolean;
+  valid: boolean;
 }) {
   const tr = useT();
   const { busy, run } = useTask();
@@ -311,19 +315,21 @@ export function FormatLifecycle({
       <div>
         <ConfirmButton
           variant="default"
-          disabled={busy || dirty}
+          disabled={busy || !valid}
           title={tr('Lock this format?')}
           description={tr(
             "This creates every phase's bracket and permanently reserves its match numbers, in phase order. You can still unlock it until a match has started.",
           )}
           onConfirm={() =>
             void run(async () => {
-              await action({ type: 'format.lock', baseToken: data.planToken });
+              // Unsaved changes go in with the lock, rather than asking for a separate save first.
+              const baseToken = dirty ? await savePlan() : data.planToken;
+              await action({ type: 'format.lock', baseToken });
               await reload();
             }, tr('Format locked. Its matches are reserved.'))
           }
         >
-          {tr('Lock format')}
+          {dirty ? tr('Save and lock format') : tr('Lock format')}
         </ConfirmButton>
       </div>
     ) : null;

@@ -26,7 +26,13 @@ let nextBeatmap = randomInt(1_600_000_000, 1_690_000_000);
 
 export const unique = (name: string) => `${name}-${randomUUID().slice(0, 8)}`;
 
+// A simulation does hours of organizer work in seconds, which the request limit is there to stop.
+// The limit is not under test here, and a click cannot be retried the way a direct request can, so
+// its counters keep clearing on this test database while a simulation runs.
+let clearingLimits: ReturnType<typeof setInterval> | undefined;
+
 export async function setupSimulation() {
+  clearingLimits = setInterval(() => void db.rateLimit.deleteMany({}).catch(() => undefined), 5000);
   await mkdir(evidence, { recursive: true });
   if (fixtures) await mkdir(fixtures, { recursive: true });
   token = randomBytes(32).toString('base64url');
@@ -174,8 +180,6 @@ export async function action<T = Record<string, unknown>>(page: Page, t: Tour, b
       { scope: t.slug, body },
     );
   let result = await send();
-  // A simulation does hours of organizer work in seconds, which the request limit is there to
-  // stop. The limit is not under test here, so its counters clear on this test database.
   if (result.status === 429) {
     await db.rateLimit.deleteMany({});
     result = await send();
@@ -197,6 +201,15 @@ export async function read<T = Record<string, unknown>>(
       (await fetch(`/api/admin/data?section=${section}${query}&tournament=${scope}`)).json(),
     { scope: t.slug, section, query },
   ) as Promise<T>;
+}
+
+// Phases fold shut once saved, so editing one starts by opening it.
+export async function openPhase(page: Page, name: string) {
+  const phase = page
+    .locator('details[aria-label]')
+    .filter({ has: page.locator(`summary strong`, { hasText: name }) });
+  if (!(await phase.first().getAttribute('open'))) await phase.first().locator('summary').click();
+  return phase.first();
 }
 
 // A fresh load, because navigating to a new hash alone would keep the current page's state.
@@ -322,6 +335,7 @@ export async function lockFormat(page: Page, t: Tour) {
 }
 
 export async function cleanupSimulation() {
+  clearInterval(clearingLimits);
   const where = { tournamentId: { in: created.tournaments } };
   await db.tournamentPhase.updateMany({ where, data: { bracketId: null } });
   await db.bracketSlot.deleteMany({ where });

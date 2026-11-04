@@ -47,7 +47,8 @@ import { applyStageWorkflowAction, stageConfigurationToken } from './stage-workf
 import { applyStaffBulkAction } from './staff-bulk';
 import { applyUserRoles } from './user-roles-service';
 import { roleConfiguration } from './role-configuration';
-import { saveFormatPlan } from './format-plan-service';
+import { saveFormatPlan, releaseStageFromPlan } from './format-plan-service';
+import { orderedCompetitionStages } from './competition-stages';
 import { previewFormatPlan } from './format-preview';
 import {
   advancementPreview,
@@ -210,13 +211,12 @@ async function applyAdminOperation(
     case 'format.plan.preview':
       result = await previewFormatPlan(
         a.plan,
-        (
+        orderedCompetitionStages(
           await tx.tournamentStage.findMany({
-            where: { tournamentId, archivedAt: null, kind: { not: 'QUALIFIERS' } },
-            orderBy: [{ position: 'asc' }, { id: 'asc' }],
-            select: { id: true },
-          })
-        ).map((stage) => stage.id),
+            where: { tournamentId, archivedAt: null, kind: { notIn: ['QUALIFIERS', 'QUALIFIER'] } },
+            select: { id: true, name: true, kind: true, position: true, nextStageId: true },
+          }),
+        ),
       );
       break;
     case 'format.lock':
@@ -572,11 +572,7 @@ async function applyAdminOperation(
       break;
     }
     case 'stage.delete':
-      if (await tx.tournamentPhase.count({ where: { stageId: a.id } }))
-        throw new AppError(
-          'This stage is part of the tournament format. Change the format before deleting it.',
-          409,
-        );
+      await releaseStageFromPlan(tx, tournamentId, a.id);
       if (await tx.poolCandidate.count({ where: { stageId: a.id } }))
         throw new AppError(
           'Move this stage’s suggestions to another stage or archive the stage to preserve their reviews.',

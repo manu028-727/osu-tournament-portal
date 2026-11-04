@@ -1,5 +1,6 @@
 import { generateCompetition, type CompetitionPlan } from './competition-engine';
 import type { FormatPhase } from './format-plan';
+import { automaticRoundStages, type StageRef } from './format-rounds';
 import { AppError } from './permissions';
 
 // Builds a phase's bracket before its entrants are known. Slots read `seed:N` or
@@ -167,34 +168,20 @@ async function groupGraph(phase: Extract<GraphPhase, { kind: 'GROUPS' }>): Promi
   return { rounds, nodes };
 }
 
-// Rounds follow the configured stages in order, and a Losers lane runs twice as many
-// rounds, so its final must stop at the Winners final's stage rather than running on
-// into Grand Finals. Explicit assignments always win.
+// A phase can reassign any round. Anything it does not choose, or that points at a stage which
+// no longer exists, follows the automatic mapping.
 export function phaseRoundStages(
   phase: Pick<Extract<GraphPhase, { roundStages: unknown }>, 'stageId' | 'roundStages'>,
   rounds: PhaseGraph['rounds'],
-  stageIds: readonly string[],
+  stages: readonly (string | StageRef)[],
 ) {
-  const start = Math.max(0, stageIds.indexOf(phase.stageId));
-  const at = (offset: number) => stageIds[Math.min(start + offset, stageIds.length - 1)];
-  const winnersRounds = rounds.filter((round) => round.lane === 'WINNERS').length;
+  const automatic = automaticRoundStages(phase.stageId, rounds, stages);
+  const exists = (id: string) =>
+    !stages.length || stages.some((stage) => (typeof stage === 'string' ? stage : stage.id) === id);
   return Object.fromEntries(
     rounds.map((round) => {
-      const number = Number(round.key.split('-r')[1]);
-      const offset =
-        round.lane === 'LOSERS'
-          ? Math.min(Math.floor(number / 2), Math.max(0, winnersRounds - 1))
-          : round.lane === 'FINALS'
-            ? winnersRounds
-            : round.lane === 'THIRD_PLACE'
-              ? Math.max(0, winnersRounds - 1)
-              : round.lane === 'WINNERS'
-                ? number - 1
-                : 0;
-      return [
-        round.key,
-        phase.roundStages[round.key] || (stageIds.length ? at(offset) : phase.stageId),
-      ];
+      const chosen = phase.roundStages[round.key];
+      return [round.key, chosen && exists(chosen) ? chosen : automatic[round.key]];
     }),
   );
 }
@@ -202,7 +189,7 @@ export function phaseRoundStages(
 export async function phaseGraph(
   phases: readonly FormatPhase[],
   phase: GraphPhase,
-  stageIds: readonly string[] = [],
+  stages: readonly (string | StageRef)[] = [],
 ): Promise<PhaseGraph> {
   let graph: PhaseGraph;
   if (phase.kind === 'GROUPS') graph = await groupGraph(phase);
@@ -263,7 +250,7 @@ export async function phaseGraph(
   const assigned = phaseRoundStages(
     { stageId: phase.stageId, roundStages: 'roundStages' in phase ? phase.roundStages : {} },
     graph.rounds,
-    stageIds,
+    stages,
   );
   return {
     nodes: graph.nodes,

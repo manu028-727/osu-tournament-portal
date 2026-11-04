@@ -1,7 +1,8 @@
 'use client';
 import dynamic from 'next/dynamic';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowRight, ChevronDown, ChevronRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useT } from '@/components/locale';
 import { confirmDiscardUnsaved } from '@/components/unsaved-navigation';
 import { can, type Actor } from '@/lib/permissions';
@@ -170,6 +171,8 @@ export function SetupWorkspace({
   const items = data.readiness;
   const required = items.filter((item) => item.required);
   const finished = required.filter((item) => item.done).length;
+  // Finishing a section leads straight to whatever needs doing next.
+  const nextStep = required.find((item) => !item.done && visible.includes(item.section));
   const select = (key: SectionKey) => {
     setChosen(true);
     if (open === key) {
@@ -465,6 +468,18 @@ export function SetupWorkspace({
               {open === key && (
                 <div id={`setup-${key}-body`} className={styles.sectionBody}>
                   {body(key)}
+                  {nextStep && nextStep.section !== key && (
+                    <div className={styles.nextStep}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => select(nextStep.section)}
+                      >
+                        {tr('Next: {0}', tr(nextStep.label, ...(nextStep.values ?? [])))}
+                        <ArrowRight size={16} />
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </section>

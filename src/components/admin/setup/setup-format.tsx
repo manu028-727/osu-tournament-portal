@@ -13,8 +13,9 @@ import {
 } from '@/lib/format-plan';
 import type { PhasePreview } from '@/lib/format-preview';
 import type { SetupWorkspaceData } from '@/lib/setup-queries';
-import { action, Field, SaveButton, useTask, useUnsaved } from '../shared';
+import { action, NumberInput, Field, SaveButton, useTask, useUnsaved } from '../shared';
 import { FormatLifecycle } from './setup-advancement';
+import { roundNumber, roundStageConflict, winnersRoundEntrants } from '@/lib/format-rounds';
 import styles from './setup.module.css';
 
 const KIND_LABELS: Record<FormatPhase['kind'], string> = {
@@ -88,7 +89,10 @@ const newKey = (phases: readonly Phase[], base: string) => {
 
 function newPhase(kind: Phase['kind'], phases: readonly Phase[], stages: readonly Stage[]): Phase {
   const qualifierStage = stages.find((stage) => stage.kind === 'QUALIFIERS')?.id ?? '';
-  const matchStage = stages.find((stage) => stage.kind !== 'QUALIFIERS')?.id ?? '';
+  const anyMatchStage = stages.find((stage) => stage.kind !== 'QUALIFIERS')?.id ?? '';
+  const groupStage = stages.find((stage) => stage.kind === 'GROUPS')?.id ?? anyMatchStage;
+  const bracketStage =
+    stages.find((stage) => !['QUALIFIERS', 'GROUPS'].includes(stage.kind))?.id ?? anyMatchStage;
   const source = phases.at(-1);
   const entries: Entry[] = [
     {
@@ -124,7 +128,7 @@ function newPhase(kind: Phase['kind'], phases: readonly Phase[], stages: readonl
       kind,
       key: newKey(phases, 'groups'),
       name: 'Groups',
-      stageId: matchStage,
+      stageId: groupStage,
       entries,
       tiers: [{ key: 'all', name: 'All', seedFrom: 1, seedTo: 8, groupCount: 2, groupSize: 4 }],
       draw: 'SEEDED',
@@ -138,7 +142,7 @@ function newPhase(kind: Phase['kind'], phases: readonly Phase[], stages: readonl
       kind,
       key: newKey(phases, 'bracket'),
       name: 'Bracket',
-      stageId: matchStage,
+      stageId: bracketStage,
       roundStages: {},
       rematch: 'ALLOW',
       entries,
@@ -151,7 +155,7 @@ function newPhase(kind: Phase['kind'], phases: readonly Phase[], stages: readonl
     kind,
     key: newKey(phases, 'bracket'),
     name: 'Bracket',
-    stageId: matchStage,
+    stageId: bracketStage,
     roundStages: {},
     rematch: 'ALLOW',
     entries: entries.map((item) => ({ ...item, lane: 'WINNERS' as const })),
@@ -188,15 +192,177 @@ function NumberField({
 }) {
   return (
     <Field label={label} hint={hint}>
-      <input
-        type="number"
-        min={min}
-        value={value ?? ''}
-        onChange={(event) =>
-          onChange(event.target.value === '' ? null : Number(event.target.value))
-        }
-      />
+      <NumberInput nullable min={min} value={value} onChange={onChange} />
     </Field>
+  );
+}
+
+// Bracket sizes must be powers of two, so offering only those leaves nothing to get wrong.
+const BRACKET_SIZES = [2, 4, 8, 16, 32, 64, 128];
+function BracketSizeField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (size: number) => void;
+}) {
+  return (
+    <Field label={label}>
+      <select value={value} onChange={(event) => onChange(Number(event.target.value))}>
+        {BRACKET_SIZES.map((size) => (
+          <option key={size} value={size}>
+            {size}
+          </option>
+        ))}
+      </select>
+    </Field>
+  );
+}
+
+// One simple source of entrants follows the bracket when its size changes.
+function resizedEntries<T extends Entry>(entries: readonly T[], size: number): T[] {
+  if (entries.length !== 1) return [...entries];
+  const [entry] = entries;
+  const from = entry.source;
+  if (from.kind === 'RANK_RANGE')
+    return [{ ...entry, source: { ...from, to: from.from + size - 1 } }];
+  if (from.kind === 'REGISTRATION' || from.kind === 'EXPLICIT')
+    return [{ ...entry, source: { ...from, count: size } }];
+  return [...entries];
+}
+
+// A qualifier's cut follows the ranks later phases actually take.
+function withQualifierCuts(phases: readonly Phase[]): Phase[] {
+  return phases.map((phase) => {
+    if (phase.kind !== 'QUALIFIER' || phase.advance === null) return phase;
+    const taken = phases.flatMap((other) =>
+      'entries' in other
+        ? other.entries.flatMap((entry) =>
+            entry.source.kind === 'RANK_RANGE' && entry.source.phase === phase.key
+              ? [entry.source.to]
+              : [],
+          )
+        : [],
+    );
+    return taken.length ? { ...phase, advance: Math.max(...taken) } : phase;
+  });
+}
+
+type PreviewRound = PhasePreview['rounds'][number];
+function roundTitle(
+  round: PreviewRound,
+  rounds: readonly PreviewRound[],
+  double: boolean,
+  tr: ReturnType<typeof useT>,
+) {
+  if (round.lane === 'LOSERS') return tr('Losers round {0}', roundNumber(round));
+  if (round.lane === 'FINALS')
+    return roundNumber(round) === 1 ? tr('Grand Finals') : tr('Bracket reset');
+  if (round.lane === 'THIRD_PLACE') return tr('Third-place match');
+  const entrants = winnersRoundEntrants(round, rounds);
+  if (entrants === 2) return double ? tr('Winners final') : tr('Final');
+  if (entrants === 4) return tr('Semifinals');
+  if (entrants === 8) return tr('Quarterfinals');
+  return tr('Round of {0}', entrants);
+}
+
+const ROUND_LANES = [
+  ['WINNERS', 'Winners bracket'],
+  ['LOSERS', 'Losers bracket'],
+  ['THIRD_PLACE', 'Third place'],
+  ['FINALS', 'Grand Finals'],
+] as const;
+
+// Every round plays in a stage and takes its Best of, bans and mappool from it. Rounds are worked
+// out automatically from the stage list, and any one of them can be pointed elsewhere.
+function RoundStages({
+  phase,
+  rounds,
+  stages,
+  defaultBestOf,
+  onChange,
+}: {
+  phase: Extract<Phase, { roundStages: unknown }>;
+  rounds: readonly PreviewRound[] | undefined;
+  stages: readonly Stage[];
+  defaultBestOf: number;
+  onChange: (roundStages: Record<string, string>) => void;
+}) {
+  const tr = useT();
+  if (!rounds?.length)
+    return <p className="text-sm text-muted">{tr('Working out this bracket’s rounds…')}</p>;
+  const options = stages.filter((stage) => !['QUALIFIERS', 'GROUPS'].includes(stage.kind));
+  const stageFor = (round: PreviewRound) => phase.roundStages[round.key] ?? round.automaticStageId;
+  const unused = options.filter((stage) => !rounds.some((round) => stageFor(round) === stage.id));
+  const overridden = Object.keys(phase.roundStages).length > 0;
+  const bestOf = (stage: Stage) => stage.matchRules?.bestOf ?? defaultBestOf;
+  return (
+    <fieldset className={styles.roundStages}>
+      <legend className="font-semibold">{tr('Rounds and stages')}</legend>
+      <p className="text-sm text-muted">
+        {tr(
+          'Each round uses its stage’s Best of, bans and mappool. These are matched automatically, and you can change any of them.',
+        )}
+      </p>
+      <div className={styles.roundLanes}>
+        {ROUND_LANES.map(([lane, label]) => {
+          const own = rounds.filter((round) => round.lane === lane);
+          if (!own.length) return null;
+          return (
+            <div key={lane} className="grid content-start gap-2">
+              <h4 className="text-sm font-semibold">
+                {lane === 'WINNERS' && phase.kind === 'SINGLE_ELIMINATION'
+                  ? tr('Rounds')
+                  : tr(label)}
+              </h4>
+              {own.map((round) => {
+                const title = roundTitle(round, rounds, phase.kind === 'DOUBLE_ELIMINATION', tr);
+                return (
+                  <label key={round.key} className={styles.roundRow}>
+                    <span>
+                      {title}
+                      <span className="block text-xs text-muted">
+                        {round.matches === 1 ? tr('1 match') : tr('{0} matches', round.matches)}
+                      </span>
+                    </span>
+                    <select
+                      aria-label={tr('Stage for {0}', title)}
+                      value={stageFor(round)}
+                      onChange={(event) => {
+                        const next = { ...phase.roundStages };
+                        if (event.target.value === round.automaticStageId) delete next[round.key];
+                        else next[round.key] = event.target.value;
+                        onChange(next);
+                      }}
+                    >
+                      {options.map((stage) => (
+                        <option key={stage.id} value={stage.id}>
+                          {stage.name} · {tr('BO{0}', bestOf(stage))}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+      {unused.length > 0 && (
+        <p className="text-sm text-muted">
+          {tr('Not used by this bracket: {0}.', unused.map((stage) => stage.name).join(', '))}
+        </p>
+      )}
+      {overridden && (
+        <div>
+          <Button type="button" size="sm" variant="outline" onClick={() => onChange({})}>
+            {tr('Match stages automatically again')}
+          </Button>
+        </div>
+      )}
+    </fieldset>
   );
 }
 
@@ -359,6 +525,10 @@ function PhaseEditor({
   index,
   phases,
   stages,
+  rounds,
+  defaultBestOf,
+  hasIssue,
+  startOpen,
   onChange,
   onMove,
   onRemove,
@@ -367,19 +537,43 @@ function PhaseEditor({
   index: number;
   phases: readonly Phase[];
   stages: readonly Stage[];
-  onChange: (phase: Phase) => void;
+  rounds: readonly PreviewRound[] | undefined;
+  defaultBestOf: number;
+  hasIssue: boolean;
+  startOpen: boolean;
+  onChange: (phase: Phase, resized?: boolean) => void;
   onMove: (offset: -1 | 1) => void;
   onRemove: () => void;
 }) {
   const tr = useT();
   const earlier = phases.slice(0, index);
-  const stageOptions = stages.filter((stage) =>
-    phase.kind === 'QUALIFIER' ? stage.kind === 'QUALIFIERS' : stage.kind !== 'QUALIFIERS',
-  );
+  const [open, setOpen] = useState(startOpen);
+  // A problem in a folded phase has to be visible, so it opens itself.
+  useEffect(() => {
+    if (hasIssue) setOpen(true);
+  }, [hasIssue]);
+  const groupStages = stages.filter((stage) => stage.kind === 'GROUPS');
+  const stageOptions =
+    phase.kind === 'QUALIFIER'
+      ? stages.filter((stage) => stage.kind === 'QUALIFIERS')
+      : groupStages.length
+        ? groupStages
+        : stages.filter((stage) => stage.kind !== 'QUALIFIERS');
   const patch = (fields: Partial<Phase>) => onChange({ ...phase, ...fields } as Phase);
   const twoLanes = phase.kind === 'DOUBLE_ELIMINATION' && !!phase.losers;
+  const placesFromGroups =
+    'entries' in phase && phase.entries.some((entry) => entry.source.kind === 'PLACEMENT');
   return (
-    <section className={styles.phase} aria-label={phase.name}>
+    <details
+      className={styles.phase}
+      aria-label={phase.name}
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary className={styles.phaseSummary}>
+        <strong>{phase.name}</strong>
+        <span className="text-sm text-muted">{phaseSummary(phase, rounds, stages, tr)}</span>
+      </summary>
       <div className={styles.phaseHeader}>
         <div className={styles.phaseName}>
           <Field label={tr('{0} name', tr(KIND_LABELS[phase.kind]))}>
@@ -390,7 +584,8 @@ function PhaseEditor({
             />
           </Field>
         </div>
-        {'stageId' in phase && (
+        {/* A bracket's stages are per round, below. These play in just one, chosen only if needed. */}
+        {'stageId' in phase && !('roundStages' in phase) && stageOptions.length !== 1 && (
           <div className={styles.phaseName}>
             <Field label={tr('Stage')}>
               <select
@@ -772,10 +967,12 @@ function PhaseEditor({
 
       {phase.kind === 'SINGLE_ELIMINATION' && (
         <div className="grid-fields">
-          <NumberField
+          <BracketSizeField
             label={tr('Bracket size')}
             value={phase.size}
-            onChange={(size) => patch({ size: size ?? 2 } as Partial<Phase>)}
+            onChange={(size) =>
+              onChange({ ...phase, size, entries: resizedEntries(phase.entries, size) }, true)
+            }
           />
           <label className="flex min-h-11 items-center gap-2">
             <input
@@ -800,15 +997,19 @@ function PhaseEditor({
 
       {phase.kind === 'DOUBLE_ELIMINATION' && (
         <div className="grid-fields">
-          <NumberField
+          <BracketSizeField
             label={tr('Winners bracket size')}
             value={phase.winners.size}
             onChange={(size) =>
-              onChange({
-                ...phase,
-                winners: { ...phase.winners, size: size ?? 2 },
-                losers: phase.losers ? { ...phase.losers, size: size ?? 2 } : null,
-              })
+              onChange(
+                {
+                  ...phase,
+                  winners: { ...phase.winners, size },
+                  losers: phase.losers ? { ...phase.losers, size } : null,
+                  entries: phase.losers ? phase.entries : resizedEntries(phase.entries, size),
+                },
+                true,
+              )
             }
           />
           <label className="flex min-h-11 items-center gap-2">
@@ -856,7 +1057,17 @@ function PhaseEditor({
         </div>
       )}
 
-      {(phase.kind === 'SINGLE_ELIMINATION' || phase.kind === 'DOUBLE_ELIMINATION') && (
+      {'roundStages' in phase && (
+        <RoundStages
+          phase={phase}
+          rounds={rounds}
+          stages={stages}
+          defaultBestOf={defaultBestOf}
+          onChange={(roundStages) => onChange({ ...phase, roundStages })}
+        />
+      )}
+
+      {'roundStages' in phase && placesFromGroups && (
         <label className="flex min-h-11 items-center gap-2">
           <input
             type="checkbox"
@@ -925,8 +1136,25 @@ function PhaseEditor({
           </Button>
         </fieldset>
       )}
-    </section>
+    </details>
   );
+}
+
+function phaseSummary(
+  phase: Phase,
+  rounds: readonly PreviewRound[] | undefined,
+  stages: readonly Stage[],
+  tr: ReturnType<typeof useT>,
+) {
+  if ('roundStages' in phase && rounds?.length) {
+    const used = stages.filter((stage) =>
+      rounds.some((round) => (phase.roundStages[round.key] ?? round.automaticStageId) === stage.id),
+    );
+    return `${tr(KIND_LABELS[phase.kind])} · ${used.map((stage) => stage.name).join(', ')}`;
+  }
+  if ('stageId' in phase)
+    return `${tr(KIND_LABELS[phase.kind])} · ${stages.find((stage) => stage.id === phase.stageId)?.name ?? ''}`;
+  return tr(KIND_LABELS[phase.kind]);
 }
 
 function PlanPreview({
@@ -1011,15 +1239,47 @@ export function FormatSection({
           ).values(),
         ]
       : [];
-  const showPreview = () =>
-    void run(async () => {
-      setPreview(
-        await action<{ phases: PhasePreview[]; totalMatches: number }>({
-          type: 'format.plan.preview',
-          plan: candidate,
-        }),
-      );
-    }, tr('Preview updated.'));
+  // The preview follows the plan by itself, reading rounds from the same builder locking uses.
+  const valid = validation.success;
+  const structure = JSON.stringify([
+    phases.map((phase) => ({ ...phase, name: '' })),
+    data.stages.map((stage) => [stage.id, stage.name, stage.position]),
+  ]);
+  useEffect(() => {
+    if (!canEdit || !valid || !phases.length) return;
+    const timer = setTimeout(() => {
+      action<{ phases: PhasePreview[]; totalMatches: number }>({
+        type: 'format.plan.preview',
+        plan: { version: FORMAT_PLAN_VERSION, phases },
+      })
+        .then(setPreview)
+        .catch(() => undefined);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [structure, canEdit, valid]);
+  const roundsOf = (key: string) => preview?.phases.find((item) => item.key === key)?.rounds;
+  const matchStages = data.stages.filter((stage) => stage.kind !== 'QUALIFIERS');
+  const backwards = phases.flatMap((phase) => {
+    if (!('roundStages' in phase)) return [];
+    const rounds = roundsOf(phase.key);
+    if (!rounds) return [];
+    const conflict = roundStageConflict(
+      rounds.map((round) => ({
+        ...round,
+        stageId: phase.roundStages[round.key] ?? round.automaticStageId,
+      })),
+      matchStages,
+    );
+    return conflict ? [phase.name] : [];
+  });
+  const savePlan = async () => {
+    const saved = await action<{ token: string }>({
+      type: 'format.plan.save',
+      baseToken: data.planToken,
+      plan: candidate,
+    });
+    return saved.token;
+  };
   const editors = (
     <fieldset disabled={!canEdit || busy || data.planLocked} className="grid min-w-0 gap-3">
       {phases.map((phase, index) => (
@@ -1029,7 +1289,11 @@ export function FormatSection({
           index={index}
           phases={phases}
           stages={data.stages}
-          onChange={(next) => replace(index, next)}
+          rounds={roundsOf(phase.key)}
+          defaultBestOf={data.rules.bestOf}
+          hasIssue={issues.some((issue) => issue.path[1] === index)}
+          startOpen={!saved.some((item) => item.key === phase.key)}
+          onChange={(next, resized) => replace(index, next, resized)}
           onMove={(offset) => {
             const next = [...phases];
             next.splice(index + offset, 0, next.splice(index, 1)[0]);
@@ -1054,8 +1318,10 @@ export function FormatSection({
       </div>
     </fieldset>
   );
-  const replace = (index: number, phase: Phase) =>
-    setPhases(phases.map((item, position) => (position === index ? phase : item)));
+  const replace = (index: number, phase: Phase, resized = false) => {
+    const next = phases.map((item, position) => (position === index ? phase : item));
+    setPhases(resized ? withQualifierCuts(next) : next);
+  };
   return (
     <div className={styles.stack}>
       {phases.length > 0 ? (
@@ -1071,7 +1337,9 @@ export function FormatSection({
           reload={reload}
           canEdit={canEdit}
           canForm={canForm}
+          savePlan={savePlan}
           dirty={dirty}
+          valid={valid}
         />
       )}
       {data.planLocked ? (
@@ -1084,6 +1352,11 @@ export function FormatSection({
       ) : (
         editors
       )}
+      {backwards.map((name) => (
+        <p key={name} className={styles.issues} role="status">
+          {tr('{0}: a later round cannot use an earlier stage.', name)}
+        </p>
+      ))}
       {issues.length > 0 && (
         <ul className={styles.issues} role="status">
           {issues.slice(0, 8).map((issue, index) => (
@@ -1102,26 +1375,17 @@ export function FormatSection({
           onSubmit={(event) => {
             event.preventDefault();
             void run(async () => {
-              await action({
-                type: 'format.plan.save',
-                baseToken: data.planToken,
-                plan: candidate,
-              });
+              await savePlan();
               await reload();
             }, tr('Tournament format saved.'));
           }}
         >
-          <SaveButton busy={busy} disabled={busy || !dirty || !validation.success}>
+          <SaveButton
+            busy={busy}
+            disabled={busy || !dirty || !validation.success || backwards.length > 0}
+          >
             {tr('Save format')}
           </SaveButton>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={busy || !phases.length || !validation.success}
-            onClick={showPreview}
-          >
-            {tr('Preview matches')}
-          </Button>
         </form>
       )}
       {preview && <PlanPreview plan={preview} stages={data.stages} />}
@@ -1131,7 +1395,9 @@ export function FormatSection({
           reload={reload}
           canEdit={canEdit}
           canForm={canForm}
+          savePlan={savePlan}
           dirty={dirty}
+          valid={valid && !backwards.length}
         />
       )}
     </div>

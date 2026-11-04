@@ -98,7 +98,7 @@ export async function lockFormat(
       });
       continue;
     }
-    const graph = await phaseGraph(current.plan.phases, phase, stageIds);
+    const graph = await phaseGraph(current.plan.phases, phase, stages);
     for (const round of graph.rounds)
       if (!stageIds.includes(round.stageId))
         throw new AppError('{0} uses a stage that no longer exists.', 409, [phase.name]);

@@ -6,7 +6,15 @@ import { Button } from '@/components/ui/button';
 import type { ResourceBoard } from '@/lib/resource-service';
 import type { ResourcePolicy } from '@/lib/resources';
 import type { SetupWorkspaceData } from '@/lib/setup-queries';
-import { action, ConfirmButton, Field, SaveButton, useTask, useUnsaved } from '../shared';
+import {
+  action,
+  ConfirmButton,
+  Field,
+  NumberInput,
+  SaveButton,
+  useTask,
+  useUnsaved,
+} from '../shared';
 import styles from './setup.module.css';
 
 type Reload = () => Promise<unknown>;
@@ -21,10 +29,6 @@ const LANE_LABEL: Record<string, string> = {
   LOSERS: 'Losers bracket',
   FINALS: 'Grand finals',
 };
-
-function amount(value: string) {
-  return value === '' ? 0 : Math.max(0, Math.trunc(Number(value)));
-}
 
 function PolicyForm({
   data,
@@ -86,42 +90,33 @@ function PolicyForm({
               label={tr('Starting balance')}
               hint={tr('Teams formed at an auction start from what the auction left them.')}
             >
-              <input
-                type="number"
+              <NumberInput
                 min={0}
                 value={policy.startingBalance}
-                onChange={(event) =>
-                  setPolicy({ ...policy, startingBalance: amount(event.target.value) })
-                }
+                onChange={(value) => setPolicy({ ...policy, startingBalance: value ?? 0 })}
               />
             </Field>
             <Field label={tr('Earned per map won')}>
-              <input
-                type="number"
+              <NumberInput
                 min={0}
                 value={policy.earnings.mapWin}
-                onChange={(event) => earnings({ mapWin: amount(event.target.value) })}
+                onChange={(value) => earnings({ mapWin: value ?? 0 })}
               />
             </Field>
             <Field label={tr('Earned per match won')}>
-              <input
-                type="number"
+              <NumberInput
                 min={0}
                 value={policy.earnings.matchWin}
-                onChange={(event) => earnings({ matchWin: amount(event.target.value) })}
+                onChange={(value) => earnings({ matchWin: value ?? 0 })}
               />
             </Field>
             <Field label={tr('Most items a team can buy for one stage (optional)')}>
-              <input
-                type="number"
+              <NumberInput
+                nullable
                 min={1}
-                value={policy.maxPerStage ?? ''}
-                onChange={(event) =>
-                  setPolicy({
-                    ...policy,
-                    maxPerStage: event.target.value === '' ? null : amount(event.target.value),
-                  })
-                }
+                max={100}
+                value={policy.maxPerStage}
+                onChange={(maxPerStage) => setPolicy({ ...policy, maxPerStage })}
               />
             </Field>
           </div>
@@ -144,31 +139,24 @@ function PolicyForm({
                   </select>
                 </Field>
                 <Field label={tr('From round')}>
-                  <input
-                    type="number"
+                  <NumberInput
                     min={1}
                     value={row.fromRound}
-                    onChange={(event) =>
-                      setOverride(index, { fromRound: Math.max(1, amount(event.target.value)) })
-                    }
+                    onChange={(value) => setOverride(index, { fromRound: Math.max(1, value ?? 0) })}
                   />
                 </Field>
                 <Field label={tr('Per map won')}>
-                  <input
-                    type="number"
+                  <NumberInput
                     min={0}
                     value={row.mapWin}
-                    onChange={(event) => setOverride(index, { mapWin: amount(event.target.value) })}
+                    onChange={(value) => setOverride(index, { mapWin: value ?? 0 })}
                   />
                 </Field>
                 <Field label={tr('Per match won')}>
-                  <input
-                    type="number"
+                  <NumberInput
                     min={0}
                     value={row.matchWin}
-                    onChange={(event) =>
-                      setOverride(index, { matchWin: amount(event.target.value) })
-                    }
+                    onChange={(value) => setOverride(index, { matchWin: value ?? 0 })}
                   />
                 </Field>
                 <Button
@@ -270,11 +258,10 @@ function ItemRow({
         />
       </Field>
       <Field label={tr('Price')}>
-        <input
-          type="number"
+        <NumberInput
           min={0}
           value={fields.price}
-          onChange={(event) => setFields({ ...fields, price: amount(event.target.value) })}
+          onChange={(value) => setFields({ ...fields, price: value ?? 0 })}
         />
       </Field>
       <Field label={tr('Unlocks at')}>

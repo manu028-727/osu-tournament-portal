@@ -36,6 +36,7 @@ import {
   useResource,
   useTask,
   useUnsaved,
+  NumberInput,
 } from './shared';
 import { PoolSlotTable, type EditorSlot } from './pool-slot-table';
 import { movePoolSlot, nextSlotName, poolSlotErrors, sortPoolSlots } from '@/lib/mappool-order';
@@ -992,15 +993,14 @@ export function PoolEditor({
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {data.categories.map((category) => (
               <Field key={category.id} label={`${category.acronym} · ${category.name}`}>
-                <input
-                  type="number"
+                <NumberInput
                   min={0}
                   max={100}
                   value={distribution[category.acronym] || 0}
-                  onChange={(event) =>
+                  onChange={(count) =>
                     setDistribution((current) => ({
                       ...current,
-                      [category.acronym]: Number(event.target.value),
+                      [category.acronym]: count ?? 0,
                     }))
                   }
                 />
@@ -1104,12 +1104,11 @@ export function PoolEditor({
               />
             </Field>
             <Field label={tr('Order')}>
-              <input
-                type="number"
+              <NumberInput
                 min={0}
                 value={categoryDraft.position ?? data.categories.length}
-                onChange={(e) =>
-                  setCategoryDraft({ ...categoryDraft, position: Number(e.target.value) })
+                onChange={(position) =>
+                  setCategoryDraft({ ...categoryDraft, position: position ?? 0 })
                 }
               />
             </Field>

@@ -6,6 +6,9 @@ import {
   type FormatPhase,
   type FormatPlan,
 } from './format-plan';
+import { orderedCompetitionStages } from './competition-stages';
+import { phaseGraph } from './format-graph';
+import { roundStageConflict } from './format-rounds';
 import { AppError, assertPermission, type Actor } from './permissions';
 import { scopedDb } from './scoped-db';
 
@@ -102,6 +105,18 @@ export async function saveFormatPlan(
         phase.kind === 'QUALIFIER' ? 'qualifier' : 'head-to-head',
       ]);
   }
+  // A chosen stage can send a round back in time, which automatic mapping never does.
+  const matchStages = orderedCompetitionStages(
+    stages.filter(
+      (stage) => !stage.archivedAt && !['QUALIFIERS', 'QUALIFIER'].includes(stage.kind),
+    ),
+  );
+  for (const phase of plan.phases) {
+    if (!('roundStages' in phase) || !Object.keys(phase.roundStages).length) continue;
+    const { rounds } = await phaseGraph(plan.phases, phase, matchStages);
+    if (roundStageConflict(rounds, matchStages))
+      throw new AppError('{0}: a later round cannot use an earlier stage.', 400, [phase.name]);
+  }
   await tx.tournamentPhase.deleteMany({ where: { tournamentId } });
   for (const [position, phase] of plan.phases.entries()) {
     const { key, kind, name, ...rest } = phase;
@@ -118,5 +133,57 @@ export async function saveFormatPlan(
       },
     });
   }
-  return { phases: plan.phases.length };
+  const saved = await loadFormatPlan(transaction, tournamentId);
+  return { phases: plan.phases.length, token: saved.token };
+}
+
+// A bracket's rounds follow the stage list, so removing one of its stages only moves them along.
+// A qualifier or group phase names its stage directly, and a locked format has played against it.
+export async function releaseStageFromPlan(
+  transaction: Prisma.TransactionClient,
+  tournamentId: string,
+  stageId: string,
+) {
+  const tx = scopedDb(transaction, tournamentId);
+  const held = 'This stage is part of the tournament format. Change the format before deleting it.';
+  const rows = await tx.tournamentPhase.findMany({ where: { tournamentId } });
+  const bracket = (row: (typeof rows)[number]) =>
+    row.kind === 'SINGLE_ELIMINATION' || row.kind === 'DOUBLE_ELIMINATION';
+  const uses = (row: (typeof rows)[number]) =>
+    row.stageId === stageId ||
+    Object.values(
+      (row.config as { roundStages?: Record<string, string> }).roundStages ?? {},
+    ).includes(stageId);
+  const affected = rows.filter(uses);
+  if (!affected.length) return;
+  if (affected.some((row) => row.state !== 'PLANNED' || !bracket(row)))
+    throw new AppError(held, 409);
+  const next = await tx.tournamentStage.findFirst({
+    where: {
+      tournamentId,
+      archivedAt: null,
+      id: { not: stageId },
+      kind: { notIn: ['QUALIFIERS', 'QUALIFIER', 'GROUPS'] },
+    },
+    orderBy: [{ position: 'asc' }, { id: 'asc' }],
+  });
+  if (!next) throw new AppError(held, 409);
+  for (const row of affected) {
+    const config = row.config as { roundStages?: Record<string, string> };
+    await tx.tournamentPhase.update({
+      where: { id: row.id },
+      data: {
+        stageId: row.stageId === stageId ? next.id : row.stageId,
+        config: JSON.parse(
+          JSON.stringify({
+            ...config,
+            roundStages: Object.fromEntries(
+              Object.entries(config.roundStages ?? {}).filter(([, value]) => value !== stageId),
+            ),
+          }),
+        ),
+        version: { increment: 1 },
+      },
+    });
+  }
 }

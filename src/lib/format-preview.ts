@@ -1,12 +1,20 @@
 import { phaseGraph } from './format-graph';
 import type { FormatPhase, FormatPlan, FormatSource } from './format-plan';
+import { automaticRoundStages, type StageRef } from './format-rounds';
 
 export type PhasePreview = {
   key: string;
   kind: FormatPhase['kind'];
   name: string;
   matchCount: number;
-  rounds: { key: string; lane: string; name: string; stageId: string; matches: number }[];
+  rounds: {
+    key: string;
+    lane: string;
+    name: string;
+    stageId: string;
+    automaticStageId: string;
+    matches: number;
+  }[];
   openings: { lane: string; pairs: [string, string][] }[];
 };
 
@@ -38,7 +46,7 @@ export const sourceLabels = (phases: readonly FormatPhase[], phase: FormatPhase)
 };
 
 // What locking this plan would create, computed from the same builder locking will use.
-export async function previewFormatPlan(plan: FormatPlan, stageIds: readonly string[] = []) {
+export async function previewFormatPlan(plan: FormatPlan, stages: readonly StageRef[] = []) {
   const phases: PhasePreview[] = [];
   for (const phase of plan.phases) {
     if (phase.kind === 'QUALIFIER' || phase.kind === 'TEAM_FORMATION') {
@@ -52,7 +60,8 @@ export async function previewFormatPlan(plan: FormatPlan, stageIds: readonly str
       });
       continue;
     }
-    const graph = await phaseGraph(plan.phases, phase, stageIds);
+    const graph = await phaseGraph(plan.phases, phase, stages);
+    const automatic = automaticRoundStages(phase.stageId, graph.rounds, stages);
     const labels = sourceLabels(plan.phases, phase);
     const label = (entryRef: string | null | undefined) => {
       const seed = entryRef?.match(/^seed:(\d+)$/);
@@ -79,6 +88,7 @@ export async function previewFormatPlan(plan: FormatPlan, stageIds: readonly str
         lane: round.lane,
         name: round.name,
         stageId: round.stageId,
+        automaticStageId: automatic[round.key],
         matches: graph.nodes.filter((node) => node.roundKey === round.key).length,
       })),
       openings:

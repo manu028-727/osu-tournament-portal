@@ -16,6 +16,7 @@ import {
   cloneElement,
   type ReactElement,
   type ReactNode,
+  type ComponentProps,
 } from 'react';
 import { AlertDialog, Dialog } from 'radix-ui';
 import { X, Check, AlertCircle, Loader2, ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
@@ -269,6 +270,72 @@ export function ConfirmButton({
     </AlertDialog.Root>
   );
 }
+// Never fights typing: an empty or half-typed value stays on screen and only complete, valid
+// numbers reach the form. Leaving the field puts back the last valid value.
+export function NumberInput({
+  value,
+  onChange,
+  min,
+  max,
+  step,
+  nullable = false,
+  odd = false,
+  ...rest
+}: {
+  value: number | null | undefined;
+  onChange: (value: number | null) => void;
+  min?: number;
+  max?: number;
+  step?: number | 'any';
+  nullable?: boolean;
+  odd?: boolean;
+} & Omit<ComponentProps<'input'>, 'value' | 'onChange' | 'min' | 'max' | 'step' | 'type'>) {
+  const shown = value === null || value === undefined ? '' : String(value);
+  const [text, setText] = useState(shown);
+  const editing = useRef(false);
+  useEffect(() => {
+    if (!editing.current) setText(shown);
+  }, [shown]);
+  const valid = (number: number) =>
+    Number.isFinite(number) &&
+    (min === undefined || number >= min) &&
+    (max === undefined || number <= max);
+  return (
+    <input
+      {...rest}
+      type="number"
+      min={min}
+      max={max}
+      step={step}
+      value={text}
+      onFocus={(event) => {
+        editing.current = true;
+        rest.onFocus?.(event);
+      }}
+      onChange={(event) => {
+        const raw = event.target.value;
+        setText(raw);
+        if (raw === '') {
+          if (nullable) onChange(null);
+          return;
+        }
+        const number = Number(raw);
+        if (valid(number) && (!odd || number % 2 === 1)) onChange(number);
+      }}
+      onBlur={(event) => {
+        editing.current = false;
+        // A match length has to be odd, so an even one moves up to the next that works.
+        const number = Number(text);
+        if (odd && text !== '' && valid(number + 1) && number % 2 === 0) {
+          onChange(number + 1);
+          setText(String(number + 1));
+        } else setText(shown);
+        rest.onBlur?.(event);
+      }}
+    />
+  );
+}
+
 export function Field({
   label,
   children,
@@ -281,8 +348,9 @@ export function Field({
   const labelId = useId();
   const control =
     isValidElement(children) &&
-    typeof children.type === 'string' &&
-    ['input', 'select', 'textarea'].includes(children.type)
+    (children.type === NumberInput ||
+      (typeof children.type === 'string' &&
+        ['input', 'select', 'textarea'].includes(children.type)))
       ? cloneElement(children as ReactElement<Record<string, unknown>>, {
           'aria-labelledby': labelId,
           ...(hint ? { 'aria-describedby': `${labelId}-hint` } : {}),

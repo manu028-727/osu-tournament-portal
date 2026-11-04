@@ -40,6 +40,7 @@ import {
   useResource,
   useTask,
   useUnsaved,
+  NumberInput,
 } from './shared';
 
 type Profile = { id: number; username: string; avatar_url: string };
@@ -465,19 +466,18 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                 </select>
               </Field>
               <Field label={tr('Seed')}>
-                <input
-                  type="number"
+                <NumberInput
+                  nullable
                   min={1}
-                  value={draft.seed || ''}
-                  onChange={(e) => update({ seed: e.target.value ? Number(e.target.value) : null })}
+                  value={draft.seed}
+                  onChange={(seed) => update({ seed })}
                 />
               </Field>
               <Field label={tr('Display order')}>
-                <input
-                  type="number"
+                <NumberInput
                   min={0}
                   value={draft.position}
-                  onChange={(e) => update({ position: Number(e.target.value) })}
+                  onChange={(position) => update({ position: position ?? 0 })}
                 />
               </Field>
             </div>

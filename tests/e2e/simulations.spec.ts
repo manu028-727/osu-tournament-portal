@@ -13,6 +13,7 @@ import {
   evidence,
   importEntrants,
   lockFormat,
+  openPhase,
   openWorkspace,
   login,
   loginAs,
@@ -91,15 +92,18 @@ test('MIR Cup as its rules document reads: top 16 into double elimination, accur
   await login(context);
   const t = await createTournament(page, unique('MIR document'), {
     template: /^Qualifiers, then bracket/,
-    numbers: { 'Players per side': 2, 'Players on a roster': 3, 'Entrants in the bracket': 16 },
-    selects: { 'Seeding method': 'Z-Sum' },
+    numbers: { 'Players per side': 2, 'Players on a roster': 3 },
+    selects: { 'Seeding method': 'Z-Sum', 'Entrants in the bracket': '16' },
     doubleElimination: true,
   });
   await saveScoring(page, t, async () => {
     await page
       .getByLabel('Maps are won by')
       .selectOption({ label: 'Highest team average accuracy' });
-    await page.getByLabel('Mods required on every map').fill('RX');
+    await page
+      .getByRole('group', { name: 'Mods required on every map' })
+      .getByRole('checkbox', { name: 'RX' })
+      .check();
   });
   const saved = await db.tournamentSettings.findUniqueOrThrow({ where: { tournamentId: t.id } });
   expect(saved.matchRules).toMatchObject({
@@ -503,8 +507,12 @@ test('OIDC 2026: rank and country screening, two runs and Z-Sum', async ({ page,
   await login(context);
   const t = await createTournament(page, unique('OIDC'), {
     template: /^Qualifiers, then bracket/,
-    numbers: { 'Players per side': 2, 'Players on a roster': 2, 'Entrants in the bracket': 16 },
-    selects: { 'Seeding method': 'Z-Sum', 'Qualifier playthroughs': 'Twice' },
+    numbers: { 'Players per side': 2, 'Players on a roster': 2 },
+    selects: {
+      'Seeding method': 'Z-Sum',
+      'Qualifier playthroughs': 'Twice',
+      'Entrants in the bracket': '16',
+    },
     doubleElimination: true,
   });
   const slots = await publishAllPools(page, t);
@@ -692,12 +700,17 @@ test('Italian Draft Cup 3: solo qualifiers, a captain auction, then budgets and 
   await login(context);
   const t = await createTournament(page, unique('Draft Cup'), {
     template: /^Individual qualifiers, then a draft/,
-    numbers: { 'Players per side': 3, 'Players on a roster': 5, Teams: 8 },
-    selects: { 'Seeding method': 'Average map placement', 'Formation method': 'Auction' },
+    numbers: { 'Players per side': 3, 'Players on a roster': 5 },
+    selects: {
+      'Seeding method': 'Average map placement',
+      'Formation method': 'Auction',
+      Teams: '8',
+    },
     doubleElimination: true,
   });
   // The written auction: $4000, raises of $100, drawn in random order, $400 from the reserves.
   await openWorkspace(page, t, 'format');
+  await openPhase(page, 'Team formation');
   await page.getByLabel('Budget per captain').fill('4000');
   await page.getByLabel('Minimum raise').fill('100');
   await page.getByLabel('Price to fill from reserves').fill('400');

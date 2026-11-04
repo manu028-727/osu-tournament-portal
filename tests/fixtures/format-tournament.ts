@@ -362,6 +362,7 @@ export function formatFixtures(name: string, osuBase: number) {
       await db.mappoolRevision.deleteMany({ where });
       await db.mappool.deleteMany({ where });
       await db.poolPlan.deleteMany({ where });
+      await db.modCategory.deleteMany({ where });
       await db.tournamentStage.deleteMany({ where });
       await db.team.deleteMany({ where });
       await db.auditLog.deleteMany({ where });

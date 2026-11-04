@@ -1,12 +1,13 @@
 import {
   buildTemplate,
+  poolForBestOf,
   poolPlanSlots,
   POOL_CATEGORIES,
   type PoolCounts,
   type StageDraft,
   type TemplateChoices,
 } from './format-templates';
-import type { MatchRules } from './match-rules';
+import { MODS, type MatchRules } from './match-rules';
 import { qualifierPolicySchema } from './qualifier-policy';
 import { patchStageRules } from './stage-workflows-validation';
 import type { SetupWorkspaceData } from './setup-queries';
@@ -56,11 +57,28 @@ export function stageRulesWith(
   });
 }
 
-export function poolCounts(slots: readonly { category: string }[] | undefined): PoolCounts {
-  const counts = Object.fromEntries(POOL_CATEGORIES.map((category) => [category, 0])) as PoolCounts;
-  for (const slot of slots || [])
-    if (slot.category in counts) counts[slot.category as keyof PoolCounts]++;
+// One count per map type, including any type a saved plan already uses.
+export function poolCounts(
+  slots: readonly { category: string }[] | undefined,
+  categories: readonly string[] = POOL_CATEGORIES,
+): PoolCounts {
+  const counts: PoolCounts = Object.fromEntries(categories.map((category) => [category, 0]));
+  for (const slot of slots || []) counts[slot.category] = (counts[slot.category] ?? 0) + 1;
   return counts;
+}
+
+// A pool needs a map for every game a match can reach, plus every map that can be banned.
+export const mapsNeeded = (bestOf: number | null, bansPerTeam: number | null) =>
+  bestOf === null ? 0 : bestOf + 2 * (bansPerTeam ?? 0);
+
+// A pool still on the defaults follows a new Best of. One someone changed by hand is left alone.
+export function resizedPool(pool: PoolCounts, from: number | null, to: number | null): PoolCounts {
+  if (from === null || to === null) return pool;
+  const standard = poolForBestOf(from);
+  const onDefaults = Object.entries(pool).every(
+    ([category, count]) => count === (standard[category] ?? 0),
+  );
+  return onDefaults ? { ...pool, ...poolForBestOf(to) } : pool;
 }
 
 export type StageRow = {
@@ -88,7 +106,7 @@ export function stageRows(data: SetupWorkspaceData): StageRow[] {
     kind: stage.kind as StageRow['kind'],
     bestOf: stage.kind === 'QUALIFIERS' ? null : (stage.matchRules || data.rules).bestOf,
     bansPerTeam: stage.kind === 'QUALIFIERS' ? null : (stage.matchRules || data.rules).bansPerTeam,
-    pool: poolCounts(stage.poolPlan?.slots),
+    pool: poolCounts(stage.poolPlan?.slots, data.categories),
     minStars: stage.poolPlan?.minStars ?? null,
     maxStars: stage.poolPlan?.maxStars ?? null,
     planVersion: stage.poolPlan?.version ?? null,
@@ -146,7 +164,8 @@ export function stageGridOperations(rows: readonly StageRow[], data: SetupWorksp
     }
     const ref = row.id ? undefined : `new-${position}`;
     const planChanged =
-      JSON.stringify(row.pool) !== JSON.stringify(poolCounts(saved?.poolPlan?.slots)) ||
+      JSON.stringify(row.pool) !==
+        JSON.stringify(poolCounts(saved?.poolPlan?.slots, data.categories)) ||
       row.minStars !== (saved?.poolPlan?.minStars ?? null) ||
       row.maxStars !== (saved?.poolPlan?.maxStars ?? null);
     return [
@@ -279,5 +298,26 @@ export function templateOperations(choices: TemplateChoices, data: SetupWorkspac
       },
     ]),
     { type: 'format.plan.save', baseToken: data.planToken, plan },
+  ];
+}
+
+// A new map type needs its category and a place in the rules, so both save together.
+export function newMapTypeOperations(acronym: string, data: SetupWorkspaceData) {
+  const isMod = (MODS as readonly string[]).includes(acronym);
+  return [
+    {
+      type: 'category.save',
+      name: acronym,
+      acronym,
+      color: '#9db4c0',
+      position: data.categories.length,
+    },
+    ...defaultRulesOperations(
+      {
+        ...data.rules,
+        categoryMods: { ...data.rules.categoryMods, [acronym]: isMod ? acronym : '' },
+      },
+      data,
+    ),
   ];
 }

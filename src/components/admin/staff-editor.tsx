@@ -19,6 +19,7 @@ import {
   useResource,
   useTask,
   useUnsaved,
+  NumberInput,
 } from './shared';
 type Category = {
   id: string;
@@ -405,12 +406,11 @@ export function StaffEditor({ actor }: { actor: Actor }) {
                 />
               </Field>
               <Field label={tr('Display order')}>
-                <input
-                  type="number"
+                <NumberInput
                   min={0}
                   value={member.position}
-                  onChange={(e) => {
-                    setMember({ ...member, position: Number(e.target.value) });
+                  onChange={(position) => {
+                    setMember({ ...member, position: position ?? 0 });
                     setDirty(true);
                   }}
                 />
@@ -570,11 +570,10 @@ export function StaffEditor({ actor }: { actor: Actor }) {
             />
           </Field>
           <Field label={tr('Display order')}>
-            <input
-              type="number"
+            <NumberInput
               min={0}
               value={category?.position ?? data.categories.length}
-              onChange={(e) => setCategory({ ...category, position: Number(e.target.value) })}
+              onChange={(position) => setCategory({ ...category, position: position ?? 0 })}
             />
           </Field>
           <div className="flex gap-3">

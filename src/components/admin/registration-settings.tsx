@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useT } from '@/components/locale';
 import type { RegistrationPolicy } from '@/lib/registration-policy';
 import { localDateTimeInput } from '@/lib/utils';
-import { Field } from './shared';
+import { Field, NumberInput } from './shared';
 import { Button } from '../ui/button';
 
 type NumberKey = 'minPlayers' | 'maxPlayers' | 'maxSubstitutes' | 'minRank' | 'maxRank';
@@ -41,17 +41,12 @@ export function RegistrationSettings({
   );
   const numberField = (key: NumberKey) => (
     <Field key={key} label={tr(NUMBER_LABELS[key])}>
-      <input
-        type="number"
+      <NumberInput
+        nullable={key.includes('Rank')}
         min={key.includes('Rank') ? 1 : 0}
         max={key.includes('Rank') ? 2147483647 : 32}
-        value={value[key] ?? ''}
-        onChange={(event) =>
-          update({
-            [key]:
-              event.target.value === '' && key.includes('Rank') ? null : Number(event.target.value),
-          })
-        }
+        value={value[key]}
+        onChange={(number) => update({ [key]: number })}
       />
     </Field>
   );
@@ -133,14 +128,12 @@ export function RegistrationSettings({
                 ['Lowest team rank sum (optional)', 'Highest team rank sum (optional)'][index],
               )}
             >
-              <input
-                type="number"
+              <NumberInput
+                nullable
                 min={1}
                 max={2147483647}
-                value={value[key] ?? ''}
-                onChange={(event) =>
-                  update({ [key]: event.target.value === '' ? null : Number(event.target.value) })
-                }
+                value={value[key]}
+                onChange={(number) => update({ [key]: number })}
               />
             </Field>
           ))}

@@ -27,7 +27,16 @@ import { PhaseFlow } from './setup-format';
 import { MatchRulesFields } from '../match-rules-fields';
 import { QualifierBookingSettings } from '../qualifier-booking-settings';
 import { RegistrationSettings } from '../registration-settings';
-import { action, api, ConfirmButton, Field, SaveButton, useTask, useUnsaved } from '../shared';
+import {
+  action,
+  api,
+  ConfirmButton,
+  Field,
+  NumberInput,
+  SaveButton,
+  useTask,
+  useUnsaved,
+} from '../shared';
 import styles from './setup.module.css';
 
 type SectionProps = {
@@ -60,12 +69,24 @@ export function TemplateSection({ data, reload }: SectionProps) {
     hint?: string,
   ) => (
     <Field label={label} hint={hint}>
-      <input
-        type="number"
-        min={key === 'directSeeds' ? 0 : 1}
-        value={choices[key]}
-        onChange={(event) => update({ [key]: Number(event.target.value) })}
-      />
+      {key === 'bracketSize' ? (
+        <select
+          value={choices.bracketSize}
+          onChange={(event) => update({ bracketSize: Number(event.target.value) })}
+        >
+          {[2, 4, 8, 16, 32, 64, 128].map((size) => (
+            <option key={size} value={size}>
+              {size}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <NumberInput
+          min={key === 'directSeeds' ? 0 : 1}
+          value={choices[key]}
+          onChange={(value) => update({ [key]: value ?? 0 })}
+        />
+      )}
     </Field>
   );
   return (
@@ -274,12 +295,11 @@ export function RostersSection({ data, reload }: SectionProps) {
   useUnsaved(dirty);
   const number = (key: Exclude<keyof typeof roster, 'format'>, label: string, hint?: string) => (
     <Field label={label} hint={hint}>
-      <input
-        type="number"
+      <NumberInput
         min={key === 'teamSize' || key === 'maxPlayers' ? 1 : 0}
         max={key === 'teamSize' ? 8 : 32}
         value={roster[key]}
-        onChange={(event) => setRoster({ ...roster, [key]: Number(event.target.value) })}
+        onChange={(value) => setRoster({ ...roster, [key]: value ?? 0 })}
       />
     </Field>
   );
@@ -383,10 +403,10 @@ export function ScoringSection({ data, reload }: SectionProps) {
       </Field>
       <p className="text-sm text-muted">
         {tr(
-          'These rules apply to every stage. Each stage keeps its own Best of and bans from the stage list.',
+          'These rules apply to every stage. Best of and bans belong to each stage in the stage list, and players per side to Rosters and entrants.',
         )}
       </p>
-      <MatchRulesFields rules={rules} onChange={setRules} />
+      <MatchRulesFields defaults rules={rules} onChange={setRules} />
       <div>
         <SaveButton busy={busy} disabled={busy || !dirty}>
           {tr('Save scoring and mods')}

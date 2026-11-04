@@ -4,7 +4,7 @@ import { useT } from '@/components/locale';
 import { localDateTimeInput } from '@/lib/utils';
 import type { QualifierData, QualifierView } from '@/lib/qualifiers-types';
 import { MoveEntrants } from './qualifier-bulk-tools';
-import { action, Field, LoadingState, Modal, useResource, useTask } from './shared';
+import { action, Field, LoadingState, Modal, NumberInput, useResource, useTask } from './shared';
 import { Button } from '../ui/button';
 
 export function QualifierSessionAssignments({
@@ -193,14 +193,13 @@ export function QualifierSessionAssignments({
             }}
           >
             <Field label={tr('Player capacity')}>
-              <input
+              <NumberInput
                 required
-                type="number"
                 min={1}
                 max={16}
                 value={booking.capacity}
-                onChange={(event) =>
-                  setBooking({ ...booking, capacity: Number(event.target.value) })
+                onChange={(capacity) =>
+                  setBooking({ ...booking, capacity: capacity ?? booking.capacity })
                 }
               />
             </Field>

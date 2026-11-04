@@ -100,6 +100,7 @@ export const SETUP_OPERATIONS = [
   'stage.save',
   'pooling.plan.save',
   'format.plan.save',
+  'category.save',
 ] as const;
 const advancementFields = {
   phaseKey: z.string().min(1).max(40),

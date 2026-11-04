@@ -510,6 +510,18 @@ as a bye. A Losers lane fed from outside is the library's standard graph of twic
 with Winners round 1 removed. `format-advancement.ts` owns draws, group labels, tiebreak
 chains, placement routing and the rematch solver. These are pure.
 
+`format-rounds.ts` is the client-safe answer to which stage a round plays in, shared by the setup
+screen, `previewFormatPlan` and `format.lock`. `automaticRoundStages` matches a stage's name to a
+round where it can, fills the rest in stage order, keeps later rounds from earlier stages and
+skips group stages. Unlike `competition-stages.ts`, it reads names, only to suggest: preview
+rounds carry `automaticStageId` beside the chosen stage, and `BracketRound.stageId` stores the
+result at lock, so renaming a stage later changes nothing already locked. `phaseRoundStages` in
+`format-graph.ts` applies `roundStages` overrides whose stage still exists. A phase's `stageId` is
+now only the fallback anchor for a bracket. The plan save refuses an override that puts a later
+round in an earlier stage. `stage.delete` calls `releaseStageFromPlan` in its transaction, which
+re-anchors unlocked brackets, prunes their overrides and refuses for locked, qualifier and group
+phases.
+
 `format-lifecycle-service.ts` persists them. `format.lock` creates a `Bracket` per phase with
 `config.phaseKey` and reserves numbers through the normal allocator, holding the established
 stage then tournament row lock order. Its config stores no entrants until advancement, so
@@ -579,6 +591,17 @@ and writes its audit, exactly as a single action does. `SETUP_OPERATIONS` lists 
 join, excluding pools, staff and pages because they need network calls before their
 transaction opens. `setup-queries.ts` is the read model; its stage token hashes only a
 stage's own columns, matching the save path. `setupState` holds dismissed checklist items.
+
+`setup-operations.ts` builds those operations for the screens. `poolCounts` and `poolPlanSlots`
+read the tournament's categories instead of a fixed list, because the fixed list dropped custom
+categories on save. `newMapTypeOperations` adds a category and its lobby command together through
+`category.save`, which is in `SETUP_OPERATIONS`. `resizedPool` follows a Best of only while a pool
+still matches its suggested counts. `MatchRulesFields` takes `defaults` on the setup screen,
+hiding the team size, Best of, bans and scoring display that other sections own; stage and match
+editors still show them. `NumberInput` in `admin/shared.tsx` keeps the typed text locally and
+reports only valid numbers, so number fields never convert an empty value to 0. `mod-picker.tsx`
+holds the checkbox lists that replaced parsing mods out of text on each keystroke, which rejected
+the first letter of every code.
 
 ## Qualifiers, Scoring And Standings
 

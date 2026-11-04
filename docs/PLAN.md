@@ -1757,6 +1757,66 @@ discretion. Rulings needed from hosts are in Rule Contradictions And Gaps above.
 Next: maintainer review of `refactor/tournament-format-engine`. Nothing has been pushed, merged or
 deployed. Deployment needs the eight `20261103*` migrations, all additive, with no backfill.
 
+### Simplified Setup
+
+Goal: make every stage usable by the bracket, make mod and count fields editable, and shorten setup.
+Revision: the commit that adds this section, on `refactor/tournament-format-engine`, after `8afa5d5`,
+which the maintainer has pushed.
+
+Root causes found:
+
+- Rounds already had a per-round stage in the data, but only a single anchor select was shown, and
+  the automatic mapping ignored names, so the screen looked like one stage for a whole bracket.
+- Mod text fields parsed on every keystroke, rejecting `R` before `RX` and dropping commas. Tests
+  missed it because `fill()` sets a whole value at once.
+- `Number(event.target.value)` turned a cleared field into 0, so typing gave `04`.
+- `POOL_CATEGORIES` fixed the grid columns and `poolCounts` dropped other categories on save.
+- The mappool link used `--brand-ink`, the colour for text on a brand fill, so it was invisible in
+  light appearance.
+- Scoring repeated players per side, Best of and bans, which Rosters and the stage list own, so a
+  change there could disagree with them.
+
+Delivered: `format-rounds.ts`, the round table, `NumberInput` across setup and the other
+configuration forms (mappool slot plans, stage, team and staff order, group counts, warmups, session
+capacity), `mod-picker.tsx`, tournament map
+types as columns, fill-down, pools following Best of, a maps-needed warning, folded phases, a
+preview that updates by itself, Save and lock, a next-step button, and stage deletion that moves
+brackets along. No migration.
+
+Checks on this revision, run sequentially on `tournament_platform_test`: format, lint, types and
+`git diff --check` clean; 607 unit tests in 41 files; 346 integration tests in 35 files; production
+build; production browser suite 97 of 97 with the synthetic IRC gateway on; dev browser suite 95
+passed, with the 2 IRC tests skipped there because they ran in the production suite. `prisma/` is
+unchanged and `prisma migrate diff` against the test database is empty.
+
+Earlier gate runs on this work failed for two reasons, both fixed before the runs above. Two tests
+edited phases that are now folded. Simulations hit the write limit of 100 requests a minute.
+Measured preview traffic is one request on open and one per settled change, with none while idle or
+for name-only edits, so that was simulation speed and not a product loop. The simulation helper now
+clears the counters on the test database; real organizers spend from the same limit.
+
+Rendered evidence is in `.data/setup-simple-20261103` and `.data/setup-workspace-20261103`: stages,
+phases and scoring at 1920, 1366, 768, 390 and 320 in both appearances, and the empty workspace at
+the same widths. The test asserts no sideways page overflow for each populated capture. Inspected on
+this revision: stages at 1920 light and 320 dark, phases at 1366 and 390 light, scoring at 768 dark
+and 320 light, the mod screens at 1366, and the empty workspace at 1920 light and 320 dark. Template
+cards space their descriptions unevenly at wide widths; that predates this work and was left alone.
+
+Decision to confirm: the SPEC sentence "Authored names are never parsed to infer progression" now
+covers the native creation flow only, because the automatic mapping reads stage names to suggest a
+stage. Names never decide who advances. Without name reading, an 8-entrant bracket cannot start at
+Quarterfinals on its own, and a single-elimination bracket cannot leave Grand Finals unused.
+
+Limitations: name matching knows English, common abbreviations and Italian, and other names fall
+back to stage order, visibly and editably. A saved stage's type stays fixed in the list. Number
+fields in score and referee entry still turn an empty value into 0: referee panel, score dialogs,
+inline results, qualifier scores, and the FreeMod calculator. They record results rather than set
+up a tournament and were left alone to avoid changing that flow here; `NumberInput` can replace
+them in a separate change. Not verified on real providers, as before.
+
+Next: maintainer review and pushing this commit, then `git pull --ff-only` and `./portal install`
+on the server.
+
 ## Completion Rules
 
 For each change: establish source behavior, implement within existing ownership

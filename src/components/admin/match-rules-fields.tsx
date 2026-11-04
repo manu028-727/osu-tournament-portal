@@ -4,8 +4,9 @@ import { useT } from '@/components/locale';
 import { useState, type ReactNode } from 'react';
 import { Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
 import { Button } from '../ui/button';
-import { Field } from './shared';
-import { MODS, START_RULES, WIN_METRICS, type MatchRules } from '@/lib/match-rules';
+import { CheckList, ModComboPicker, ModPicker } from './mod-picker';
+import { Field, NumberInput } from './shared';
+import { START_RULES, WIN_METRICS, type MatchRules } from '@/lib/match-rules';
 import { effectiveFreeModQuotas } from '@/lib/score-pipeline';
 const numbers = [
   ['teamSize', 'Players per side'],
@@ -31,10 +32,6 @@ const winConditionFor = (metric: (typeof WIN_METRICS)[number]): MatchRules['winC
   teamAggregation: metric === 'ACCURACY' ? 'AVERAGE' : 'SUM',
   applyMultipliers: metric === 'SCORE',
 });
-const modTokens = (value: string) =>
-  [...new Set(value.toUpperCase().split(/[\s,]+/))].filter((mod): mod is (typeof MODS)[number] =>
-    MODS.includes(mod as never),
-  );
 const flags = [
   ['enforceNoFail', 'Require NoFail'],
   ['enableTiebreaker', 'Use a tiebreaker at match point'],
@@ -55,11 +52,23 @@ function RulesGroup({ title, children }: { title: string; children: ReactNode })
 export function MatchRulesFields({
   rules,
   onChange,
+  defaults = false,
 }: {
   rules: MatchRules;
   onChange: (rules: MatchRules) => void;
+  // The setup screen has its own controls for these, and a second copy would disagree with them.
+  defaults?: boolean;
 }) {
   const tr = useT();
+  // Every category this tournament's rules know about, including any just added.
+  const categories = [
+    ...new Set([
+      ...Object.keys(rules.categoryMods),
+      ...rules.freeModCategories,
+      ...rules.categoryExceptions,
+      rules.tiebreakerCategory,
+    ]),
+  ];
   const [mod, setMod] = useState(''),
     [category, setCategory] = useState(''),
     [slotMod, setSlotMod] = useState({ slot: '', mods: 'HDHR', multiplier: 1 });
@@ -91,18 +100,20 @@ export function MatchRulesFields({
             <option value="TAG_TEAM_VS">{tr('Tag team versus')}</option>
           </select>
         </Field>
-        <Field label={tr('Gameplay scoring')}>
-          <output className="block py-2 text-sm">
-            {rules.gameplayScoring === 'LAZER'
-              ? tr('osu!lazer')
-              : rules.scoreMode === 'SCORE'
-                ? tr('ScoreV1')
-                : rules.scoreMode === 'SCORE_V2'
-                  ? tr('ScoreV2')
-                  : rules.scoreMode}{' '}
-            {tr('(Tournament Settings)')}
-          </output>
-        </Field>
+        {!defaults && (
+          <Field label={tr('Gameplay scoring')}>
+            <output className="block py-2 text-sm">
+              {rules.gameplayScoring === 'LAZER'
+                ? tr('osu!lazer')
+                : rules.scoreMode === 'SCORE'
+                  ? tr('ScoreV1')
+                  : rules.scoreMode === 'SCORE_V2'
+                    ? tr('ScoreV2')
+                    : rules.scoreMode}{' '}
+              {tr('(Tournament Settings)')}
+            </output>
+          </Field>
+        )}
         <Field label={tr('Maps are won by')}>
           <select
             value={rules.winCondition.metric}
@@ -139,33 +150,34 @@ export function MatchRulesFields({
             </select>
           </Field>
         )}
-        <Field label={tr('Mods required on every map')}>
-          <input
-            value={rules.requiredMods.join(' ')}
-            placeholder={tr('For example RX')}
-            onChange={(e) => {
-              const requiredMods = modTokens(e.target.value);
-              // Relax and NoFail cannot be combined, so choosing one releases the other.
-              onChange({
-                ...rules,
-                requiredMods,
-                ...(requiredMods.includes('RX') ? { enforceNoFail: false } : {}),
-              });
-            }}
-          />
-        </Field>
-        {numbers.slice(0, 4).map(([key, label]) => (
-          <Field key={key} label={tr(label)}>
-            <input
-              type="number"
-              min={0}
-              max={key.endsWith('Seconds') ? 900 : 31}
-              value={rules[key]}
-              onChange={(e) => onChange({ ...rules, [key]: Number(e.target.value) })}
-            />
-          </Field>
-        ))}
+        {numbers
+          .slice(0, 4)
+          .filter(([key]) => !defaults || key === 'protectsPerTeam')
+          .map(([key, label]) => (
+            <Field key={key} label={tr(label)}>
+              <NumberInput
+                min={key === 'bestOf' || key === 'teamSize' ? 1 : 0}
+                max={31}
+                odd={key === 'bestOf'}
+                value={rules[key]}
+                onChange={(number) => onChange({ ...rules, [key]: number })}
+              />
+            </Field>
+          ))}
       </div>
+      <ModPicker
+        label={tr('Mods required on every map')}
+        hint={tr('Relax cannot be combined with NoFail, so choosing Relax turns NoFail off.')}
+        value={rules.requiredMods}
+        onChange={(mods) => {
+          const requiredMods = mods as MatchRules['requiredMods'];
+          onChange({
+            ...rules,
+            requiredMods,
+            ...(requiredMods.includes('RX') ? { enforceNoFail: false } : {}),
+          });
+        }}
+      />
       <div className="grid gap-4 md:grid-cols-2">
         <label className="flex items-center gap-3">
           <input
@@ -199,12 +211,11 @@ export function MatchRulesFields({
         <div className="grid-fields">
           {numbers.slice(4).map(([key, label]) => (
             <Field key={key} label={tr(label)}>
-              <input
-                type="number"
-                min={0}
+              <NumberInput
+                min={key.endsWith('Seconds') ? 10 : 0}
                 max={key.endsWith('Seconds') ? 900 : 31}
                 value={rules[key]}
-                onChange={(e) => onChange({ ...rules, [key]: Number(e.target.value) })}
+                onChange={(number) => onChange({ ...rules, [key]: number })}
               />
             </Field>
           ))}
@@ -297,34 +308,16 @@ export function MatchRulesFields({
             </select>
           </Field>
           <Field label={tr('Tiebreaker category')}>
-            <input
+            <select
               value={rules.tiebreakerCategory}
-              onChange={(e) =>
-                onChange({ ...rules, tiebreakerCategory: e.target.value.toUpperCase() })
-              }
-            />
-          </Field>
-          <Field label={tr('Category exceptions (comma-separated)')}>
-            <input
-              value={rules.categoryExceptions.join(',')}
-              onChange={(e) =>
-                onChange({
-                  ...rules,
-                  categoryExceptions: e.target.value.toUpperCase().split(',').filter(Boolean),
-                })
-              }
-            />
-          </Field>
-          <Field label={tr('FreeMod categories (comma-separated)')}>
-            <input
-              value={rules.freeModCategories.join(',')}
-              onChange={(e) =>
-                onChange({
-                  ...rules,
-                  freeModCategories: e.target.value.toUpperCase().split(',').filter(Boolean),
-                })
-              }
-            />
+              onChange={(e) => onChange({ ...rules, tiebreakerCategory: e.target.value })}
+            >
+              {categories.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
           </Field>
         </div>
         <fieldset>
@@ -395,28 +388,25 @@ export function MatchRulesFields({
         </fieldset>
       </RulesGroup>
       <RulesGroup title={tr('FreeMod')}>
-        <fieldset>
-          <legend className="font-semibold">{tr('Allowed FreeMod mods')}</legend>
-          <div className="mt-4 flex flex-wrap gap-5">
-            {MODS.map((mod) => (
-              <label key={mod} className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={rules.freeModAllowed.includes(mod)}
-                  onChange={(e) =>
-                    onChange({
-                      ...rules,
-                      freeModAllowed: e.target.checked
-                        ? [...rules.freeModAllowed, mod]
-                        : rules.freeModAllowed.filter((m) => m !== mod),
-                    })
-                  }
-                />
-                {mod}
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        <CheckList
+          label={tr('Categories exempt from mod checks')}
+          options={categories}
+          value={rules.categoryExceptions}
+          onChange={(categoryExceptions) => onChange({ ...rules, categoryExceptions })}
+        />
+        <CheckList
+          label={tr('FreeMod categories')}
+          options={categories}
+          value={rules.freeModCategories}
+          onChange={(freeModCategories) => onChange({ ...rules, freeModCategories })}
+        />
+        <ModPicker
+          label={tr('Allowed FreeMod mods')}
+          value={rules.freeModAllowed}
+          onChange={(mods) =>
+            onChange({ ...rules, freeModAllowed: mods as MatchRules['freeModAllowed'] })
+          }
+        />
         <fieldset>
           <legend className="font-semibold">{tr('FreeMod requirements')}</legend>
           <p className="mt-1 text-sm text-muted">
@@ -444,23 +434,22 @@ export function MatchRulesFields({
                     />
                   </Field>
                   <Field label={tr('Minimum players')}>
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       max={8}
                       value={quota.min}
-                      onChange={(e) => replace({ ...quota, min: Number(e.target.value) })}
+                      onChange={(min) => replace({ ...quota, min: min ?? 0 })}
                     />
                   </Field>
-                  <Field label={tr('Counted mods')}>
-                    <input
-                      value={quota.satisfiedBy.join(' ')}
-                      onChange={(e) => {
-                        const satisfiedBy = modTokens(e.target.value);
-                        if (satisfiedBy.length) replace({ ...quota, satisfiedBy });
-                      }}
-                    />
-                  </Field>
+                  <ModPicker
+                    label={tr('Counted mods')}
+                    value={quota.satisfiedBy}
+                    // A requirement has to count something, so its last mod stays.
+                    locked={quota.satisfiedBy.length === 1 ? quota.satisfiedBy : []}
+                    onChange={(mods) =>
+                      replace({ ...quota, satisfiedBy: mods as typeof quota.satisfiedBy })
+                    }
+                  />
                   <Button
                     type="button"
                     variant="outline"
@@ -523,19 +512,15 @@ export function MatchRulesFields({
               <div key={key} className="flex items-end gap-2">
                 <div className="flex-1">
                   <Field label={tr('{0} multiplier', key)}>
-                    <input
-                      type="number"
+                    <NumberInput
                       step="any"
-                      min="0.01"
+                      min={0.01}
                       max={10}
                       value={value}
-                      onChange={(e) =>
+                      onChange={(number) =>
                         onChange({
                           ...rules,
-                          modMultipliers: {
-                            ...rules.modMultipliers,
-                            [key]: Number(e.target.value),
-                          },
+                          modMultipliers: { ...rules.modMultipliers, [key]: number ?? value },
                         })
                       }
                     />
@@ -563,9 +548,7 @@ export function MatchRulesFields({
           </div>
           <div className="mt-4 flex items-end gap-2">
             <div className="flex-1">
-              <Field label={tr('New mod combination')}>
-                <input value={mod} onChange={(e) => setMod(e.target.value.toUpperCase())} />
-              </Field>
+              <ModComboPicker label={tr('New mod combination')} value={mod} onChange={setMod} />
             </div>
             <Button
               type="button"
@@ -610,23 +593,23 @@ export function MatchRulesFields({
                   onChange={(e) => setSlotMod({ ...slotMod, slot: e.target.value.toUpperCase() })}
                 />
               </Field>
-              <Field label={tr('Slot mod combination')}>
-                <input
-                  value={slotMod.mods}
-                  onChange={(e) => setSlotMod({ ...slotMod, mods: e.target.value.toUpperCase() })}
-                />
-              </Field>
               <Field label={tr('Slot multiplier')}>
-                <input
-                  type="number"
+                <NumberInput
                   step="any"
-                  min="0.01"
+                  min={0.01}
                   max={10}
                   value={slotMod.multiplier}
-                  onChange={(e) => setSlotMod({ ...slotMod, multiplier: Number(e.target.value) })}
+                  onChange={(multiplier) =>
+                    setSlotMod({ ...slotMod, multiplier: multiplier ?? slotMod.multiplier })
+                  }
                 />
               </Field>
             </div>
+            <ModComboPicker
+              label={tr('Slot mod combination')}
+              value={slotMod.mods}
+              onChange={(mods) => setSlotMod({ ...slotMod, mods })}
+            />
             <Button
               type="button"
               size="sm"
@@ -690,18 +673,14 @@ export function MatchRulesFields({
             </Field>
             {rules.replayAllowance.scope !== 'NONE' && (
               <Field label={tr('Replays allowed per match')}>
-                <input
-                  type="number"
+                <NumberInput
                   min={0}
                   max={8}
                   value={rules.replayAllowance.perMatch}
-                  onChange={(e) =>
+                  onChange={(perMatch) =>
                     onChange({
                       ...rules,
-                      replayAllowance: {
-                        ...rules.replayAllowance,
-                        perMatch: Number(e.target.value),
-                      },
+                      replayAllowance: { ...rules.replayAllowance, perMatch: perMatch ?? 0 },
                     })
                   }
                 />
@@ -789,50 +768,67 @@ export function MatchRulesFields({
           <legend className="font-semibold">{tr('Lobby mod commands')}</legend>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             {Object.entries(rules.categoryMods).map(([key, value]) => (
-              <div key={key} className="space-y-2">
-                <Field label={tr('{0} lobby mods', key)}>
+              <div key={key} className="space-y-3 rounded-lg border p-3">
+                <h4 className="font-semibold">{key}</h4>
+                <label className="flex min-h-8 items-center gap-1.5 text-sm">
                   <input
-                    value={value}
+                    type="checkbox"
+                    checked={/\bfreemod\b/i.test(value)}
                     onChange={(e) =>
                       onChange({
                         ...rules,
-                        categoryMods: { ...rules.categoryMods, [key]: e.target.value },
-                      })
-                    }
-                  />
-                </Field>
-                <Field label={tr('{0} optional player mods', key)}>
-                  <input
-                    value={(rules.categoryOptionalMods[key] || []).join(' ')}
-                    placeholder={tr('For example HD')}
-                    onChange={(e) =>
-                      onChange({
-                        ...rules,
-                        categoryOptionalMods: {
-                          ...rules.categoryOptionalMods,
-                          [key]: modTokens(e.target.value),
+                        categoryMods: {
+                          ...rules.categoryMods,
+                          [key]: e.target.checked ? 'Freemod' : '',
                         },
                       })
                     }
                   />
-                </Field>
-                <Field label={tr('{0} allowed player mods', key)}>
-                  <input
-                    value={(rules.categoryAllowedMods[key] || []).join(' ')}
-                    placeholder={tr('Any mods')}
-                    onChange={(e) => {
-                      const others = { ...rules.categoryAllowedMods };
-                      delete others[key];
-                      const allowed = modTokens(e.target.value);
+                  {tr('Players choose their own mods here')}
+                </label>
+                {!/\bfreemod\b/i.test(value) && (
+                  <ModPicker
+                    label={tr('{0} lobby mods', key)}
+                    value={value.split(/\s+/).filter(Boolean)}
+                    onChange={(mods) =>
                       onChange({
                         ...rules,
-                        categoryAllowedMods: allowed.length
-                          ? { ...others, [key]: allowed }
-                          : others,
-                      });
-                    }}
+                        categoryMods: { ...rules.categoryMods, [key]: mods.join(' ') },
+                      })
+                    }
                   />
-                </Field>
+                )}
+                <ModPicker
+                  label={tr('{0} optional player mods', key)}
+                  value={rules.categoryOptionalMods[key] || []}
+                  onChange={(mods) =>
+                    onChange({
+                      ...rules,
+                      categoryOptionalMods: {
+                        ...rules.categoryOptionalMods,
+                        [key]: mods as MatchRules['categoryOptionalMods'][string],
+                      },
+                    })
+                  }
+                />
+                <ModPicker
+                  label={tr('{0} allowed player mods', key)}
+                  hint={tr('Leave all unticked to allow any mods.')}
+                  value={rules.categoryAllowedMods[key] || []}
+                  onChange={(mods) => {
+                    const others = { ...rules.categoryAllowedMods };
+                    delete others[key];
+                    onChange({
+                      ...rules,
+                      categoryAllowedMods: mods.length
+                        ? {
+                            ...others,
+                            [key]: mods as MatchRules['categoryAllowedMods'][string],
+                          }
+                        : others,
+                    });
+                  }}
+                />
               </div>
             ))}
           </div>

@@ -7,7 +7,7 @@ import type { QualifierData } from '@/lib/qualifiers-types';
 import { QUALIFIER_METHOD_LABELS } from '@/lib/qualifier-policy';
 import { Button } from '../ui/button';
 import Link from '@/components/tournament-scope';
-import { api, Field, Modal, useResource, useTask } from './shared';
+import { api, Field, Modal, NumberInput, useResource, useTask } from './shared';
 import styles from './qualifier-workflow.module.css';
 
 export function QualifierImport({
@@ -163,12 +163,11 @@ export function QualifierImport({
           </Field>
           {!preview && (
             <Field label={tr('Warmup games per link')}>
-              <input
-                type="number"
+              <NumberInput
                 min={0}
                 max={100}
                 value={warmups}
-                onChange={(event) => setWarmups(Number(event.target.value))}
+                onChange={(count) => setWarmups(count ?? 0)}
               />
             </Field>
           )}
@@ -276,13 +275,12 @@ export function QualifierImport({
                     )}
                     <div className="grid-fields">
                       <Field label={tr('Warmup games to exclude')}>
-                        <input
-                          type="number"
+                        <NumberInput
                           min={0}
                           max={100}
                           value={config.warmups}
-                          onChange={(event) =>
-                            change(source.multiplayerId, { warmups: Number(event.target.value) })
+                          onChange={(count) =>
+                            change(source.multiplayerId, { warmups: count ?? 0 })
                           }
                         />
                       </Field>

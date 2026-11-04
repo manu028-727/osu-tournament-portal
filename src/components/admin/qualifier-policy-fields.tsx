@@ -1,6 +1,6 @@
 'use client';
 import { useT } from '../locale';
-import { Field } from './shared';
+import { Field, NumberInput } from './shared';
 import {
   QUALIFIER_METHOD_LABELS,
   QUALIFIER_METRIC_LABELS,
@@ -80,13 +80,12 @@ export function QualifierPolicyFields({
           </Field>
         )}
         <Field label={tr('Players counted per map')}>
-          <input
-            type="number"
+          <NumberInput
             required
             min={1}
             max={16}
-            value={value.requiredPlayers || ''}
-            onChange={(e) => update({ requiredPlayers: Number(e.target.value) })}
+            value={value.requiredPlayers}
+            onChange={(requiredPlayers) => update({ requiredPlayers: requiredPlayers ?? 1 })}
           />
         </Field>
         <Field label={tr('Team aggregation')}>

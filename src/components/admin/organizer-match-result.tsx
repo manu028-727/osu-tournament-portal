@@ -23,6 +23,7 @@ import {
   useResource,
   useTask,
   useUnsaved,
+  NumberInput,
 } from './shared';
 
 export function OrganizerMatchResult({
@@ -272,14 +273,13 @@ export function OrganizerMatchResult({
               />
             </Field>
             <Field label={tr('Warmup maps')}>
-              <input
-                type="number"
+              <NumberInput
                 min={0}
                 max={120}
                 disabled={busy}
                 value={warmups}
-                onChange={(e) => {
-                  setWarmups(Number(e.target.value));
+                onChange={(count) => {
+                  setWarmups(count ?? 0);
                   setPreview(null);
                   setDirty(true);
                 }}

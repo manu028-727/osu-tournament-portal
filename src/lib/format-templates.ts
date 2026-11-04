@@ -93,7 +93,8 @@ export const templateDefaults = (template: TemplateKey): TemplateChoices => ({
 });
 
 export const POOL_CATEGORIES = ['NM', 'HD', 'HR', 'DT', 'FM', 'TB'] as const;
-export type PoolCounts = Record<(typeof POOL_CATEGORIES)[number], number>;
+// Maps per category. Templates use the common six; a tournament can add its own, like RX.
+export type PoolCounts = Record<string, number>;
 export type StageDraft = {
   ref: string;
   name: string;
@@ -450,9 +451,9 @@ export function buildTemplate(input: TemplateChoices): {
 }
 
 export function poolPlanSlots(pool: PoolCounts) {
-  return POOL_CATEGORIES.flatMap((category) =>
-    Array.from({ length: pool[category] }, (_, index) => ({
-      name: category === 'TB' && pool.TB === 1 ? 'TB' : `${category}${index + 1}`,
+  return Object.entries(pool).flatMap(([category, count]) =>
+    Array.from({ length: count }, (_, index) => ({
+      name: category === 'TB' && count === 1 ? 'TB' : `${category}${index + 1}`,
       category,
     })),
   );

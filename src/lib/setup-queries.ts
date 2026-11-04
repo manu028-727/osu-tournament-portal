@@ -30,7 +30,7 @@ export async function setupWorkspaceData(actor: Actor) {
     include: { settings: true },
   });
   const settings = tournament.settings!;
-  const [stages, plan, pages, approvedEntrants, staff] = await Promise.all([
+  const [stages, plan, pages, approvedEntrants, staff, categories] = await Promise.all([
     db.tournamentStage.findMany({
       where: { archivedAt: null },
       orderBy: [{ position: 'asc' }, { id: 'asc' }],
@@ -48,6 +48,10 @@ export async function setupWorkspaceData(actor: Actor) {
     }),
     db.team.count({ where: { status: 'APPROVED', supersededAt: null } }),
     db.staffMember.count(),
+    db.modCategory.findMany({
+      orderBy: [{ position: 'asc' }, { acronym: 'asc' }],
+      select: { acronym: true },
+    }),
   ]);
   const registration = registrationPolicySchema.parse(settings.registrationPolicy || {});
   const rules = matchRulesSchema.parse(settings.matchRules);
@@ -103,6 +107,7 @@ export async function setupWorkspaceData(actor: Actor) {
     registration,
     booking: qualifierBookingPolicy(settings),
     rules,
+    categories: categories.map((category) => category.acronym),
     defaultsHash: rulesHash(settings.matchRules),
     stages: stages.map((stage) => ({
       id: stage.id,

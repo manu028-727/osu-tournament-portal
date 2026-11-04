@@ -42,6 +42,7 @@ export default defineConfig({
       'tests/format-lifecycle.integration.test.ts',
       'tests/eligibility.integration.test.ts',
       'tests/team-formation.integration.test.ts',
+      'tests/round-stages.integration.test.ts',
     ],
     env: { DATABASE_URL: process.env.TEST_DATABASE_URL },
     fileParallelism: false,

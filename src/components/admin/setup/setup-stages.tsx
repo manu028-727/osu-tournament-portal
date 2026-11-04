@@ -1,17 +1,33 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
+import { ArrowDownToLine, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { useT } from '@/components/locale';
 import { Button } from '@/components/ui/button';
-import { poolForBestOf, POOL_CATEGORIES } from '@/lib/format-templates';
+import { poolForBestOf } from '@/lib/format-templates';
 import type { Actor } from '@/lib/permissions';
 import { qualifierPolicySchema, type QualifierPolicy } from '@/lib/qualifier-policy';
 import type { SetupWorkspaceData } from '@/lib/setup-queries';
-import { stageGridOperations, stageRows, type StageRow } from '@/lib/setup-operations';
+import {
+  mapsNeeded,
+  newMapTypeOperations,
+  poolCounts,
+  resizedPool,
+  stageGridOperations,
+  stageRows,
+  type StageRow,
+} from '@/lib/setup-operations';
 import { confirmDiscardUnsaved } from '@/components/unsaved-navigation';
 import { PoolEditor } from '../pool-editor';
 import { QualifierPolicyFields } from '../qualifier-policy-fields';
-import { action, ConfirmButton, SaveButton, useTask, useUnsaved } from '../shared';
+import {
+  action,
+  ConfirmButton,
+  Field,
+  NumberInput,
+  SaveButton,
+  useTask,
+  useUnsaved,
+} from '../shared';
 import styles from './setup.module.css';
 
 const KIND_LABELS: Record<StageRow['kind'], string> = {
@@ -103,8 +119,21 @@ export function StagesSection({
     if (expanded && expanded !== key && !confirmDiscardUnsaved()) return;
     setExpanded(expanded === key ? null : key);
   };
-  const num = (value: string) => (value === '' ? null : Number(value));
   const openStage = data.stages.find((stage) => stage.id === expanded);
+  const openRow = rows.find((row) => row.key === expanded);
+  const categories = data.categories.length ? data.categories : Object.keys(saved[0]?.pool ?? {});
+  const [newType, setNewType] = useState('');
+  // Best of usually rises through a bracket, so one row can fill in the ones after it.
+  const copyDown = (index: number) => {
+    const { bestOf, bansPerTeam, pool } = rows[index];
+    setRows(
+      rows.map((row, position) =>
+        position > index && row.kind !== 'QUALIFIERS'
+          ? { ...row, bestOf, bansPerTeam, pool: { ...pool } }
+          : row,
+      ),
+    );
+  };
   return (
     <div className="grid min-w-0 gap-3">
       <div className={styles.gridScroll}>
@@ -113,21 +142,23 @@ export function StagesSection({
             <tr>
               <th aria-label={tr('Details')} />
               <th>{tr('Stage')}</th>
-              <th>{tr('Type')}</th>
+              <th className={styles.typeColumn}>{tr('Type')}</th>
               <th>{tr('Best of')}</th>
               <th>{tr('Bans')}</th>
-              {POOL_CATEGORIES.map((category) => (
+              {categories.map((category) => (
                 <th key={category}>{category}</th>
               ))}
-              <th>{tr('Min ★')}</th>
-              <th>{tr('Max ★')}</th>
+              <th>{tr('Maps')}</th>
               <th>{tr('Mappool')}</th>
+              <th aria-label={tr('Copy')} />
               <th aria-label={tr('Remove')} />
             </tr>
           </thead>
           <tbody>
-            {rows.flatMap((row) => {
+            {rows.flatMap((row, rowIndex) => {
               const qualifier = row.kind === 'QUALIFIERS';
+              const total = Object.values(row.pool).reduce((sum, count) => sum + count, 0);
+              const needed = mapsNeeded(row.bestOf, row.bansPerTeam);
               return [
                 <tr key={row.key}>
                   <td>
@@ -158,101 +189,128 @@ export function StagesSection({
                     />
                   </td>
                   <td className={styles.typeColumn}>
-                    <select
-                      aria-label={tr('Type of {0}', row.name)}
-                      disabled={!canEdit || !!row.id}
-                      value={row.kind}
-                      onChange={(event) => {
-                        const kind = event.target.value as StageRow['kind'];
-                        set(row.key, {
-                          kind,
-                          bestOf: kind === 'QUALIFIERS' ? null : (row.bestOf ?? 9),
-                          bansPerTeam: kind === 'QUALIFIERS' ? null : (row.bansPerTeam ?? 1),
-                        });
-                      }}
-                    >
-                      {Object.entries(KIND_LABELS).map(([key, label]) => (
-                        <option key={key} value={key}>
-                          {tr(label)}
-                        </option>
-                      ))}
-                    </select>
+                    {row.id ? (
+                      // A saved stage keeps its type, because its pool and matches depend on it.
+                      tr(KIND_LABELS[row.kind])
+                    ) : (
+                      <select
+                        aria-label={tr('Type of {0}', row.name)}
+                        disabled={!canEdit}
+                        value={row.kind}
+                        onChange={(event) => {
+                          const kind = event.target.value as StageRow['kind'];
+                          set(row.key, {
+                            kind,
+                            bestOf: kind === 'QUALIFIERS' ? null : (row.bestOf ?? 9),
+                            bansPerTeam: kind === 'QUALIFIERS' ? null : (row.bansPerTeam ?? 1),
+                          });
+                        }}
+                      >
+                        {Object.entries(KIND_LABELS).map(([key, label]) => (
+                          <option key={key} value={key}>
+                            {tr(label)}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </td>
                   <td>
-                    <input
-                      aria-label={tr('Best of for {0}', row.name)}
-                      className={styles.count}
-                      type="number"
-                      min={1}
-                      max={31}
-                      step={2}
-                      disabled={!canEdit || qualifier}
-                      value={row.bestOf ?? ''}
-                      onChange={(event) => set(row.key, { bestOf: num(event.target.value) })}
-                    />
+                    {qualifier ? (
+                      <span className={styles.notApplicable} aria-label={tr('Not applicable')}>
+                        –
+                      </span>
+                    ) : (
+                      <NumberInput
+                        aria-label={tr('Best of for {0}', row.name)}
+                        className={styles.count}
+                        min={1}
+                        max={31}
+                        step={2}
+                        odd
+                        disabled={!canEdit}
+                        value={row.bestOf}
+                        onChange={(bestOf) =>
+                          set(row.key, {
+                            bestOf,
+                            pool: resizedPool(row.pool, row.bestOf, bestOf),
+                          })
+                        }
+                      />
+                    )}
                   </td>
                   <td>
-                    <input
-                      aria-label={tr('Bans for {0}', row.name)}
-                      className={styles.count}
-                      type="number"
-                      min={0}
-                      max={8}
-                      disabled={!canEdit || qualifier}
-                      value={row.bansPerTeam ?? ''}
-                      onChange={(event) => set(row.key, { bansPerTeam: num(event.target.value) })}
-                    />
+                    {qualifier ? (
+                      <span className={styles.notApplicable} aria-label={tr('Not applicable')}>
+                        –
+                      </span>
+                    ) : (
+                      <NumberInput
+                        aria-label={tr('Bans for {0}', row.name)}
+                        className={styles.count}
+                        min={0}
+                        max={8}
+                        disabled={!canEdit}
+                        value={row.bansPerTeam}
+                        onChange={(bansPerTeam) => set(row.key, { bansPerTeam })}
+                      />
+                    )}
                   </td>
-                  {POOL_CATEGORIES.map((category) => (
+                  {categories.map((category) => (
                     <td key={category}>
-                      <input
+                      <NumberInput
                         aria-label={tr('{0} maps for {1}', category, row.name)}
                         className={styles.count}
-                        type="number"
                         min={0}
                         max={30}
                         disabled={!canEdit}
-                        value={row.pool[category]}
-                        onChange={(event) =>
-                          set(row.key, {
-                            pool: { ...row.pool, [category]: Number(event.target.value) },
-                          })
+                        value={row.pool[category] ?? 0}
+                        onChange={(count) =>
+                          set(row.key, { pool: { ...row.pool, [category]: count ?? 0 } })
                         }
                       />
                     </td>
                   ))}
-                  <td>
-                    <input
-                      aria-label={tr('Minimum stars for {0}', row.name)}
-                      className={styles.stars}
-                      type="number"
-                      min={0}
-                      max={30}
-                      step="any"
-                      disabled={!canEdit}
-                      value={row.minStars ?? ''}
-                      onChange={(event) => set(row.key, { minStars: num(event.target.value) })}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      aria-label={tr('Maximum stars for {0}', row.name)}
-                      className={styles.stars}
-                      type="number"
-                      min={0}
-                      max={30}
-                      step="any"
-                      disabled={!canEdit}
-                      value={row.maxStars ?? ''}
-                      onChange={(event) => set(row.key, { maxStars: num(event.target.value) })}
-                    />
+                  <td
+                    className={total < needed ? styles.short : styles.total}
+                    title={
+                      total < needed
+                        ? tr('This stage needs at least {0} maps for its Best of and bans.', needed)
+                        : undefined
+                    }
+                  >
+                    {total}
+                    {total < needed && <span> / {needed}</span>}
                   </td>
                   <td className="whitespace-nowrap">
-                    {row.poolState === 'PUBLISHED'
-                      ? tr('Published')
-                      : row.poolSlots
-                        ? tr('{0} maps in draft', row.poolSlots)
-                        : tr('Empty')}
+                    {row.id ? (
+                      <button
+                        type="button"
+                        className={styles.poolLink}
+                        onClick={() => toggle(row.key)}
+                      >
+                        {row.poolState === 'PUBLISHED'
+                          ? tr('Published')
+                          : row.poolSlots
+                            ? tr('{0} maps in draft', row.poolSlots)
+                            : tr('Add maps')}
+                      </button>
+                    ) : (
+                      tr('Save first')
+                    )}
+                  </td>
+                  <td>
+                    {canEdit && !qualifier && rowIndex < rows.length - 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        title={tr('Copy to the stages below')}
+                        aria-label={tr('Copy {0} to the stages below', row.name)}
+                        onClick={() => copyDown(rowIndex)}
+                      >
+                        <ArrowDownToLine size={16} />
+                      </Button>
+                    )}
                   </td>
                   <td>
                     {row.id ? (
@@ -286,7 +344,7 @@ export function StagesSection({
             })}
             {!rows.length && (
               <tr>
-                <td colSpan={POOL_CATEGORIES.length + 9} className="py-4 text-sm text-muted">
+                <td colSpan={categories.length + 8} className="py-4 text-sm text-muted">
                   {tr('No stages yet.')}
                 </td>
               </tr>
@@ -297,6 +355,32 @@ export function StagesSection({
       {openStage && (
         <section className={styles.stageDetails} aria-label={openStage.name}>
           <h3 className="font-semibold">{openStage.name}</h3>
+          {openRow && (
+            <div className="grid-fields">
+              <Field label={tr('Lowest star rating (optional)')}>
+                <NumberInput
+                  nullable
+                  min={0}
+                  max={30}
+                  step="any"
+                  disabled={!canEdit}
+                  value={openRow.minStars}
+                  onChange={(minStars) => set(openRow.key, { minStars })}
+                />
+              </Field>
+              <Field label={tr('Highest star rating (optional)')}>
+                <NumberInput
+                  nullable
+                  min={0}
+                  max={30}
+                  step="any"
+                  disabled={!canEdit}
+                  value={openRow.maxStars}
+                  onChange={(maxStars) => set(openRow.key, { maxStars })}
+                />
+              </Field>
+            </div>
+          )}
           {openStage.kind === 'QUALIFIERS' && (
             <StagePolicy stage={openStage} data={data} reload={reload} />
           )}
@@ -319,7 +403,7 @@ export function StagesSection({
                   kind: 'ELIMINATION',
                   bestOf: 9,
                   bansPerTeam: 1,
-                  pool: poolForBestOf(9),
+                  pool: { ...poolCounts([], categories), ...poolForBestOf(9) },
                   minStars: null,
                   maxStars: null,
                   planVersion: null,
@@ -345,6 +429,40 @@ export function StagesSection({
           >
             {tr('Save stages')}
           </SaveButton>
+          <form
+            className="ml-auto flex items-end gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void run(async () => {
+                await action({
+                  type: 'setup.apply',
+                  operations: newMapTypeOperations(newType, data),
+                });
+                setNewType('');
+                await reload();
+              }, tr('Map type added.'));
+            }}
+          >
+            <Field label={tr('New map type')}>
+              <input
+                className={styles.newType}
+                placeholder="RX"
+                maxLength={10}
+                value={newType}
+                onChange={(event) =>
+                  setNewType(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))
+                }
+              />
+            </Field>
+            <Button
+              type="submit"
+              variant="outline"
+              disabled={busy || !newType || categories.includes(newType) || dirty}
+            >
+              <Plus size={16} />
+              {tr('Add')}
+            </Button>
+          </form>
         </div>
       )}
     </div>
