@@ -31,7 +31,16 @@ export async function generateMetadata(): Promise<Metadata> {
     title: platform?.name || 'osu! Tournament Platform',
     description: platform?.description || '',
     metadataBase: new URL(process.env.APP_URL || 'http://localhost:3000'),
-    icons: platform?.favicon ? { icon: platform.favicon } : undefined,
+    // Not an app/icon.* file: Next lists those beside a saved favicon instead of replacing them.
+    icons: platform?.favicon
+      ? { icon: platform.favicon }
+      : {
+          icon: [
+            { url: '/favicon.ico', sizes: '32x32' },
+            { url: '/favicon.svg', type: 'image/svg+xml' },
+          ],
+          apple: '/apple-icon.png',
+        },
     openGraph: platform?.socialImage ? { images: [platform.socialImage] } : undefined,
   };
 }

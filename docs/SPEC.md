@@ -122,6 +122,8 @@ partial application.
 registration/social links, dates/timezone, logo/favicon/banner, primary/accent
 colors, navigation, footer and public text without source edits. Platform branding
 has separate global ownership. Stage banners remain independently configurable.
+Tournament pages use the tournament favicon, then the platform favicon, then the
+built-in default icon; other pages use the platform favicon, then the default.
 
 Media supports reusable previews, upload/replace/delete, content/size validation
 and optimization through filesystem or private S3-compatible storage. Draft/private

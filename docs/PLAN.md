@@ -1929,6 +1929,33 @@ instance.
 Next: maintainer review and pushing this commit, then `git pull --ff-only` and `./portal install`
 on the server. This commit needs no migration; the Discord username commit before it does.
 
+### Default Favicon
+
+The platform shipped no icon, so an install without a saved favicon showed the browser's blank
+one. It now has a default: a bracket feeding one hit circle on a rose tile, in
+[DESIGN.md](DESIGN.md#foundation-and-tokens). The root layout offers it through `generateMetadata`
+only when no platform favicon is saved. It is deliberately not an `app/icon.*` file, because Next
+lists those beside saved favicons instead of replacing them.
+
+Fixed along the way: the public layout returned `icons: undefined` for a tournament without its own
+favicon, and Next treats a present key as a replacement. Those pages dropped every inherited icon,
+so a saved platform favicon never reached them. Reproduced in `tests/e2e/favicon.spec.ts` before the
+fix.
+
+Checks, sequentially on `tournament_platform_test`: format, lint, types, `git diff --check` and the
+source audit clean; 613 unit tests in 41 files; production build; `favicon`, `homepage` and
+`tournaments` specs 12 of 12 against production, and `favicon` 3 of 3 on the dev server. Integration
+tests and the rest of the browser suite were not run, because only two metadata fields changed and
+no database code did.
+
+Rendered evidence is in `.data/favicon-20261104`: the SVG, ICO and home-screen PNG as the browser
+decoded them, inspected in both appearances. The icon has no page layout, so the usual width sweep
+does not apply. The test checks the page links, the served files and that they decode. Not verified:
+the icon in a real browser tab, which file each browser picks, and iOS home screens.
+
+Next: maintainer review and pushing this commit, then `git pull --ff-only` and `./portal install`
+on the server. This commit needs no migration.
+
 ## Completion Rules
 
 For each change: establish source behavior, implement within existing ownership

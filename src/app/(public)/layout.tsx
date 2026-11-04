@@ -26,7 +26,8 @@ export async function generateMetadata() {
   return {
     title: { default: t.name, template: `%s · ${t.acronym}` },
     description: t.description,
-    icons: t.settings?.favicon ? { icon: t.settings.favicon } : undefined,
+    // A present icons key replaces the inherited icons, even when it is undefined.
+    ...(t.settings?.favicon ? { icons: { icon: t.settings.favicon } } : {}),
   };
 }
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {

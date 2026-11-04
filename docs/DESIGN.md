@@ -48,6 +48,13 @@ Use --brand/--accent/--brand-ink/--accent-subtle/--accent-border/--focus-ring fo
 intended roles, not a one-hue replacement palette. Global element styles belong in
 Tailwind's base layer so they do not override utility colors unexpectedly.
 
+The default icon is a tournament bracket feeding one hit circle, in dark ink on a
+rose tile: the default primary button colors, which read on light and dark browser
+tabs alike. It is not the osu! logo. `public/favicon.svg` is the source, with its
+edges on a 16px grid so it stays sharp in a tab; `public/favicon.ico` and
+`public/apple-icon.png` are rendered from it. Its colors are fixed and do not follow
+saved branding, so organizers who want a matching icon upload a favicon.
+
 Appearance has one nonsensitive SameSite cookie, portal_appearance: Light, Dark,
 System. Async server cookies initialize HTML; native color-scheme/light-dark handles
 OS preference before paint and on changes. No inline startup script/CSP weakening,
