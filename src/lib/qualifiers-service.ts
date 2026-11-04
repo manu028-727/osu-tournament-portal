@@ -33,7 +33,9 @@ const include = {
   poolRevision: { include: { slots: { orderBy: { position: 'asc' as const } } } },
   assignments: { include: { user: { select: { id: true, osuId: true, username: true } } } },
   entries: {
-    include: { team: { select: { members: { select: { discordId: true } } } } },
+    include: {
+      team: { select: { members: { select: { discordUsername: true, discordId: true } } } },
+    },
     orderBy: { position: 'asc' as const },
   },
   scores: true,

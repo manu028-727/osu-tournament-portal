@@ -20,6 +20,7 @@ import {
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { can, type Actor } from '@/lib/permissions';
+import { discordUsernamePattern } from '@/lib/discord-result';
 import type { TeamView } from '@/lib/teams-types';
 import type { TeamImportPlan } from '@/lib/teams-service';
 import { TEAM_CSV_COLUMNS } from '@/lib/teams-csv';
@@ -421,11 +422,11 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                   type: 'team.save',
                   id: draft.id || undefined,
                   baseVersion: draft.version,
-                  members: draft.members.map(({ osuId, captain, substitute, discordId }) => ({
+                  members: draft.members.map(({ osuId, captain, substitute, discordUsername }) => ({
                     osuId,
                     captain,
                     substitute,
-                    discordId,
+                    discordUsername,
                   })),
                 });
                 setDirty(false);
@@ -589,14 +590,17 @@ export function TeamsEditor({ actor }: { actor: Actor }) {
                     >
                       {m.participant.username}
                     </a>
-                    <Field label={tr('Discord user ID for {0}', m.participant.username)}>
+                    <Field label={tr('Discord username for {0}', m.participant.username)}>
                       <input
-                        inputMode="numeric"
-                        value={m.discordId || ''}
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        pattern={discordUsernamePattern}
+                        title={tr('Use a Discord username, not a display name or numeric ID.')}
+                        value={m.discordUsername || ''}
                         onChange={(e) =>
                           update({
                             members: draft.members.map((p) =>
-                              p.osuId === m.osuId ? { ...p, discordId: e.target.value } : p,
+                              p.osuId === m.osuId ? { ...p, discordUsername: e.target.value } : p,
                             ),
                           })
                         }

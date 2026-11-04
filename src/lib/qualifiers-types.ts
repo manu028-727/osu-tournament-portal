@@ -41,7 +41,7 @@ export type QualifierView = {
   access: MatchAccess;
   canTransfer?: boolean;
   assignments: { userId: string; user: { id: string; username: string; osuId: number } }[];
-  entries: { team: { members: { discordId: string }[] } }[];
+  entries: { team: { members: { discordUsername: string; discordId: string }[] } }[];
   scores: {
     passed?: boolean | null;
     eligibilityOverride?: string | null;

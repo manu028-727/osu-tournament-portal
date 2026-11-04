@@ -560,7 +560,7 @@ taken after the lock, so repeating it cannot drift. Capture runs in browser-pace
 each guarded by the session version under the admin advisory lock. `formation.confirm` is the
 single step that moves `TeamMember` rows, using a dedicated update rather than `writeTeam`, which
 deletes and recreates rosters. Moving rows keeps the one-roster-per-player constraint, ranks and
-Discord IDs. The source entrant gets `supersededAt` and `published:false` with its `status`
+Discord contacts. The source entrant gets `supersededAt` and `published:false` with its `status`
 unchanged, which keeps qualifier witnesses valid, since standings read lobby roster snapshots
 and entrant status. Every picker and write path filters `supersededAt`; `currentTeam` refuses
 one outright. Lots keep each player's source entrant and its prior visibility so
@@ -894,6 +894,14 @@ Markdown/emojis/flags and asymmetric forfeit markers. The website wrapper additi
 requires COMPLETED confirmation, uses matchNumber and can omit MP for explicitly
 completed historical records. In-progress previews never announce a confirmed winner;
 goldens cover these intentional conditional differences.
+
+`TeamMember.discordUsername` is the Discord contact every form collects. `discordId` is read-only
+history from rosters saved before usernames: a numeric ID cannot be converted, so it stays in the
+database and in archives, keeps `<@id>` pings working, and is cleared by `writeTeam` when a username
+replaces it. `isDiscordUsername` in `discord-result.ts` is Discord's own username rule plus the
+reserved `everyone` and `here`, and `matchPing` applies it to whatever it receives, because a ping
+is pasted into a channel and an archive can carry any text. Archives without the field import with
+it empty.
 
 ## Official osu! Metadata
 

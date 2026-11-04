@@ -22,7 +22,7 @@ export type RegistrationData = {
       username: string;
       captain: boolean;
       substitute: boolean;
-      discordId: string;
+      discordUsername: string;
     }[];
   } | null;
 };

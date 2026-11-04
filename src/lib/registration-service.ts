@@ -153,7 +153,7 @@ export async function registrationData(
               username: member.registeredUsername || member.participant.username,
               captain: member.captain,
               substitute: member.substitute,
-              discordId: member.discordId,
+              discordUsername: member.discordUsername,
             })),
         }
       : null,

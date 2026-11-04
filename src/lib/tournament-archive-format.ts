@@ -149,7 +149,7 @@ export const ARCHIVE_TABLES = {
   ),
   rosters: def(
     'teamMember',
-    'tournamentId:s teamId:s osuId:i captain:b substitute:b position:i registrationRank:i? registeredUsername:s? rankCapturedAt:d? discordId:s',
+    'tournamentId:s teamId:s osuId:i captain:b substitute:b position:i registrationRank:i? registeredUsername:s? rankCapturedAt:d? discordId:s discordUsername:s',
     { tournamentId: 'tournament', teamId: 'teams', osuId: 'participants' },
   ),
   matches: def(
@@ -536,6 +536,7 @@ function fieldSchema(table: ArchiveTable, name: string, type: string, nullable: 
   const defaults: Record<string, unknown> = {
     'teams.rejectionReason': '',
     'teams.adminNotes': '',
+    'rosters.discordUsername': '',
     'qualifierLobbies.capacity': 16,
     'qualifierLobbies.bookingOpen': true,
     'qualifierLobbies.autoCompleted': false,

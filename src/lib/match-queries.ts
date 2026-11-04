@@ -2,6 +2,7 @@ import { Prisma } from '@/generated/prisma/client';
 import { z } from 'zod';
 import { competitionEligibilityOptions } from './competition-queries';
 import { db as rootDb } from './db';
+import { discordContact } from './discord-result';
 import { gameplayScoringSchema, inheritedRules } from './gameplay-scoring';
 import { eligibleRefereeFor, matchAccess } from './match-access';
 import { matchWorkflow } from './match-engine';
@@ -208,7 +209,7 @@ export async function matchData(actor: Actor, url: URL, section: string) {
         },
         teamId: { in: [match.teamAId, match.teamBId].filter((id): id is string => !!id) },
       },
-      select: { discordId: true },
+      select: { discordUsername: true, discordId: true },
     });
     // Staff apply what teams bought by hand, so the referee needs to see it before the roll.
     const purchases = await db.resourcePurchase.findMany({
@@ -263,7 +264,7 @@ export async function matchData(actor: Actor, url: URL, section: string) {
           pending?.id || null,
         ),
       },
-      discordIds: contacts.map((p) => p.discordId).filter(Boolean),
+      discordContacts: contacts.map(discordContact).filter(Boolean),
       dependencies,
       access: matchAccess(actor, match),
       serverNow: new Date().toISOString(),

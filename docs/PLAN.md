@@ -1855,6 +1855,42 @@ verified against the deployed tournament or real osu! accounts.
 Next: maintainer review and pushing this commit, then `git pull --ff-only` and `./portal install`
 on the server.
 
+### Discord Usernames
+
+The maintainer asked to collect only Discord usernames, which replaces the numeric rule delivered in
+[Registration Feedback](#registration-feedback). `TeamMember.discordUsername` is a new additive
+column, used by the registration form, the Teams editor, match and qualifier pings and archives. A
+username is trimmed, loses a leading `@` and is lowercased, then must pass Discord's rule. `everyone`
+and `here` are refused and are never written into a ping, because a registrant now controls text that
+staff paste into a channel. The Developer Mode instructions are gone from the form.
+
+Existing numeric IDs are kept, not converted or deleted, since an ID cannot become a username: they
+stay in `discordId`, still produce `<@id>` pings and are cleared when a username replaces them. No
+form shows or accepts them, so a person with an old ID and no username cannot clear it without
+entering one. Removing `discordId` is a candidate once deployed rosters no longer need it; that needs
+a reviewed migration and archive compatibility.
+
+Migration required: `20261104000000_team_member_discord_username`, which `./portal install` applies.
+
+Unverified on Discord: whether a pasted `@username` becomes a real mention and notifies the person.
+Only `<@id>` is a documented mention, so a referee should test one ping before relying on it.
+
+Checks on this revision, run sequentially on `tournament_platform_test`: format, lint, types and
+`git diff --check` clean; 613 unit tests in 41 files; 347 integration tests in 35 files, including a
+populated upgrade through this migration and an archive written before the field; production build;
+production browser suite 100 of 100, which now clicks both Copy Ping buttons and reads the clipboard.
+The dev browser suite was not run. `prisma migrate diff` against the test database is empty.
+
+Rendered evidence is in `.data/registration-feedback-20261104`: the form and a refusal, and the Teams
+editor, at 1920, 1366, 768, 390 and 320 in both appearances, with no sideways page overflow asserted
+at each. Inspected: the form at 390 dark and 320 light and at 1366 light, the refusal at 320 light,
+and the editor at 320 dark, 768 dark and 1366 light. The skip link that appears in full-page form
+captures is a capture artifact: the viewport captures do not show it and it is never focused. Not
+verified against the deployed tournament, real osu! accounts or Discord.
+
+Next: maintainer review and pushing this commit, then `git pull --ff-only` and `./portal install`
+on the server, then one real ping in the tournament's Discord server.
+
 ## Completion Rules
 
 For each change: establish source behavior, implement within existing ownership

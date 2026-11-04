@@ -106,7 +106,14 @@ test.beforeAll(async () => {
           status: 'APPROVED',
           published: true,
           format: 'INDIVIDUAL',
-          members: { create: { osuId: user.osuId, captain: true, position: 0 } },
+          members: {
+            create: {
+              osuId: user.osuId,
+              captain: true,
+              position: 0,
+              discordUsername: `entrant_${index}`,
+            },
+          },
           registrationAnswers: { contact: 'Private captain answer' },
         },
       });
@@ -279,6 +286,12 @@ test('opens an empty referee session, assigns entrants and records shared map sc
     reason: 'Synthetic browser session start',
   });
   await page.reload();
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.getByText('Lobby preparation', { exact: true }).click();
+  await page.getByRole('button', { name: 'Copy Qualifier Ping', exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toMatch(/^@entrant_[12] @entrant_[12]\rQualifiers Match/);
   const board = page.getByRole('region', { name: 'Shared qualifier map scores' });
   await board.getByLabel('Score for Player 1', { exact: true }).fill('0');
   await board.getByLabel('Score for Player 2', { exact: true }).fill('123456');

@@ -166,6 +166,7 @@ it('adds the format engine to a populated tournament without changing anything s
       position: 0,
       captain: true,
       registrationRank: 4242,
+      discordId: '123456789012345678',
     });
     await insertRow(client, 'Match', {
       id: 'match',
@@ -210,6 +211,10 @@ it('adds the format engine to a populated tournament without changing anything s
       `SELECT "registrationRank", "rankCapturedAt" FROM "TeamMember" WHERE "teamId" = 'team'`,
     );
     expect(member.rows).toEqual([{ registrationRank: 4242, rankCapturedAt: null }]);
+    const contact = await client.query(
+      `SELECT "discordId", "discordUsername" FROM "TeamMember" WHERE "teamId" = 'team'`,
+    );
+    expect(contact.rows).toEqual([{ discordId: '123456789012345678', discordUsername: '' }]);
     const settings = await client.query(
       `SELECT "resourcePolicy", "setupState" FROM "TournamentSettings" WHERE "tournamentId" = 'old'`,
     );

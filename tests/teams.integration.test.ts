@@ -33,14 +33,16 @@ beforeAll(async () => {
     throw new Error('Test database only.');
   owner = await account(920000001, 'Owner');
   guest = await account(920000002, 'Guest');
-  for (const osuId of [930000001, 930000002, 930000003])
+  for (const osuId of [930000001, 930000002, 930000003, 930000004])
     await db.participant.create({
       data: { osuId, username: prefix + osuId, avatarUrl: 'https://a.ppy.sh/1' },
     });
 });
 afterAll(async () => {
   await db.team.deleteMany({ where: { slug: { startsWith: prefix } } });
-  await db.participant.deleteMany({ where: { osuId: { in: [930000001, 930000002, 930000003] } } });
+  await db.participant.deleteMany({
+    where: { osuId: { in: [930000001, 930000002, 930000003, 930000004] } },
+  });
   await db.user.deleteMany({ where: { osuId: { in: [920000001, 920000002] } } });
   await db.$disconnect();
 });
@@ -51,7 +53,7 @@ describe.sequential('persistent team registration workflows', () => {
       name: prefix,
       slug: prefix,
       members: [
-        { osuId: 930000001, captain: true, substitute: false, discordId: '111111111111111111' },
+        { osuId: 930000001, captain: true, substitute: false, discordUsername: '@Player_One' },
       ],
     };
     await expect(act(guest, input)).rejects.toThrow('permission');
@@ -77,10 +79,10 @@ describe.sequential('persistent team registration workflows', () => {
       published: true,
     });
     expect((await publicTeams(prefix))[0].members[0].osuId).toBe(930000001);
-    expect(JSON.stringify(await publicTeams(prefix))).not.toContain('111111111111111111');
-    expect(JSON.stringify(await publicTeams(prefix))).not.toContain('discordId');
-    expect((await db.teamMember.findFirstOrThrow({ where: { teamId } })).discordId).toBe(
-      '111111111111111111',
+    expect(JSON.stringify(await publicTeams(prefix))).not.toContain('player_one');
+    expect(JSON.stringify(await publicTeams(prefix))).not.toContain('discord');
+    expect((await db.teamMember.findFirstOrThrow({ where: { teamId } })).discordUsername).toBe(
+      'player_one',
     );
     await expect(
       act(owner, {
@@ -92,6 +94,33 @@ describe.sequential('persistent team registration workflows', () => {
         published: false,
       }),
     ).rejects.toThrow('another session');
+  });
+  it('keeps a numeric ID from before usernames until a username replaces it', async () => {
+    const save = (id: string | undefined, baseVersion: number, discordUsername?: string) =>
+      act(owner, {
+        type: 'team.save',
+        id,
+        baseVersion,
+        name: `${prefix}-older`,
+        slug: `${prefix}-older`,
+        members: [{ osuId: 930000004, captain: true, substitute: false, discordUsername }],
+      }) as Promise<{ id: string }>;
+    const { id } = await save(undefined, 0);
+    await db.teamMember.updateMany({
+      where: { teamId: id },
+      data: { discordId: '222222222222222222' },
+    });
+    const member = () => db.teamMember.findFirstOrThrow({ where: { teamId: id } });
+
+    // A form that leaves the username blank has not replaced anything.
+    await save(id, 1, '');
+    expect(await member()).toMatchObject({ discordId: '222222222222222222', discordUsername: '' });
+    await save(id, 2, '@Older.Player');
+    expect(await member()).toMatchObject({ discordId: '', discordUsername: 'older.player' });
+    // A roster saved without this field, as a CSV import does, keeps what is there.
+    await save(id, 3);
+    expect(await member()).toMatchObject({ discordUsername: 'older.player' });
+    await db.team.delete({ where: { id } });
   });
   it('protects unique team membership and rejects invalid solo rosters', async () => {
     await expect(

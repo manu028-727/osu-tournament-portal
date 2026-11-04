@@ -11,7 +11,7 @@ import type { Actor } from '@/lib/permissions';
 import type { QualifierData } from '@/lib/qualifiers-types';
 import type { QualifierAction } from '@/lib/qualifiers-validation';
 import { lobbyCommands } from '@/lib/match-engine';
-import { matchPing } from '@/lib/discord-result';
+import { discordContact, matchPing } from '@/lib/discord-result';
 import { Button } from '../ui/button';
 import {
   action,
@@ -653,7 +653,7 @@ export function QualifiersWorkspace({
                         matchPing(
                           'Qualifiers',
                           m.code,
-                          m.entries.flatMap((entry) => entry.team.members.map((p) => p.discordId)),
+                          m.entries.flatMap((entry) => entry.team.members.map(discordContact)),
                           true,
                         ),
                       )

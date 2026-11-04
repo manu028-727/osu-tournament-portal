@@ -123,15 +123,32 @@ export function matchDiscordPreview(m: MatchView) {
   ].join('\r');
 }
 
-export function matchPing(
-  stage: string,
-  code: string,
-  discordIds: string[] = [],
-  qualifier = false,
-) {
-  const mentions = [...new Set(discordIds)]
-    .filter((id) => /^\d{17,20}$/.test(id))
-    .map((id) => `<@${id}>`)
+const discordUserId = /^\d{17,20}$/;
+// Discord's own username rule. A ping is pasted into a channel, so nothing else may reach one, and
+// everyone and here, which no account can hold, would mention the whole channel.
+export function isDiscordUsername(value: string) {
+  return (
+    /^(?!.*\.\.)[a-z0-9_.]{2,32}$/.test(value) &&
+    !discordUserId.test(value) &&
+    !['everyone', 'here'].includes(value)
+  );
+}
+// The field's first check. Spaces and a leading @ are forgiven, because the server removes them.
+export const discordUsernamePattern = String.raw`\s*@?[A-Za-z0-9_.]{2,32}\s*`;
+
+// A roster saved before usernames can still hold a numeric ID until a username replaces it.
+export const discordContact = (member: { discordUsername: string; discordId: string }) =>
+  member.discordUsername || member.discordId;
+
+export function matchPing(stage: string, code: string, contacts: string[] = [], qualifier = false) {
+  const mentions = [...new Set(contacts)]
+    .flatMap((contact) =>
+      discordUserId.test(contact)
+        ? `<@${contact}>`
+        : isDiscordUsername(contact)
+          ? `@${contact}`
+          : [],
+    )
     .join(' ');
   return `${mentions}\r${qualifier ? 'Qualifiers Match' : `${stage} - Match`} **${code}** is starting soon! Invites will be sent shortly!`;
 }

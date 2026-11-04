@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import cases from './fixtures/discord-results.json';
 import {
   countryEmoji,
+  discordContact,
   spreadsheetDiscordResult,
   matchDiscordResult,
   matchPing,
@@ -83,5 +84,22 @@ describe('Template AB3 golden output', () => {
     expect(matchPing('Finals', '28', ['123456789123456789', '@not-a-discord-id'])).toBe(
       '<@123456789123456789>\rFinals - Match **28** is starting soon! Invites will be sent shortly!',
     );
+  });
+  const announcement = '\rFinals - Match **28** is starting soon! Invites will be sent shortly!';
+  it('names people by username, and by a numeric ID only where one was saved earlier', () => {
+    expect(matchPing('Finals', '28', ['manu028', '123456789123456789', 'manu028'])).toBe(
+      `@manu028 <@123456789123456789>${announcement}`,
+    );
+    expect(discordContact({ discordUsername: 'manu028', discordId: '123456789123456789' })).toBe(
+      'manu028',
+    );
+    expect(discordContact({ discordUsername: '', discordId: '123456789123456789' })).toBe(
+      '123456789123456789',
+    );
+  });
+  it('lets nothing into a channel that could mention more than one person', () => {
+    // An archive can carry any text, so the ping keeps this rule whatever saved the value.
+    for (const value of ['everyone', 'here', '@everyone', '<@&123456789123456789>', 'a b', 'Name'])
+      expect(matchPing('Finals', '28', [value]), value).toBe(announcement);
   });
 });

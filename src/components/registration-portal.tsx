@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { discordUsernamePattern } from '@/lib/discord-result';
 import type { RegistrationData as Data } from '@/lib/registration-types';
 import { useT } from './locale';
 import { useTournamentTime } from './tournament-scope';
@@ -23,8 +24,8 @@ export function RegistrationPortal({ initial, loginUrl }: { initial: Data; login
     data.team?.members.map((member) => ({
       osuId: String(member.osuId),
       substitute: member.substitute,
-      discordId: member.discordId,
-    })) || [{ osuId: String(data.user?.osuId || ''), substitute: false, discordId: '' }],
+      discordUsername: member.discordUsername,
+    })) || [{ osuId: String(data.user?.osuId || ''), substitute: false, discordUsername: '' }],
   );
   const [answers, setAnswers] = useState<Record<string, string | number | boolean>>(
     (data.team?.answers || {}) as Record<string, string | number | boolean>,
@@ -161,7 +162,11 @@ export function RegistrationPortal({ initial, loginUrl }: { initial: Data; login
                       setFormat(next);
                       if (next === 'INDIVIDUAL')
                         setMembers([
-                          { osuId: String(data.user!.osuId), substitute: false, discordId: '' },
+                          {
+                            osuId: String(data.user!.osuId),
+                            substitute: false,
+                            discordUsername: '',
+                          },
                         ]);
                     }}
                   >
@@ -176,11 +181,6 @@ export function RegistrationPortal({ initial, loginUrl }: { initial: Data; login
                   format === 'INDIVIDUAL' ? 1 : data.minimumPlayers,
                   data.policy.maxPlayers,
                   data.policy.maxSubstitutes,
-                )}
-              </p>
-              <p className="text-xs text-muted">
-                {tr(
-                  'Discord user IDs are 17 to 20 digits, not usernames. In Discord, turn on Developer Mode, then right-click a name and choose Copy User ID.',
                 )}
               </p>
               <div className="space-y-3">
@@ -206,16 +206,17 @@ export function RegistrationPortal({ initial, loginUrl }: { initial: Data; login
                           }
                         />
                       </Field>
-                      <Field label={tr('Discord user ID (optional)')}>
+                      <Field label={tr('Discord username (optional)')}>
                         <input
-                          inputMode="numeric"
-                          pattern="\d{17,20}"
-                          title={tr('Use a Discord user ID, not a username.')}
-                          value={member.discordId}
+                          autoCapitalize="none"
+                          spellCheck={false}
+                          pattern={discordUsernamePattern}
+                          title={tr('Use a Discord username, not a display name or numeric ID.')}
+                          value={member.discordUsername}
                           onChange={(event) =>
                             setMembers((rows) =>
                               rows.map((row, i) =>
-                                i === index ? { ...row, discordId: event.target.value } : row,
+                                i === index ? { ...row, discordUsername: event.target.value } : row,
                               ),
                             )
                           }
@@ -261,7 +262,10 @@ export function RegistrationPortal({ initial, loginUrl }: { initial: Data; login
                   type="button"
                   variant="outline"
                   onClick={() =>
-                    setMembers((rows) => [...rows, { osuId: '', substitute: false, discordId: '' }])
+                    setMembers((rows) => [
+                      ...rows,
+                      { osuId: '', substitute: false, discordUsername: '' },
+                    ])
                   }
                 >
                   {tr('Add player')}

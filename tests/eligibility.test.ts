@@ -124,31 +124,54 @@ describe('registration policy', () => {
 });
 
 describe('Discord contact on a roster', () => {
-  const registering = (discordId: string) =>
+  const registering = (discordUsername: string) =>
     registrationActionSchema.safeParse({
       type: 'registration.save',
       baseVersion: 0,
       policyToken: 'a'.repeat(64),
       name: 'Entry',
       format: 'TEAM',
-      members: [{ osuId: 1, substitute: false, discordId }],
+      members: [{ osuId: 1, substitute: false, discordUsername }],
     });
-  const editing = (discordId: string) =>
-    rosterSchema.safeParse([{ osuId: 1, captain: true, substitute: false, discordId }]);
+  const editing = (discordUsername: string) =>
+    rosterSchema.safeParse([{ osuId: 1, captain: true, substitute: false, discordUsername }]);
 
-  it('takes a user ID or nothing, from a captain and from an organizer alike', () => {
+  it('takes a username or nothing, from a captain and from an organizer alike', () => {
     for (const check of [registering, editing])
-      for (const value of ['', '12345678901234567', '12345678901234567890'])
+      for (const value of ['', 'manu028', 'the.blue_eight', 'ab', 'a'.repeat(32), '123456'])
         expect(check(value).success, value).toBe(true);
+  });
+
+  it('saves a username the way Discord writes it', () => {
+    expect(editing(' @Manu028 ').data![0].discordUsername).toBe('manu028');
+    expect(registering(' @Manu028 ').data).toMatchObject({
+      members: [{ discordUsername: 'manu028' }],
+    });
+  });
+
+  it('no longer accepts a numeric ID under either name', () => {
+    const row = { osuId: 1, captain: true, substitute: false, discordId: '123456789012345678' };
+    expect(rosterSchema.parse([row])[0]).not.toHaveProperty('discordId');
+    expect(editing('123456789012345678').success).toBe(false);
   });
 
   it('explains a refusal in words, in either language', () => {
     for (const check of [registering, editing])
-      for (const value of ['manu028', '1234567890123456', '123456789012345678901']) {
+      for (const value of [
+        'Manu 028',
+        'name#1234',
+        'a',
+        'a'.repeat(33),
+        'two..dots',
+        '123456789012345678',
+        'everyone',
+        '@here',
+        '<@&123456789012345678>',
+      ]) {
         const issues = check(value).error!.issues;
-        expect(issues[0].message).toBe('Use a Discord user ID, not a username.');
+        expect(issues[0].message).toBe('Use a Discord username, not a display name or numeric ID.');
         expect(validationFeedback(issues, 'it')).toContain(
-          'Usa un ID utente Discord, non un nome utente.',
+          'Usa un nome utente Discord, non un nome visualizzato o un ID numerico.',
         );
       }
   });

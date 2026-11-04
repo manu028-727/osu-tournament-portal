@@ -284,6 +284,11 @@ describe.sequential('complete native qualifier workflows', () => {
     const bookings = await Promise.allSettled([book(users[0], lobbyId), book(users[1], lobbyId)]);
     expect(bookings.filter((row) => row.status === 'fulfilled')).toHaveLength(1);
     expect(await db.qualifierEntry.count({ where: { lobbyId } })).toBe(1);
+    // Copy Qualifier Ping reads exactly these two, and nothing else about the roster.
+    const booked = await qualifierData(organizer, new URL(`https://local/?id=${lobbyId}`));
+    expect(booked.lobbies[0].entries[0].team.members).toEqual([
+      { discordUsername: '', discordId: '' },
+    ]);
     const owner = (await qualifierBookingData(users[0], tournamentId)).sessions.find(
       (session) => session.booked,
     )

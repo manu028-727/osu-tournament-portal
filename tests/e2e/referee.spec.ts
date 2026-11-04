@@ -70,7 +70,9 @@ test.beforeAll(async () => {
         slug: `${prefix}-red`,
         format: 'INDIVIDUAL',
         status: 'APPROVED',
-        members: { create: { osuId: 962000001, captain: true, position: 0 } },
+        members: {
+          create: { osuId: 962000001, captain: true, position: 0, discordUsername: 'red_player' },
+        },
       },
     })
   ).id;
@@ -81,7 +83,9 @@ test.beforeAll(async () => {
         slug: `${prefix}-blue`,
         format: 'INDIVIDUAL',
         status: 'APPROVED',
-        members: { create: { osuId: 962000002, captain: true, position: 0 } },
+        members: {
+          create: { osuId: 962000002, captain: true, position: 0, discordId: '123456789012345678' },
+        },
       },
     })
   ).id;
@@ -669,6 +673,15 @@ test('Referees see all matches, observe live updates and cannot edit other assig
     await expect(
       page.getByRole('link', { name: 'Open multiplayer lobby', exact: true }),
     ).toHaveAttribute('href', 'https://osu.ppy.sh/community/matches/12345', { timeout: 10000 });
+    // A ping names people by username, and by a numeric ID only where one was saved earlier.
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.getByRole('button', { name: 'Copy Match Ping', exact: true }).click();
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toContain('@red_player');
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
+      '<@123456789012345678>',
+    );
     const assigned = await second.newPage();
     await assigned.goto('/t/test-cup/admin/referee/' + created[1].id);
     await expect(

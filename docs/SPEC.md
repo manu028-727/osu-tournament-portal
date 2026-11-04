@@ -189,9 +189,9 @@ Configure native/external registration, eligibility by mode rank/country, requir
 custom fields, deadlines, roster/substitute limits and roster locking. Existing
 rejected or pending entries retain that status when their captain edits them.
 Every submitted registration or reservation tells the person what happened: the reason for a
-refusal, or the status the entry actually received. A Discord contact is a numeric user ID, because
-match pings mention people by it, so the form explains the difference and refuses a username at the
-field. A substitute is offered only when the tournament allows one.
+refusal, or the status the entry actually received. A Discord contact is a username; a display name
+or numeric ID is refused with a reason, and it stays private to the roster's captain, organizers and
+match staff. A substitute is offered only when the tournament allows one.
 
 Registration and qualifier reservation have distinct public pages, API owners,
 configuration and statuses. Registering never books a session, and canceling a
@@ -414,7 +414,8 @@ protect/ban/pick starters; stage-specific action pairs, AB/ABAB/ABBA sequences,
 double-category policies and optional tiebreaker bans. Indicate the next valid
 action, keep compact maps visible, copy IDs/map/mod commands and prevent invalid
 reuse. Include lobby setup, invites, referee/timer/start helpers, Discord match
-pings and configured rule references. Commands use actual tournament game mode,
+pings and configured rule references. A ping names people as `@username`, as text for a person to
+post; Discord alone decides whether that notifies them. Commands use actual tournament game mode,
 NoFail policy, team/scoring settings and registered player IDs.
 
 Rules can limit same-category selections to two in a row or any two in the match, and invite

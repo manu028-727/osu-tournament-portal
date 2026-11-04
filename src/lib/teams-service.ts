@@ -126,7 +126,8 @@ export async function writeTeam(
     osuId: number;
     registrationRank: number | null;
     registeredUsername: string | null;
-    discordId?: string;
+    discordUsername: string;
+    discordId: string;
   }[],
 ) {
   if (
@@ -162,16 +163,19 @@ export async function writeTeam(
     preservedMembers ?? (id ? await tx.teamMember.findMany({ where: { teamId: id } }) : []);
   if (id) await tx.teamMember.deleteMany({ where: { teamId: id } });
   const roster = {
-    create: members.map((m, position) => ({
-      ...m,
-      discordId:
-        m.discordId ?? existingMembers.find((old) => old.osuId === m.osuId)?.discordId ?? '',
-      position,
-      registrationRank:
-        existingMembers.find((old) => old.osuId === m.osuId)?.registrationRank ?? null,
-      registeredUsername:
-        existingMembers.find((old) => old.osuId === m.osuId)?.registeredUsername ?? null,
-    })),
+    create: members.map((m, position) => {
+      const old = existingMembers.find((member) => member.osuId === m.osuId);
+      const username = m.discordUsername ?? old?.discordUsername ?? '';
+      return {
+        ...m,
+        discordUsername: username,
+        // No form shows a numeric ID from before usernames, so a username replaces it for good.
+        discordId: username ? '' : (old?.discordId ?? ''),
+        position,
+        registrationRank: old?.registrationRank ?? null,
+        registeredUsername: old?.registeredUsername ?? null,
+      };
+    }),
   };
   return id
     ? tx.team.update({

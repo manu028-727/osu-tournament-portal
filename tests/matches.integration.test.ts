@@ -460,6 +460,21 @@ describe.sequential('assigned referee and persistent match workflows', () => {
       ).match;
     expect((await view()).poolRevision?.id).toBe(revision.id);
     expect(matchDiscordResult(await view())).toBe('Match in Progress');
+    // Copy Match Ping reads this: a username, or a numeric ID saved before usernames.
+    await db.teamMember.updateMany({
+      where: { teamId: teamAId },
+      data: { discordUsername: 'red_player', discordId: '333333333333333333' },
+    });
+    await db.teamMember.updateMany({
+      where: { teamId: teamBId },
+      data: { discordId: '444444444444444444' },
+    });
+    const { discordContacts } = (await matchData(
+      outsider,
+      new URL(`http://test?id=${created.id}`),
+      'match',
+    )) as unknown as { discordContacts: string[] };
+    expect([...discordContacts].sort()).toEqual(['444444444444444444', 'red_player']);
     await update(referee, 'match.submit');
     await update(owner, 'match.confirm', { reason: 'Full match verified' });
     const final = await view();

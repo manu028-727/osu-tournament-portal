@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { discordUserId } from './teams-validation';
+import { discordUsername } from './teams-validation';
 
 export const registrationPolicySchema = z
   .object({
@@ -66,7 +66,7 @@ export const registrationActionSchema = z.discriminatedUnion('type', [
         z.object({
           osuId: z.number().int().positive().max(2147483647),
           substitute: z.boolean(),
-          discordId: discordUserId.default(''),
+          discordUsername: discordUsername.default(''),
         }),
       )
       .min(1)

@@ -81,7 +81,7 @@ export function RefereePanel({
   const { data, error, reload } = useResource<{
     match: MatchView;
     access: MatchAccess;
-    discordIds: string[];
+    discordContacts: string[];
     dependencies: {
       side: Side;
       label: string;
@@ -649,7 +649,7 @@ export function RefereePanel({
                     size="sm"
                     variant="outline"
                     onClick={() =>
-                      copy(matchPing(m.stage.name, String(m.matchNumber), data.discordIds))
+                      copy(matchPing(m.stage.name, String(m.matchNumber), data.discordContacts))
                     }
                   >
                     <Copy size={16} />

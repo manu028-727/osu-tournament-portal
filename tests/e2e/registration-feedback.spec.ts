@@ -16,6 +16,13 @@ import {
 // A public form that fails without a word gets clicked again and again. These read what a captain
 // sees after each attempt, because a request that returns the right status proves nothing here.
 const evidence = '.data/registration-feedback-20261104';
+const sizes = [
+  [1920, 1080],
+  [1366, 768],
+  [768, 1024],
+  [390, 844],
+  [320, 700],
+];
 const origin = 'http://localhost:3001';
 test.setTimeout(300_000);
 test.use({ actionTimeout: 20_000 });
@@ -107,14 +114,17 @@ test('a captain learns why registration failed, fixes it and sees it succeed', a
   // A substitute could never be accepted here, so it is not offered.
   await fillRoster(page, 'Feedback Team', [taken, third]);
   await expect(page.getByLabel('Substitute')).toHaveCount(0);
-  await expect(page.getByText('Discord user IDs are 17 to 20 digits')).toBeVisible();
 
-  // A username never leaves the browser, and the field says what belongs in it.
-  const discord = page.getByLabel('Discord user ID (optional)', { exact: true }).first();
-  await discord.pressSequentially('manu028');
+  // A display name never leaves the browser, and the field says what belongs in it.
+  const usernames = page.getByLabel('Discord username (optional)', { exact: true });
+  const discord = usernames.first();
+  await discord.pressSequentially('Manu 028');
   await submit(page);
   await expect(discord).toBeFocused();
-  await expect(discord).toHaveAttribute('title', 'Use a Discord user ID, not a username.');
+  await expect(discord).toHaveAttribute(
+    'title',
+    'Use a Discord username, not a display name or numeric ID.',
+  );
   expect(await discord.evaluate((input: HTMLInputElement) => input.validity.patternMismatch)).toBe(
     true,
   );
@@ -125,48 +135,69 @@ test('a captain learns why registration failed, fixes it and sees it succeed', a
   await player.clear();
   await player.pressSequentially('somebody');
   await discord.clear();
-  await discord.pressSequentially('123456789012345678');
+  await discord.pressSequentially('@Manu028');
   await submit(page);
   await expect(player).toBeFocused();
   expect(posts).toHaveLength(0);
 
   // The server keeps the same rule for anything that skips the form, and explains it.
-  const direct = await context.request.post(`/api/registration?tournament=${t.slug}`, {
-    headers: { Origin: origin },
-    data: {
-      type: 'registration.save',
-      baseVersion: 0,
-      policyToken: 'a'.repeat(64),
-      name: 'Skipping the form',
-      format: 'TEAM',
-      members: [{ osuId: captain, substitute: false, discordId: 'manu028' }],
-    },
-  });
-  expect(direct.status()).toBe(400);
-  expect((await direct.json()).error).toContain('Use a Discord user ID, not a username.');
+  for (const discordUsername of ['Manu 028', '123456789012345678', 'everyone']) {
+    const direct = await context.request.post(`/api/registration?tournament=${t.slug}`, {
+      headers: { Origin: origin },
+      data: {
+        type: 'registration.save',
+        baseVersion: 0,
+        policyToken: 'a'.repeat(64),
+        name: 'Skipping the form',
+        format: 'TEAM',
+        members: [{ osuId: captain, substitute: false, discordUsername }],
+      },
+    });
+    expect(direct.status(), discordUsername).toBe(400);
+    expect((await direct.json()).error).toContain(
+      'Use a Discord username, not a display name or numeric ID.',
+    );
+  }
 
-  // What only the server can know reaches the page, and nothing typed is lost.
+  // A numeric ID looks fine to the field, so the server's reason has to reach the page.
   await player.clear();
   await player.pressSequentially(String(taken));
+  await discord.clear();
+  await discord.pressSequentially('123456789012345678');
+  await submit(page);
+  await expect(refusal(page)).toContainText(
+    'Use a Discord username, not a display name or numeric ID.',
+  );
+  expect(posts).toHaveLength(1);
+  await discord.clear();
+  await discord.pressSequentially('@Manu028');
+
+  // What only the server can know reaches the page, and nothing typed is lost.
   await submit(page);
   await expect(refusal(page)).toContainText(
     'A player already belongs to another registration in this tournament.',
   );
-  expect(posts).toHaveLength(1);
+  expect(posts).toHaveLength(2);
   expect(await teamOf(t, captain)).toBeNull();
-  await expect(discord).toHaveValue('123456789012345678');
+  await expect(discord).toHaveValue('@Manu028');
   await expect(page.getByLabel('Entry name', { exact: true })).toHaveValue('Feedback Team');
 
   // Fixed, it goes through and says so.
   await player.clear();
   await player.pressSequentially(String(mate));
+  await usernames.nth(1).pressSequentially('theblueeight');
+  await usernames.nth(2).pressSequentially('burjopore');
   await submit(page);
   await expect(confirmation(page)).toContainText('Registration saved and automatically approved.');
   await expect(page.getByText('Approved', { exact: true })).toBeVisible();
   const team = (await teamOf(t, captain))!;
   expect(team.status).toBe('APPROVED');
   expect(team.members.map((member) => member.osuId)).toEqual([captain, mate, third]);
-  expect(team.members[0].discordId).toBe('123456789012345678');
+  expect(team.members.map((member) => member.discordUsername)).toEqual([
+    'manu028',
+    'theblueeight',
+    'burjopore',
+  ]);
 
   // An older roster can still clear a substitute the tournament no longer allows.
   await db.teamMember.update({
@@ -175,6 +206,7 @@ test('a captain learns why registration failed, fixes it and sees it succeed', a
   });
   await page.reload();
   await page.getByText('Roster and registration details', { exact: true }).click();
+  await expect(discord).toHaveValue('manu028');
   const substitute = page.getByLabel('Substitute');
   await expect(substitute).toBeChecked();
   // Once cleared it cannot be chosen again here, so the choice goes away with it.
@@ -187,6 +219,37 @@ test('a captain learns why registration failed, fixes it and sees it succeed', a
       where: { tournamentId_osuId: { tournamentId: t.id, osuId: third } },
     }),
   ).resolves.toMatchObject({ substitute: false });
+
+  // An organizer edits the same username under the same rule.
+  await login(context);
+  await page.goto(`/t/${t.slug}/admin/teams`);
+  await page.getByRole('button', { name: 'Edit Feedback Team', exact: true }).click();
+  const editing = page.getByLabel(/^Discord username for /).first();
+  await expect(editing).toHaveValue('manu028');
+  await editing.clear();
+  await editing.pressSequentially('Manu 028');
+  await page.getByRole('button', { name: 'Save team', exact: true }).click();
+  await expect(editing).toBeFocused();
+  await editing.clear();
+  await editing.pressSequentially('@Renamed.Captain');
+  await page.getByRole('button', { name: 'Save team', exact: true }).click();
+  await expect(confirmation(page)).toContainText('Team saved.');
+  expect((await teamOf(t, captain))!.members[0].discordUsername).toBe('renamed.captain');
+
+  for (const appearance of ['light', 'dark'])
+    for (const [width, height] of sizes) {
+      await context.addCookies([{ name: 'portal_appearance', value: appearance, url: origin }]);
+      await page.setViewportSize({ width, height });
+      await page.goto(`/t/${t.slug}/admin/teams`);
+      await page.getByRole('button', { name: 'Edit Feedback Team', exact: true }).click();
+      await expect(editing).toHaveValue('renamed.captain');
+      await editing.scrollIntoViewIfNeeded();
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(overflow, `editor at ${width}`).toBeLessThanOrEqual(1);
+      await page.screenshot({ path: `${evidence}/editor-${appearance}-${width}.png` });
+    }
 });
 
 test('an entry kept for review says so instead of claiming approval, in either language', async ({
@@ -233,13 +296,6 @@ test('the form and its messages hold together at every width in both appearances
   const [captain, mate, taken] = await createPlayers(3);
   await takePlayer(t, taken);
   await loginAs(context, captain);
-  const sizes = [
-    [1920, 1080],
-    [1366, 768],
-    [768, 1024],
-    [390, 844],
-    [320, 700],
-  ];
   for (const appearance of ['light', 'dark'])
     for (const [width, height] of sizes) {
       await context.addCookies([{ name: 'portal_appearance', value: appearance, url: origin }]);

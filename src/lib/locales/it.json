@@ -23,7 +23,7 @@
   "Starting players: {0}. Maximum roster: {1}. Substitutes: {2}.": "Titolari: {0}. Formazione massima: {1}. Riserve: {2}.",
   "Captain osu! ID": "ID osu! del capitano",
   "Player osu! ID": "ID osu! del giocatore",
-  "Discord user ID (optional)": "ID utente Discord (facoltativo)",
+  "Discord username (optional)": "Nome utente Discord (facoltativo)",
   "Remove": "Rimuovi",
   "Select an option": "Scegli un'opzione",
   "Save registration": "Salva iscrizione",
@@ -2864,7 +2864,7 @@
   "Disconnect all tabs": "Disconnetti tutte le schede",
   "Discord result": "Risultato per Discord",
   "Discord result preview": "Anteprima del risultato per Discord",
-  "Discord user ID for {0}": "ID utente Discord di {0}",
+  "Discord username for {0}": "Nome utente Discord di {0}",
   "Dismiss notification": "Chiudi notifica",
   "Dismiss old lobby": "Chiudi la vecchia conversazione",
   "Display order": "Ordine di visualizzazione",
@@ -4290,7 +4290,6 @@
   "Registration saved and automatically approved.": "Iscrizione salvata e approvata automaticamente.",
   "Registration saved. An organizer will review it.": "Iscrizione salvata. Un organizzatore la esaminerà.",
   "Qualifier reservation updated.": "Prenotazione alle qualifiche aggiornata.",
-  "Use a Discord user ID, not a username.": "Usa un ID utente Discord, non un nome utente.",
-  "Use the number from the osu! profile address, not a username.": "Usa il numero nell'indirizzo del profilo osu!, non un nome utente.",
-  "Discord user IDs are 17 to 20 digits, not usernames. In Discord, turn on Developer Mode, then right-click a name and choose Copy User ID.": "Gli ID utente Discord sono numeri di 17-20 cifre, non nomi utente. In Discord attiva la modalità sviluppatore, poi fai clic destro su un nome e scegli Copia ID utente."
+  "Use a Discord username, not a display name or numeric ID.": "Usa un nome utente Discord, non un nome visualizzato o un ID numerico.",
+  "Use the number from the osu! profile address, not a username.": "Usa il numero nell'indirizzo del profilo osu!, non un nome utente."
 }

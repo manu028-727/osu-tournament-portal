@@ -167,6 +167,7 @@ beforeAll(async () => {
           position: 0,
           captain: true,
           discordId: '123456'.repeat(3),
+          discordUsername: 'red_player',
         },
       },
     },
@@ -429,6 +430,18 @@ describe('portable tournament archives', () => {
       include: { settings: true },
     });
     expect(imported.published).toBe(false);
+    expect(
+      await db.teamMember.findFirstOrThrow({ where: { tournamentId: imported.id } }),
+    ).toMatchObject({ discordId: '123456'.repeat(3), discordUsername: 'red_player' });
+    // An archive written before rosters held usernames still reads, with nothing guessed.
+    const older = archive.data.rosters.map(({ discordUsername, ...row }) => {
+      void discordUsername;
+      return row;
+    });
+    expect(validateArchiveData({ ...archive.data, rosters: older }).rosters[0]).toMatchObject({
+      discordId: '123456'.repeat(3),
+      discordUsername: '',
+    });
     const plan = await db.poolPlan.findFirstOrThrow({ where: { tournamentId: imported.id } });
     expect(plan).toMatchObject({
       minStars: 5,

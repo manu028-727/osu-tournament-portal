@@ -1,15 +1,19 @@
 import { z } from 'zod';
-// Match pings mention people by this number, so a username could not reach anyone.
-export const discordUserId = z
+import { isDiscordUsername } from './discord-result';
+export const discordUsername = z
   .string()
-  .refine((value) => /^(?:\d{17,20})?$/.test(value), 'Use a Discord user ID, not a username.');
+  .transform((value) => value.trim().replace(/^@/, '').toLowerCase())
+  .refine(
+    (value) => !value || isDiscordUsername(value),
+    'Use a Discord username, not a display name or numeric ID.',
+  );
 export const rosterSchema = z
   .array(
     z.object({
       osuId: z.number().int().positive().max(2147483647),
       captain: z.boolean(),
       substitute: z.boolean(),
-      discordId: discordUserId.optional(),
+      discordUsername: discordUsername.optional(),
     }),
   )
   .min(1)

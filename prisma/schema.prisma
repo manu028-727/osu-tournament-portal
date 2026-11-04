@@ -796,6 +796,7 @@ model TeamMember {
   registeredUsername String?
   rankCapturedAt     DateTime?
   discordId          String      @default("")
+  discordUsername    String      @default("")
 
   @@id([teamId, osuId])
   @@unique([teamId, position])
