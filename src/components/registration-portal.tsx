@@ -132,10 +132,14 @@ export function RegistrationPortal({ initial, loginUrl }: { initial: Data; login
                     policyToken: next.policyToken,
                   });
                   setSavedDraft(draft);
+                  return next;
                 },
-                data.team
-                  ? 'Registration saved.'
-                  : 'Registration saved and automatically approved.',
+                (next) =>
+                  next.team?.status === 'PENDING'
+                    ? 'Registration saved. An organizer will review it.'
+                    : data.team
+                      ? 'Registration saved.'
+                      : 'Registration saved and automatically approved.',
               );
             }}
           >
@@ -174,6 +178,11 @@ export function RegistrationPortal({ initial, loginUrl }: { initial: Data; login
                   data.policy.maxSubstitutes,
                 )}
               </p>
+              <p className="text-xs text-muted">
+                {tr(
+                  'Discord user IDs are 17 to 20 digits, not usernames. In Discord, turn on Developer Mode, then right-click a name and choose Copy User ID.',
+                )}
+              </p>
               <div className="space-y-3">
                 {members.map((member, index) => (
                   <div key={index} className="space-y-2 rounded-xl border p-3">
@@ -182,6 +191,10 @@ export function RegistrationPortal({ initial, loginUrl }: { initial: Data; login
                         <input
                           inputMode="numeric"
                           required
+                          pattern="\d{1,10}"
+                          title={tr(
+                            'Use the number from the osu! profile address, not a username.',
+                          )}
                           value={member.osuId}
                           readOnly={index === 0}
                           onChange={(event) =>
@@ -196,6 +209,8 @@ export function RegistrationPortal({ initial, loginUrl }: { initial: Data; login
                       <Field label={tr('Discord user ID (optional)')}>
                         <input
                           inputMode="numeric"
+                          pattern="\d{17,20}"
+                          title={tr('Use a Discord user ID, not a username.')}
                           value={member.discordId}
                           onChange={(event) =>
                             setMembers((rows) =>
@@ -209,24 +224,29 @@ export function RegistrationPortal({ initial, loginUrl }: { initial: Data; login
                     </div>
                     {index > 0 && (
                       <div className="flex flex-wrap justify-between gap-2">
-                        <label className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={member.substitute}
-                            onChange={(event) =>
-                              setMembers((rows) =>
-                                rows.map((row, i) =>
-                                  i === index ? { ...row, substitute: event.target.checked } : row,
-                                ),
-                              )
-                            }
-                          />
-                          {tr('Substitute')}
-                        </label>
+                        {(data.policy.maxSubstitutes > 0 || member.substitute) && (
+                          <label className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={member.substitute}
+                              onChange={(event) =>
+                                setMembers((rows) =>
+                                  rows.map((row, i) =>
+                                    i === index
+                                      ? { ...row, substitute: event.target.checked }
+                                      : row,
+                                  ),
+                                )
+                              }
+                            />
+                            {tr('Substitute')}
+                          </label>
+                        )}
                         <Button
                           type="button"
                           size="sm"
                           variant="ghost"
+                          className="ml-auto"
                           onClick={() => setMembers((rows) => rows.filter((_, i) => i !== index))}
                         >
                           {tr('Remove')}

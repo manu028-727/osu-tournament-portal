@@ -188,6 +188,10 @@ public reason visible in Teams; private notes and custom answers are separate.
 Configure native/external registration, eligibility by mode rank/country, required
 custom fields, deadlines, roster/substitute limits and roster locking. Existing
 rejected or pending entries retain that status when their captain edits them.
+Every submitted registration or reservation tells the person what happened: the reason for a
+refusal, or the status the entry actually received. A Discord contact is a numeric user ID, because
+match pings mention people by it, so the form explains the difference and refuses a username at the
+field. A substitute is offered only when the tournament allows one.
 
 Registration and qualifier reservation have distinct public pages, API owners,
 configuration and statuses. Registering never books a session, and canceling a

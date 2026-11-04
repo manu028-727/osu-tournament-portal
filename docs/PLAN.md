@@ -1817,6 +1817,44 @@ them in a separate change. Not verified on real providers, as before.
 Next: maintainer review and pushing this commit, then `git pull --ff-only` and `./portal install`
 on the server.
 
+### Registration Feedback
+
+A captain on a deployed tournament clicked Register eight times, got eight 400 responses and saw
+nothing. Root causes:
+
+- `useTask` reports through `NoticeContext`, whose default does nothing, and `<Notices>` was mounted
+  only in the admin shell. Every message on the public registration and booking pages disappeared,
+  successes included, so no test or person had ever seen them.
+- The Discord field asks for a user ID but looks like a contact field. A username failed a regex
+  that had no message of its own, while the same rule in `teams-validation.ts` did have one.
+- The success message always claimed approval, which is false when eligibility problems keep an
+  entry for review. Being invisible had hidden this.
+- A Substitute checkbox was offered when the tournament allows none, and could only be refused.
+
+Delivered: `<Notices>` on both public pages; one `discordUserId` rule for both rosters, reported as a
+custom issue so Italian keeps its meaning; field patterns that stop a username before anything is
+sent; a success message that follows the saved status; and the missing Italian strings. Usernames
+are still refused, because a ping needs the ID. An organizer who wants them can add a custom text
+question. No migration.
+
+Checks on this revision, run sequentially on `tournament_platform_test`: format, lint, types and
+`git diff --check` clean; 609 unit tests in 41 files; 346 integration tests in 35 files; production
+build; production browser suite 100 of 100. The three new tests in
+`registration-feedback.spec.ts` failed against the previous build and pass on this one. After that
+suite, one test-only change made the width test wait for the toast's fade-in, and that spec passed
+again. The dev browser suite was not rerun for this change. `prisma/` is unchanged.
+
+Rendered evidence is in `.data/registration-feedback-20261104`: the form and a refusal at 1920, 1366,
+768, 390 and 320 in both appearances, with no sideways page overflow asserted at each. Inspected: the
+refusal at 1920 dark, 390 dark and 320 light, and the first capture set, including the form at 390
+dark and the refusal at 1366 dark and 768 light. The browser's own validation bubble does not appear
+in screenshots, so the test asserts that the field is focused, invalid and carries the explanatory
+title, and that nothing was sent. Copy User ID in Discord is written from memory of its menus. Not
+verified against the deployed tournament or real osu! accounts.
+
+Next: maintainer review and pushing this commit, then `git pull --ff-only` and `./portal install`
+on the server.
+
 ## Completion Rules
 
 For each change: establish source behavior, implement within existing ownership

@@ -3,6 +3,7 @@ import { requestScope } from '@/lib/tournament-context';
 import { qualifierBookingData } from '@/lib/qualifier-booking-service';
 import { QualifierBookingPortal } from '@/components/qualifier-booking-portal';
 import { PageHeading } from '@/components/content';
+import { Notices } from '@/components/admin/shared';
 import { getServerT } from '@/lib/server-locale';
 import { scopedHref } from '@/lib/tournament-paths';
 import { notFound } from 'next/navigation';
@@ -22,10 +23,12 @@ export default async function QualifierBooking() {
         title={tr('Qualifier booking')}
         description={tr('Reserve, change or cancel a qualifier session for your registered entry.')}
       />
-      <QualifierBookingPortal
-        initial={JSON.parse(JSON.stringify(data))}
-        loginUrl={`/api/auth/login?returnTo=${encodeURIComponent(scopedHref('/qualifier-booking', scope))}`}
-      />
+      <Notices>
+        <QualifierBookingPortal
+          initial={JSON.parse(JSON.stringify(data))}
+          loginUrl={`/api/auth/login?returnTo=${encodeURIComponent(scopedHref('/qualifier-booking', scope))}`}
+        />
+      </Notices>
     </div>
   );
 }

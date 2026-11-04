@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { discordUserId } from './teams-validation';
 
 export const registrationPolicySchema = z
   .object({
@@ -65,10 +66,7 @@ export const registrationActionSchema = z.discriminatedUnion('type', [
         z.object({
           osuId: z.number().int().positive().max(2147483647),
           substitute: z.boolean(),
-          discordId: z
-            .string()
-            .regex(/^(?:\d{17,20})?$/)
-            .default(''),
+          discordId: discordUserId.default(''),
         }),
       )
       .min(1)

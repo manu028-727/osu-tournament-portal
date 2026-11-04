@@ -5,7 +5,9 @@ import {
   rosterEligibility,
   type EligibilityPlayer,
 } from '../src/lib/eligibility';
-import { registrationPolicySchema } from '../src/lib/registration-policy';
+import { registrationActionSchema, registrationPolicySchema } from '../src/lib/registration-policy';
+import { rosterSchema } from '../src/lib/teams-validation';
+import { validationFeedback } from '../src/lib/validation-feedback';
 
 const policy = (fields: object = {}) => registrationPolicySchema.parse(fields);
 const player = (osuId: number, rank: number | null, fields: Partial<EligibilityPlayer> = {}) => ({
@@ -118,5 +120,36 @@ describe('registration policy', () => {
     expect(registrationPolicySchema.safeParse({ rankSumMin: 10, rankSumMax: 5 }).success).toBe(
       false,
     );
+  });
+});
+
+describe('Discord contact on a roster', () => {
+  const registering = (discordId: string) =>
+    registrationActionSchema.safeParse({
+      type: 'registration.save',
+      baseVersion: 0,
+      policyToken: 'a'.repeat(64),
+      name: 'Entry',
+      format: 'TEAM',
+      members: [{ osuId: 1, substitute: false, discordId }],
+    });
+  const editing = (discordId: string) =>
+    rosterSchema.safeParse([{ osuId: 1, captain: true, substitute: false, discordId }]);
+
+  it('takes a user ID or nothing, from a captain and from an organizer alike', () => {
+    for (const check of [registering, editing])
+      for (const value of ['', '12345678901234567', '12345678901234567890'])
+        expect(check(value).success, value).toBe(true);
+  });
+
+  it('explains a refusal in words, in either language', () => {
+    for (const check of [registering, editing])
+      for (const value of ['manu028', '1234567890123456', '123456789012345678901']) {
+        const issues = check(value).error!.issues;
+        expect(issues[0].message).toBe('Use a Discord user ID, not a username.');
+        expect(validationFeedback(issues, 'it')).toContain(
+          'Usa un ID utente Discord, non un nome utente.',
+        );
+      }
   });
 });

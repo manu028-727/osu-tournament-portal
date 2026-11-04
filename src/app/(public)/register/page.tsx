@@ -3,6 +3,7 @@ import { requestScope } from '@/lib/tournament-context';
 import { registrationData } from '@/lib/registration-service';
 import { RegistrationPortal } from '@/components/registration-portal';
 import { PageHeading } from '@/components/content';
+import { Notices } from '@/components/admin/shared';
 import { getServerT } from '@/lib/server-locale';
 import { scopedHref } from '@/lib/tournament-paths';
 import { notFound } from 'next/navigation';
@@ -22,10 +23,12 @@ export default async function Register() {
         title={tr('Tournament registration')}
         description={tr('Register for the tournament and manage your team roster.')}
       />
-      <RegistrationPortal
-        initial={JSON.parse(JSON.stringify(data))}
-        loginUrl={`/api/auth/login?returnTo=${encodeURIComponent(scopedHref('/register', scope))}`}
-      />
+      <Notices>
+        <RegistrationPortal
+          initial={JSON.parse(JSON.stringify(data))}
+          loginUrl={`/api/auth/login?returnTo=${encodeURIComponent(scopedHref('/register', scope))}`}
+        />
+      </Notices>
     </div>
   );
 }

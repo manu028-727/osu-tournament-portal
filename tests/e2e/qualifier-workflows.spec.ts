@@ -335,6 +335,9 @@ test('lets a captain book and cancel an existing session without workspace permi
   await expect(page.getByRole('heading', { name: 'Qualifier booking', exact: true })).toBeVisible();
   const session = page.locator('article').filter({ hasText: 'Booking session' });
   await session.getByRole('button', { name: 'Reserve session' }).click();
+  await expect(page.locator('.toast[role="status"]')).toContainText(
+    'Qualifier reservation updated.',
+  );
   await expect(session.getByText('Your reservation', { exact: false })).toBeVisible();
   expect(await db.qualifierEntry.count({ where: { lobbyId: bookingId } })).toBe(1);
   await session.getByRole('button', { name: 'Cancel reservation' }).click();

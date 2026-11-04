@@ -4285,5 +4285,12 @@
   "New map type": "Nuovo tipo di mappa",
   "Add": "Aggiungi",
   "Next: {0}": "Prossimo passo: {0}",
-  "Preview updated.": "Anteprima aggiornata."
+  "Preview updated.": "Anteprima aggiornata.",
+  "Registration saved.": "Iscrizione salvata.",
+  "Registration saved and automatically approved.": "Iscrizione salvata e approvata automaticamente.",
+  "Registration saved. An organizer will review it.": "Iscrizione salvata. Un organizzatore la esaminerà.",
+  "Qualifier reservation updated.": "Prenotazione alle qualifiche aggiornata.",
+  "Use a Discord user ID, not a username.": "Usa un ID utente Discord, non un nome utente.",
+  "Use the number from the osu! profile address, not a username.": "Usa il numero nell'indirizzo del profilo osu!, non un nome utente.",
+  "Discord user IDs are 17 to 20 digits, not usernames. In Discord, turn on Developer Mode, then right-click a name and choose Copy User ID.": "Gli ID utente Discord sono numeri di 17-20 cifre, non nomi utente. In Discord attiva la modalità sviluppatore, poi fai clic destro su un nome e scegli Copia ID utente."
 }

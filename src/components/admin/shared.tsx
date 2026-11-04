@@ -134,11 +134,14 @@ export function useTask() {
   const language = useLocale();
   const notify = useContext(NoticeContext);
   const [busy, setBusy] = useState(false);
-  const run = async <T,>(fn: () => Promise<T>, message = 'Changes saved.') => {
+  const run = async <T,>(
+    fn: () => Promise<T>,
+    message: string | ((value: T) => string) = 'Changes saved.',
+  ) => {
     setBusy(true);
     try {
       const value = await fn();
-      notify(message);
+      notify(typeof message === 'function' ? message(value) : message);
       return value;
     } catch (e) {
       notify(
